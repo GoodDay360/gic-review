@@ -68,6 +68,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 
 ### Public site
 - ✅ Header with the "GIC Review" name and a small "Staff login" link (Dashboard + logout when logged in)
+- ✅ Footer credit "Made by: @GoodDay360" linking to https://github.com/GoodDay360 (new tab)
 - ✅ Home page: subject cards from `GET /api/subjects`, loading skeletons, empty and error states
 - ✅ Only one seeded subject: Human Computer Interaction (`hci`)
 - ✅ Activity modal per subject (Interactive Review / Quiz); review shown disabled with "Coming soon" when there is none
@@ -128,7 +129,8 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ No `DATABASE_URL`: the server, `cargo run -- migrate` and the tests build the connection from `DB_*`
 - ✅ `DB_SSL_REQUIRED=true|false` (default `true`) to require an SSL connection to MySQL (validated at startup)
 - 🚧 Compile-time checked queries (`sqlx::query!`) and committed `.sqlx/`: not used yet, needs a dev database
-- ⏳ CI pipeline, Docker images, deployment docs
+- ✅ Backend Dockerfile (multi-stage, non-root, `PORT` support) for Render/Railway, with deployment notes in the README
+- ⏳ CI pipeline, frontend deployment docs
 
 ---
 
@@ -210,6 +212,8 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role),
 
 ## Changelog
 
+- 2026-11-18: Footer credit "Made by: @GoodDay360" → https://github.com/GoodDay360.
+- 2026-11-18: Added `backend/Dockerfile` + `.dockerignore`; the server uses `PORT` when the platform sets it.
 - 2026-11-18: Initial build. Scaffold, Catppuccin theme system, MySQL schema + HCI seed + admin
   bootstrap, public browsing, QCM and Flashcard players with the mode registry, staff area (quiz CRUD,
   image uploads to R2, preview, bulk import), admin features, interactive reviews, docs.

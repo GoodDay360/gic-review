@@ -131,6 +131,7 @@ Before the first commit, run `git status` and confirm that no `.env`, `node_modu
 
 ### 3.1 Home page `/`
 - Header shows the site name **"GIC Review"** (logo text) and a small "Staff login" link.
+- Footer (every page) shows the credit **"Made by: @GoodDay360"**, linking to https://github.com/GoodDay360 (opens in a new tab).
 - Shows a grid/list of **subject cards** loaded from the API (`GET /api/subjects`).
 - **Seed only ONE subject:** `Human Computer Interaction` (slug `hci`). Do NOT create other subjects (Internet Programming, etc.); they will be added later through the admin panel.
 - Clicking a subject opens a **modal popup** (no navigation) titled with the subject name, with two choices:
@@ -486,4 +487,5 @@ These refine the requirements above; they do not remove any of them.
 - **Interactive reviews:** replacing the file overwrites the same R2 key; the API returns the URL with a `?v=<updated_at>` cache-buster. The viewer refuses to render a review URL on the site's own origin.
 - **Theme:** text on accent buttons uses `base`, or `text` where that gives better contrast (e.g. Latte yellow), computed at build time from `@catppuccin/palette`.
 - **No `DATABASE_URL` (2026-11-18):** replaced by `cargo run -- migrate` and `DB_*`-based test databases; the `.env` template no longer has it.
+- **Docker deployment:** `backend/Dockerfile` (multi-stage build, slim non-root runtime, migrations embedded) and `backend/.dockerignore` (never ship `.env` or `target/`) so the API can be deployed to Render, Railway or any Docker host. The server listens on `PORT` when the platform sets it (else `BACKEND_PORT`), and the image sets `BACKEND_HOST=0.0.0.0`, `APP_ENV=production`.
 - **SQL:** queries are parameterized `&'static str` SQL (sqlx 0.9 rejects dynamic SQL strings). Compile-time `query!` macros and a committed `.sqlx/` directory are planned once a development database is available.

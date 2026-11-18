@@ -103,7 +103,11 @@ impl Config {
         };
 
         let backend_host = req("BACKEND_HOST");
-        let backend_port_raw = req("BACKEND_PORT");
+        // Hosting platforms (Render, Railway, …) inject PORT; it wins over BACKEND_PORT.
+        let backend_port_raw = match optional("PORT") {
+            Some(port) => port,
+            None => req("BACKEND_PORT"),
+        };
         let frontend_url = req("FRONTEND_URL");
         let db_host = req("DB_HOST");
         let db_port_raw = optional("DB_PORT").unwrap_or_else(|| "3306".into());
@@ -127,7 +131,7 @@ impl Config {
             errors.push(e);
             false
         });
-        let backend_port = parse_num::<u16>("BACKEND_PORT", &backend_port_raw, &mut errors);
+        let backend_port = parse_num::<u16>("PORT/BACKEND_PORT", &backend_port_raw, &mut errors);
         let db_port = parse_num::<u16>("DB_PORT", &db_port_raw, &mut errors);
         let jwt_expires_in_hours =
             parse_num::<i64>("JWT_EXPIRES_IN_HOURS", &jwt_hours_raw, &mut errors);

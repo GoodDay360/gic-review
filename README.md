@@ -68,6 +68,36 @@ Deployment notes: serve the frontend and the API on the same site (e.g. `example
 `APP_ENV=production` so the cookie is `Secure`; set `FRONTEND_URL` to the frontend origin
 (CORS); serve R2 from its own domain.
 
+## Deploying the backend (Docker: Render, Railway, …)
+
+`backend/Dockerfile` builds a small production image (multi-stage, non-root, migrations
+embedded and applied on start). Local check:
+
+```bash
+docker build -t gic-review-api backend/
+docker run --env-file backend/.env -e BACKEND_HOST=0.0.0.0 -p 8080:8080 gic-review-api
+```
+
+**Render** → New → Web Service → your repo → Language **Docker**, Root Directory `backend`
+(Dockerfile path `./Dockerfile`), Health Check Path `/api/health`.
+**Railway** → New → GitHub repo → service Settings → Root Directory `backend` (it picks up the
+Dockerfile automatically), Healthcheck Path `/api/health`, then Networking → Generate Domain.
+
+Set the environment variables from `backend/.env.example` in the platform's dashboard:
+`APP_ENV=production`, `FRONTEND_URL` (your deployed frontend origin), all `DB_*`, `JWT_SECRET`,
+`ADMIN_EMAIL`, `ADMIN_PASSWORD`, all `R2_*`, upload limits. Leave out `PORT`, `BACKEND_HOST`,
+`BACKEND_PORT` (the image and platform set them) and `DB_TEST_NAME` (tests only).
+
+Things to know:
+- **Database:** the cloud service must reach your MySQL, so use a hosted MySQL (Railway MySQL,
+  Aiven, PlanetScale-compatible, a VPS…), not one on your own machine. Keep `DB_SSL_REQUIRED=true`.
+- **Use your own domain for the dashboard login.** `*.onrender.com` and `*.up.railway.app` are
+  public suffixes, so `my-app.onrender.com` and `my-api.onrender.com` are *different sites* and
+  the `SameSite=Strict` login cookie is not sent. Put both on one domain, e.g. `gic.example.com`
+  (frontend) and `api.gic.example.com` (backend), and set `FRONTEND_URL` accordingly.
+  API keys work from anywhere regardless.
+- Free instances sleep when idle; the first request after a pause can take a while.
+
 ## API keys (for scripts and AI assistants)
 
 A manager opens **Dashboard → API key**, creates a key (one per manager, permissions

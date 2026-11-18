@@ -19,7 +19,15 @@ onMounted(() => useAuthStore().fetchMe())
     <footer
       class="border-t border-ctp-surface0 bg-ctp-mantle py-4 text-center text-xs text-ctp-subtext0"
     >
-      GIC Review · study at your own pace
+      GIC Review · study at your own pace ·
+      <a
+        href="https://github.com/GoodDay360"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="font-medium text-ctp-accent hover:underline"
+      >
+        Made by: @GoodDay360
+      </a>
     </footer>
     <ImageLightbox />
     <ToastHost />

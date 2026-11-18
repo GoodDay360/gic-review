@@ -1,0 +1,10 @@
+# Keep the build context small and never ship secrets.
+target/
+.env
+.env.*
+!.env.example
+.sqlx/
+tests/
+*.log
+Dockerfile
+.dockerignore

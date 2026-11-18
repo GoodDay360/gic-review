@@ -1,62 +1,199 @@
 # GIC Review API: how to add an interactive review
 
-**Audience:** an AI assistant (or any script) that publishes interactive reviews to GIC Review
-**through the REST API only**. You do not have, and do not need, access to the source code. A
-typical job: *"Turn this PDF lecture into an interactive review page for the HCI subject."*
+**For:** an AI assistant (or script) that publishes interactive review pages to GIC Review
+**through the REST API only**. You have no access to the source code and don't need it.
+Typical job: *"Turn this PDF lecture into an interactive review page for the HCI subject."*
 
-This document is self-contained. Quizzes are covered in the companion document
-`AI-HOW-ADD-QUIZ.md`.
+An **interactive review** is one self-contained `.html` file (a study guide with sections,
+summaries, diagrams, collapsible parts and small self-checks) attached to a subject. Students
+open it from the subject's page. Everything you need is in this file. (Quizzes: see
+`AI-HOW-ADD-QUIZ.md`.)
 
 ---
 
-## 1. What an interactive review is
+## 1. Quick start
 
-A **single, self-contained `.html` file**: a study guide for one subject with sections,
-summaries, diagrams, collapsible details and small self-checks. Students open it from the
-subject's page; it is shown in a sandboxed frame, styled with the site's colors.
+You need two values from the human:
 
-## 2. What you need from the human
-
-| Value | Example | Where it comes from |
+| Value | Example | Notes |
 |---|---|---|
-| **API base URL** | `https://api.example.com/api` | The site owner. Every path below is relative to it. |
-| **API key** | `gic_3f9a…` (68 characters) | A **manager** creates it in **Dashboard → API key**, permission `reviews:write`. |
+| `BASE` (API base URL) | `https://api.example.com/api` | Every endpoint below is `BASE` + path. |
+| `KEY` (API key) | `gic_3f9a…` (68 chars) | Made by a manager in **Dashboard → API key**, permission **`reviews:write`**. Secret: never show it or put it in the HTML. |
 
-```bash
-export GIC_API=https://api.example.com/api   # no trailing slash
-export GIC_KEY=gic_…                         # keep it secret
+Every request that needs the key sends this header:
+
+```
+Authorization: Bearer KEY
 ```
 
-Send `Authorization: Bearer <API key>` on every request. Never print the key in answers or
-put it in the HTML. `401` means the key is wrong, expired or revoked: ask for a new one.
+Test it:
 
-**What the key can do:** it acts as the manager who created it. You can manage reviews that
-manager **owns** or that **another manager shared with them**. Other managers' reviews are
-invisible (`404`). On a shared review you can update it but **not delete** it
-(`403 owner_only`). Sharing, users, subjects and keys are handled by humans in the dashboard
-(`403 api_key_not_allowed`). If the subject you need doesn't exist, ask the human (admins
-create subjects).
+```bash
+curl -H "Authorization: Bearer $KEY" $BASE/auth/me
+# 200 → { "role": "manager", "auth_method": "api_key", "api_key_scopes": ["reviews:write"], … }
+```
 
----
-
-## 3. Recommended workflow (e.g. from a PDF)
-
-1. `GET /auth/me`: check `"api_key_scopes"` contains `"reviews:write"`.
-2. `GET /subjects` (public): note the subject's numeric `id`.
-3. `GET /admin/reviews?subject_id=<id>`: see what already exists, so you don't create duplicates.
-   To update an existing review, use `PUT` (section 6) instead of creating a new one.
-4. Write the HTML: start from the **template in section 5**, keep its `<style>`/`<script>` theme
-   block, and replace the `<main>` content with the material, following the rules in section 4.
-5. Images: small diagrams can be inline `data:` URIs or inline `<svg>`. For larger figures,
-   upload them with `POST /admin/uploads/image` (multipart field `file`) and use the returned
-   absolute `url` in `<img src="…">`.
-6. Upload: `POST /admin/reviews` with `is_published=false` first.
-7. Report the review `id`, `title` and `url` to the human; publish when asked
-   (`PUT` with `is_published=true`).
+`401` → the key is wrong, expired or revoked. Stop and ask the human for a new key.
 
 ---
 
-## 4. Rules for the HTML
+## 2. Endpoint list (everything you may call)
+
+Full URL = `BASE` + path. `{id}` = a review id.
+
+| # | Method | Path | Key? | Use it to… |
+|---|---|---|---|---|
+| 1 | `GET` | `/auth/me` | yes | check the key works and has `reviews:write` |
+| 2 | `GET` | `/subjects` | no | list subjects → get the subject's numeric `id` |
+| 3 | `GET` | `/admin/reviews?subject_id={n}` | yes | list reviews you can manage (avoid duplicates, find ids) |
+| 4 | `GET` | `/admin/reviews/{id}` | yes | read one review (its public `url`, title, status) |
+| 5 | `POST` | `/admin/uploads/image` | yes | upload an image for the page → use the returned `url` in `<img>` |
+| 6 | `POST` | `/admin/reviews` | yes | **upload a new review page** ← main endpoint |
+| 7 | `PUT` | `/admin/reviews/{id}` | yes | replace the HTML and/or change title, slug, order, published |
+| 8 | `DELETE` | `/admin/reviews/{id}` | yes | delete a review (owner only; **ask the human first**) |
+| 9 | `GET` | `/subjects/{slug}/reviews` | no | see what students see (published reviews only) |
+
+**Most jobs only need #1, #2, #3, #5 (if there are images) and #6.**
+
+Don't call anything else under `/admin/…` (users, subjects, API keys, sharing). Those are for
+humans in the dashboard and refuse API keys (`403 api_key_not_allowed`). There is no endpoint to
+create subjects: if the subject you need is missing, ask the human.
+
+**What your key can reach:** it acts as the manager who made it. You see and edit reviews that
+manager owns or that another manager shared with them; others return `404`. On a shared review
+you can update it (#7) but not delete it (`403 owner_only`).
+
+---
+
+## 3. Recipe: create a review page from a PDF
+
+**Step 1. Check the key** (#1). Expect `"reviews:write"` in `"api_key_scopes"`.
+
+**Step 2. Find the subject id** (#2)
+
+```bash
+curl $BASE/subjects
+# [ { "id": 1, "slug": "hci", "name": "Human Computer Interaction", "has_review": false, … } ]
+```
+
+**Step 3. Check for an existing review** (#3)
+
+```bash
+curl -H "Authorization: Bearer $KEY" "$BASE/admin/reviews?subject_id=1"
+# [ { "id": 7, "title": "HCI: Usability Heuristics", "slug": "usability-heuristics", "is_published": true, … } ]
+```
+Same topic already there? Ask whether to **update it** (#7) instead of creating a new one.
+
+**Step 4. Upload images, if any** (#5). Small diagrams can be inline `<svg>` or `data:` URIs
+instead. For figures from the PDF (exported as PNG, cropped):
+
+```bash
+curl -H "Authorization: Bearer $KEY" -F "file=@figure-3.png" $BASE/admin/uploads/image
+# 201 → { "key": "tmp/2f1c…png", "url": "https://files.example.com/tmp/2f1c…png" }
+```
+Use the **`url`** in the page: `<img src="https://files.example.com/tmp/2f1c…png" alt="…">`.
+
+**Step 5. Write the HTML.** Copy the template in section 6, keep its `<style>` and `<script>`
+theme block **unchanged**, and replace the content inside `<main>`. Follow the rules in section 5.
+
+**Step 6. Upload it as a draft** (#6)
+
+```bash
+curl -H "Authorization: Bearer $KEY" \
+  -F "subject_id=1" \
+  -F "title=HCI: Usability Heuristics" \
+  -F "slug=usability-heuristics" \
+  -F "is_published=false" \
+  -F "file=@usability-heuristics.html;type=text/html" \
+  $BASE/admin/reviews
+# 201 → { "id": 7, "url": "https://files.example.com/reviews/1/….html?v=…", "is_published": false, … }
+```
+`409` → that `slug` is already used in this subject: choose another one.
+
+**Step 7. Report back** to the human: review `id`, `title` and `url` (they can open the `url` to
+check it). Students can't see it yet.
+
+**Step 8. Publish only if the human says so** (#7)
+
+```bash
+curl -H "Authorization: Bearer $KEY" -X PUT -F "is_published=true" $BASE/admin/reviews/7
+```
+
+---
+
+## 4. Endpoint details
+
+### #1 `GET /auth/me`
+Response `200`: `{ "id", "email", "display_name", "role": "manager", "auth_method": "api_key", "api_key_scopes": [...] }`.
+
+### #2 `GET /subjects` (no key)
+Response `200`: array of `{ "id", "slug", "name", "description", "has_review", "quiz_count", … }`.
+
+### #3 `GET /admin/reviews?subject_id={n}`
+`subject_id` optional. Response `200`: array of **review objects** (below), unpublished included.
+
+### #4 `GET /admin/reviews/{id}`
+Response `200`: one review object. `404` if it doesn't exist or isn't yours.
+
+### #5 `POST /admin/uploads/image`
+`multipart/form-data`, field `file` (PNG, JPEG, WebP or GIF; max 5 MB by default). Response
+`201`: `{ "key", "url" }`. Use `url` in your HTML. Resized to max 1600 px wide.
+
+### #6 `POST /admin/reviews`
+`multipart/form-data`:
+
+| Field | Required | Meaning |
+|---|---|---|
+| `file` | yes | the page: file name ending in `.html`, type `text/html`, UTF-8, max 10 MB by default |
+| `subject_id` | yes | numeric subject id from #2 |
+| `title` | yes | shown in the review list and page header (≤ 200 chars) |
+| `slug` | no | short id in the page link, `lowercase-with-dashes`, unique per subject; default: made from the title |
+| `sort_order` | no | position in the subject's list (number, default 0, lowest first) |
+| `is_published` | no | `true` or `false` (default `false`) |
+
+Response `201`: the review object.
+
+### #7 `PUT /admin/reviews/{id}`
+Same fields as #6, **all optional**. Send only what changes; the rest stays as it is. A new
+`file` replaces the page **at the same address** (the returned `url` gets a new `?v=` so
+browsers load the new version).
+
+```bash
+curl -H "Authorization: Bearer $KEY" -X PUT \
+  -F "file=@usability-heuristics-v2.html;type=text/html" \
+  $BASE/admin/reviews/7
+```
+Response `200`: the review object.
+
+### #8 `DELETE /admin/reviews/{id}`
+Deletes the review and its file. Response `204`. **Owner only.** Never do this without the
+human's explicit request.
+
+### #9 `GET /subjects/{slug}/reviews` (no key)
+Published reviews of the subject, as students see them.
+
+### The review object (returned by #3, #4, #6, #7)
+
+```jsonc
+{
+  "id": 7,
+  "subject_id": 1,
+  "title": "HCI: Usability Heuristics",
+  "slug": "usability-heuristics",
+  "url": "https://files.example.com/reviews/1/3f9a….html?v=1763458000",   // the public page
+  "sort_order": 0,
+  "is_published": false,
+  "access": "owner", "owner_id": 4, "owner_name": "Dara", "share_count": 0,
+  "created_at": "2026-11-18T10:00:00", "updated_at": "2026-11-18T10:00:00"
+}
+```
+
+On the website, students find it at `/subjects/<subject-slug>/review` (with `?r=<slug>` when the
+subject has several reviews).
+
+---
+
+## 5. Rules for the HTML
 
 The page runs in `<iframe sandbox="allow-scripts">` **without same-origin access**, served
 from the file storage domain:
@@ -85,7 +222,7 @@ Available variables: `--ctp-base` (page background), `--ctp-mantle` / `--ctp-cru
 
 ---
 
-## 5. Starter template (copy this)
+## 6. Starter template (copy this)
 
 ```html
 <!doctype html>
@@ -355,89 +492,28 @@ Available variables: `--ctp-base` (page background), `--ctp-mantle` / `--ctp-cru
 
 ---
 
-## 6. Endpoints
-
-All need `Authorization: Bearer <key>` with `reviews:write`.
-
-### Create: `POST /admin/reviews` (`multipart/form-data`)
-
-| Field | Required | Meaning |
-|---|---|---|
-| `file` | yes | the `.html` file, content type `text/html`, UTF-8 |
-| `subject_id` | yes | numeric subject id from `GET /subjects` |
-| `title` | yes | shown in the list and the page header (≤ 200 chars) |
-| `slug` | no | `lowercase-with-dashes`, unique per subject; default: made from the title |
-| `sort_order` | no | position in the subject's list (default 0, ascending) |
-| `is_published` | no | `true` / `false` (default `false`); only published reviews are visible |
-
-```bash
-curl -H "Authorization: Bearer $GIC_KEY" \
-  -F "subject_id=1" -F "title=HCI: Usability Heuristics" -F "slug=usability-heuristics" \
-  -F "sort_order=0" -F "is_published=false" \
-  -F "file=@usability-heuristics.html;type=text/html" \
-  $GIC_API/admin/reviews
-```
-
-### Update / replace: `PUT /admin/reviews/{id}` (`multipart/form-data`)
-
-Same fields, **all optional**; send only what changes. A new `file` replaces the HTML **at the
-same address**, so links keep working (the returned `url` gets a new `?v=` to bypass caches).
-
-```bash
-curl -H "Authorization: Bearer $GIC_KEY" -X PUT \
-  -F "file=@usability-heuristics-v2.html;type=text/html" -F "is_published=true" \
-  $GIC_API/admin/reviews/7
-```
-
-### Read and delete
-
-| Method & path | What it does |
-|---|---|
-| `GET /admin/reviews[?subject_id=1]` | Reviews you can manage (yours + shared with you), unpublished included. |
-| `GET /admin/reviews/{id}` | One review. |
-| `DELETE /admin/reviews/{id}` | Delete it and its file. **Owner only.** Ask the human first. |
-| `GET /subjects/{slug}/reviews` | Public: what students see (published only). |
-| `POST /admin/uploads/image` | Upload an image for the page → `{ "key", "url" }`; use `url`. |
-
-**The review object:**
-
-```jsonc
-{
-  "id": 7, "subject_id": 1, "title": "HCI: Usability Heuristics", "slug": "usability-heuristics",
-  "url": "https://files.example.com/reviews/1/…html?v=1763458000",  // the public page
-  "sort_order": 0, "is_published": false,
-  "access": "owner", "owner_id": 4, "owner_name": "Dara", "share_count": 0,
-  "created_at": "…", "updated_at": "…"
-}
-```
-
-On the website, students open it at `/subjects/<subject-slug>/review` (with `?r=<slug>` when a
-subject has several reviews).
-
----
-
 ## 7. Errors
 
-Every error looks like `{ "error": { "code": "…", "message": "…" } }`.
+Errors look like `{ "error": { "code": "…", "message": "…" } }`. The `message` says what to fix.
 
-| Status | `code` | Meaning / what to do |
+| HTTP | `code` | What to do |
 |---|---|---|
-| 401 | `unauthorized` | Missing, wrong, expired or revoked key. Ask for a new key. |
-| 403 | `missing_scope` | The key lacks `reviews:write`. |
-| 403 | `owner_only` | Only the owner may do this (e.g. delete a shared review). |
-| 403 | `api_key_not_allowed` | Dashboard-only endpoint. |
-| 404 | `not_found` | Doesn't exist, or you have no access to it. |
-| 409 | `conflict` | That `slug` is already used in this subject; pick another. |
+| 401 | `unauthorized` | Key missing/wrong/expired/revoked → ask the human for a new key. |
+| 403 | `missing_scope` | Key lacks `reviews:write` → ask for a key with that permission. |
+| 403 | `owner_only` | Only the review's owner can do that (e.g. delete a shared review). |
+| 403 | `api_key_not_allowed` | You called a dashboard-only endpoint; don't. |
+| 404 | `not_found` | Wrong id, or not your review. |
+| 409 | `conflict` | That `slug` already exists in this subject → choose another. |
 | 413 | `payload_too_large` | File too big. |
-| 415 | `unsupported_media_type` | Not an `.html` file / not `text/html`. |
-| 422 | `validation_error` | Invalid field (e.g. not UTF-8, not an HTML document, bad slug). |
+| 415 | `unsupported_media_type` | Not an `.html` file / not `text/html` (or not a supported image for #5). |
+| 422 | `validation_error` | Bad field (not UTF-8, not an HTML document, bad slug, …) → fix and retry. |
 
 ---
 
-## 8. Checklist before you report back
+## 8. Final checklist
 
-- [ ] Self-contained `.html`; no external scripts, styles, fonts or trackers; no storage/cookies.
-- [ ] The theme block from the template is unchanged; colors use `--ctp-*` variables.
-- [ ] Works on a phone-sized screen; images have `alt` text.
-- [ ] Uploaded unpublished unless the human asked to publish; no duplicate of an existing review.
-- [ ] You gave the human the review `id`, `title` and `url`. Never include the API key.
+- [ ] One self-contained `.html`; no external scripts/styles/fonts/trackers; no storage or cookies.
+- [ ] Theme block from the template unchanged; all colors use `var(--ctp-…)`.
+- [ ] Works on a phone-sized screen; every image has `alt` text.
+- [ ] Uploaded as a draft unless the human asked to publish; didn't duplicate an existing review.
+- [ ] Told the human the review `id`, `title` and `url`. Never reveal the key.

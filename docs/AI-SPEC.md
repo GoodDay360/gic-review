@@ -99,7 +99,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Preview of a question exactly as students see it, in QCM and Flashcard mode
 - ✅ Interactive reviews (manager): upload `.html`, set title/slug/order/published, replace (same URL), delete
 - ✅ Bulk import (manager): paste or upload JSON, "Load HCI sample"
-- ✅ External API guides for AI clients without code access (`AI-HOW-ADD-QUIZ.md`, `AI-HOW-ADD-INTERACTIVE-REVIEW.md`: self-contained, PDF → content workflow, full schema, template, errors) and a developer guide `DEV-ADD-QUIZ-MODE.md`
+- ✅ External API guides for AI clients without code access (`AI-HOW-ADD-QUIZ.md`, `AI-HOW-ADD-INTERACTIVE-REVIEW.md`: self-contained; quick start, numbered endpoint list, step-by-step PDF recipe with curl, per-endpoint details, full schema/template, errors; every documented call verified against the live API) and a developer guide `DEV-ADD-QUIZ-MODE.md`
 - ✅ Manager API key page: create one key (shown once with copy button and curl examples), choose permissions and expiry, last-used time, regenerate, revoke
 - ✅ Managers (admin only): create, reset password, activate/deactivate, delete
 - ✅ API keys overview (admin only): every manager's keys with owner, prefix, scopes, dates and status; filter; revoke
@@ -226,6 +226,8 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-18: External AI guides restructured around a numbered endpoint list and a step-by-step recipe;
+  all 25 documented calls verified against the live API.
 - 2026-11-18: Content ownership and sharing between managers by email (`quiz_shares`, `review_shares`,
   share endpoints, Share dialog, owner-only delete, handover on manager deletion).
 - 2026-11-18: `AI-HOW-ADD-QUIZ.md` and `AI-HOW-ADD-INTERACTIVE-REVIEW.md` rewritten as self-contained

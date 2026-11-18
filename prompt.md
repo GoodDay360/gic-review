@@ -379,6 +379,7 @@ Implementation requirements:
 
 ### 7.2 General UI
 - Use Tailwind with a clean, modern, mobile-first design.
+- **Default font: Plus Jakarta Sans** (Google Fonts, all weights 200–800 + italics). Keep Google's `<link>` snippet in `index.html`; **`vite-plugin-webfont-dl`** (`webfontDownload()` in `vite.config.ts`, zero config) downloads and self-hosts the font at build time (no requests to Google, non-render-blocking). Tailwind's `--font-sans` theme variable makes it the site-wide default, with system fonts as fallback.
 - Popups are accessible modals: focus trap, close on Esc or backdrop click, and `aria` labels.
 - Show loading skeletons, empty states ("No quizzes yet for this subject") and error toasts.
 - Keep components small: `SubjectCard`, `ActivityModal`, `QuizCard`, `QuizModeModal`, `QcmPlayer`, `FlashcardPlayer`, `ResultScreen`, plus admin forms.

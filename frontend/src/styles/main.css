@@ -3,9 +3,14 @@
 /* `dark:` applies for the dark flavors; Latte counts as light. */
 @custom-variant dark (&:where([data-flavor='frappe'], [data-flavor='frappe'] *, [data-flavor='macchiato'], [data-flavor='macchiato'] *, [data-flavor='mocha'], [data-flavor='mocha'] *));
 
-/* Remove Tailwind's default palette so components can only use Catppuccin colors. */
+/* Remove Tailwind's default palette so components can only use Catppuccin colors.
+   Default font: Plus Jakarta Sans (self-hosted by vite-plugin-webfont-dl from the
+   Google Fonts <link> in index.html), with system fonts as fallback. */
 @theme {
   --color-*: initial;
+  --font-sans:
+    'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji';
 }
 
 /* Map the runtime CSS variables (generated from @catppuccin/palette, see vite/catppuccin.ts)
@@ -45,6 +50,7 @@
   html,
   body {
     @apply bg-ctp-base text-ctp-text antialiased;
+    font-optical-sizing: auto;
   }
 
   body {

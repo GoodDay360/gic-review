@@ -5,7 +5,7 @@ import type { Question, QuestionOption, QuizDetail } from '@/api/types'
 import AppIcon from '@/components/AppIcon.vue'
 import ResultScreen from '@/components/ResultScreen.vue'
 import { useLightboxStore } from '@/stores/lightbox'
-import { useProgressStore } from '@/stores/progress'
+import { useProgressStore, type ModeResult, type QcmProgress } from '@/stores/progress'
 
 import QcmQuestionCard from './QcmQuestionCard.vue'
 import { preloadQuestionImages, questionLabel, shuffle } from './utils'
@@ -26,13 +26,44 @@ const selected = ref<number[]>([])
 const submitted = ref(false)
 const results = ref<Record<number, boolean>>({})
 const finished = ref(false)
+const savedResult = ref<ModeResult | null>(null)
 
 const current = computed(() => round.value.questions[index.value])
 const answeredCount = computed(() => Object.keys(results.value).length)
 const score = computed(() => Object.values(results.value).filter(Boolean).length)
 const total = computed(() => round.value.questions.length)
-const percentage = computed(() => (total.value ? Math.round((score.value / total.value) * 100) : 0))
 const missed = computed(() => round.value.questions.filter((q) => results.value[q.id] === false))
+const displayScore = computed(() => savedResult.value?.lastScore ?? score.value)
+const displayTotal = computed(() => savedResult.value?.total ?? total.value)
+const displayPercentage = computed(() =>
+  displayTotal.value ? Math.round((displayScore.value / displayTotal.value) * 100) : 0,
+)
+const displayMissed = computed(() =>
+  savedResult.value
+    ? props.quiz.questions.filter((q) => savedResult.value!.missedQuestionIds.includes(q.id))
+    : missed.value,
+)
+
+function saveProgress() {
+  progress.saveActiveQuiz({
+    quizId: props.quiz.id,
+    quizTitle: props.quiz.title,
+    mode: 'qcm',
+    questionIds: round.value.questions.map((q) => q.id),
+    optionIds: Object.fromEntries(
+      Object.entries(round.value.options).map(([id, options]) => [
+        id,
+        options.map((option) => option.id),
+      ]),
+    ),
+    index: index.value,
+    selectedOptionIds: selected.value,
+    submitted: submitted.value,
+    results: Object.fromEntries(
+      Object.entries(results.value).map(([id, correct]) => [id, correct]),
+    ),
+  })
+}
 
 function start(subset?: Question[]) {
   const base = subset ?? props.quiz.questions
@@ -46,6 +77,57 @@ function start(subset?: Question[]) {
   submitted.value = false
   results.value = {}
   finished.value = false
+  savedResult.value = null
+  saveProgress()
+}
+
+function resume(saved: QcmProgress): boolean {
+  const questionsById = new Map(props.quiz.questions.map((q) => [q.id, q]))
+  const questions = saved.questionIds
+    .map((id) => questionsById.get(id))
+    .filter((q): q is Question => !!q)
+  if (questions.length === 0) return false
+
+  const options = Object.fromEntries(
+    questions.map((question) => {
+      const savedIds = saved.optionIds[String(question.id)] ?? []
+      const optionsById = new Map(question.options.map((option) => [option.id, option]))
+      const ordered = savedIds
+        .map((id) => optionsById.get(id))
+        .filter((option): option is QuestionOption => !!option)
+      for (const option of question.options) {
+        if (!ordered.some((savedOption) => savedOption.id === option.id)) ordered.push(option)
+      }
+      return [question.id, ordered]
+    }),
+  )
+  const indexValue = Math.min(Math.max(saved.index, 0), questions.length - 1)
+  const activeQuestion = questions[indexValue]!
+  const selectedIds = new Set(activeQuestion.options.map((option) => option.id))
+  const roundQuestionIds = new Set(questions.map((question) => question.id))
+  const resultsById = Object.fromEntries(
+    Object.entries(saved.results)
+      .filter(([id]) => roundQuestionIds.has(Number(id)))
+      .map(([id, correct]) => [Number(id), correct]),
+  )
+  round.value = { questions, options }
+  index.value = indexValue
+  selected.value = saved.selectedOptionIds.filter((id) => selectedIds.has(id))
+  submitted.value = saved.submitted && Object.hasOwn(resultsById, String(activeQuestion.id))
+  results.value = resultsById
+  finished.value = false
+  savedResult.value = null
+  return true
+}
+
+function showSavedResult() {
+  const result = progress.resultFor(props.quiz.id, 'qcm')
+  if (result) {
+    savedResult.value = result
+    finished.value = true
+  } else {
+    start()
+  }
 }
 
 function toggle(optionId: number) {
@@ -57,6 +139,7 @@ function toggle(optionId: number) {
   } else {
     selected.value = [optionId]
   }
+  saveProgress()
 }
 
 function submit() {
@@ -66,6 +149,7 @@ function submit() {
   results.value[q.id] =
     correct.length === selected.value.length && correct.every((id) => selected.value.includes(id))
   submitted.value = true
+  saveProgress()
 }
 
 function next() {
@@ -79,11 +163,14 @@ function next() {
       total.value,
       missed.value.map((q) => q.id),
     )
+    progress.clearActiveQuiz(props.quiz.id)
+    savedResult.value = progress.resultFor(props.quiz.id, 'qcm') ?? null
     return
   }
   index.value++
   selected.value = []
   submitted.value = false
+  saveProgress()
 }
 
 // Preload the next question's images.
@@ -107,7 +194,15 @@ function onKey(e: KeyboardEvent) {
 }
 
 onMounted(() => {
-  start()
+  const active = progress.activeQuizFor(props.quiz.id)
+  if (active?.mode === 'qcm') {
+    if (!resume(active)) {
+      progress.clearActiveQuiz(props.quiz.id)
+      showSavedResult()
+    }
+  } else {
+    showSavedResult()
+  }
   window.addEventListener('keydown', onKey)
 })
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
@@ -181,18 +276,18 @@ function toggleShuffle() {
     <ResultScreen
       v-else-if="finished"
       title="Quiz complete"
-      :percentage="percentage"
+      :percentage="displayPercentage"
       :stats="[
-        { label: 'Score', value: `${score} / ${total}`, tone: 'accent' },
-        { label: 'Correct', value: score, tone: 'green' },
-        { label: 'Missed', value: missed.length, tone: 'red' },
+        { label: 'Score', value: `${displayScore} / ${displayTotal}`, tone: 'accent' },
+        { label: 'Correct', value: displayScore, tone: 'green' },
+        { label: 'Missed', value: displayMissed.length, tone: 'red' },
       ]"
     >
-      <div v-if="missed.length" class="text-left">
+      <div v-if="displayMissed.length" class="text-left">
         <h3 class="mb-2 text-sm font-semibold text-ctp-subtext1">Missed questions</h3>
         <ul class="space-y-2">
           <li
-            v-for="q in missed"
+            v-for="q in displayMissed"
             :key="q.id"
             class="flex items-center gap-3 rounded-lg bg-ctp-surface0 p-3 text-sm"
           >
@@ -209,9 +304,9 @@ function toggleShuffle() {
       </div>
       <template #actions>
         <button class="btn-primary" @click="start()">
-          <AppIcon name="refresh" :size="16" /> Retry
+          <AppIcon name="refresh" :size="16" /> Redo quiz
         </button>
-        <button v-if="missed.length" class="btn-secondary" @click="start(missed)">
+        <button v-if="displayMissed.length" class="btn-secondary" @click="start(displayMissed)">
           Retry missed only
         </button>
       </template>

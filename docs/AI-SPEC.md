@@ -82,12 +82,12 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Quiz list per subject: published quizzes with title, description, question count, available modes
 - ✅ Quiz mode modal built from the mode registry (only modes the quiz supports)
 - ✅ Image lightbox (full screen, zoom, Esc closes), `loading="lazy"`, next question's images preloaded
-- ✅ Anonymous progress kept in the browser only (Pinia + `localStorage`)
+- ✅ Anonymous quiz progress and results kept in the browser only (Pinia + `localStorage`): resume one unfinished QCM/Flashcard attempt, confirm before replacing it, retain completed results, redo completed quizzes, and cap saved results with oldest-first eviction (`VITE_MAX_SAVED_RESULTS`)
 
 ### Quiz modes
 - ✅ Mode registry `frontend/src/quiz-modes/registry.ts` + backend `QuizMode` enum, `available_modes` computed by the backend
-- ✅ QCM: one question at a time, optional question image, text/image options (image grid), single or multi answer, explanation text + image, progress bar and score, shuffled options, question-shuffle toggle, end screen with score, percentage, missed list, Retry and Retry missed only
-- ✅ Flashcard: text/image front and back (falls back to the correct options), explanation, `object-contain` images with tap-to-zoom that doesn't flip, click/Space to flip, "I knew it" / "Didn't know" with missed cards returning at the end of the round, Space/←/→/1/2 shortcuts, end screen with "Study missed cards again"
+- ✅ QCM: one question at a time, optional question image, text/image options (image grid), single or multi answer, explanation text + image, progress bar and score, shuffled options, question-shuffle toggle, resumable in-progress attempts, end screen with score, percentage, missed list, Retry and Retry missed only
+- ✅ Flashcard: text/image front and back (falls back to the correct options), explanation, `object-contain` images with tap-to-zoom that doesn't flip, click/Space to flip, "I knew it" / "Didn't know" with missed cards returning once at the end of the round, resumable in-progress attempts, Space/←/→/1/2 shortcuts, end screen with "Study missed cards again"
 - ⏳ More modes (True/False, Matching, Fill-in-the-blank), see `docs/AI-HOW-ADD-QUIZ.md`
 
 ### Staff / Admin
@@ -251,6 +251,8 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-18: Configurable local quiz-result cap (`VITE_MAX_SAVED_RESULTS`, default 1,000,000) with oldest-first eviction.
+- 2026-11-18: QCM and Flashcard progress: resume one unfinished client-side attempt, confirm before replacing it, retain completed results, and show saved results with a redo action.
 - 2026-11-18: Interactive review progress: save each review's scroll position in browser storage and restore it through the sandbox-safe iframe message protocol; updated the starter HTML and AI review guide.
 - 2026-11-18: Response cache (moka) for anonymous public reads, sized by `CACHE_MAX_MB` / `CACHE_TTL_SECONDS`;
   cleared on every successful editor write; `Cache-Control: no-cache` so browsers never keep old data.

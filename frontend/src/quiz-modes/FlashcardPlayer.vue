@@ -5,7 +5,7 @@ import type { Question, QuizDetail } from '@/api/types'
 import AppIcon from '@/components/AppIcon.vue'
 import ResultScreen from '@/components/ResultScreen.vue'
 import { useLightboxStore } from '@/stores/lightbox'
-import { useProgressStore } from '@/stores/progress'
+import { useProgressStore, type FlashcardProgress, type ModeResult } from '@/stores/progress'
 
 import FlashcardCard from './FlashcardCard.vue'
 import { preloadQuestionImages, shuffle } from './utils'
@@ -24,10 +24,39 @@ const missedIds = ref<Set<number>>(new Set())
 /** Cards marked "I knew it" without ever being marked "Didn't know" this round. */
 const knownIds = ref<Set<number>>(new Set())
 const finished = ref(false)
+const savedResult = ref<ModeResult | null>(null)
 
 const current = computed(() => queue.value[index.value])
 const knewCount = computed(() => knownIds.value.size)
 const remaining = computed(() => queue.value.length - index.value)
+const displayKnewCount = computed(() => savedResult.value?.lastScore ?? knewCount.value)
+const displayDeckSize = computed(() => savedResult.value?.total ?? deckSize.value)
+const displayMissedCards = computed(() => {
+  const ids = savedResult.value?.missedQuestionIds
+  return ids
+    ? props.quiz.questions.filter((question) => ids.includes(question.id))
+    : props.quiz.questions.filter((question) => missedIds.value.has(question.id))
+})
+const displayMissedCount = computed(
+  () => savedResult.value?.missedQuestionIds.length ?? missedIds.value.size,
+)
+const displayPercentage = computed(() =>
+  displayDeckSize.value ? Math.round((displayKnewCount.value / displayDeckSize.value) * 100) : 0,
+)
+
+function saveProgress() {
+  progress.saveActiveQuiz({
+    quizId: props.quiz.id,
+    quizTitle: props.quiz.title,
+    mode: 'flashcard',
+    queue: queue.value.map((question) => question.id),
+    index: index.value,
+    flipped: flipped.value,
+    deckSize: deckSize.value,
+    missedIds: [...missedIds.value],
+    knownIds: [...knownIds.value],
+  })
+}
 
 function start(subset?: Question[]) {
   const base = subset ?? props.quiz.questions
@@ -38,6 +67,36 @@ function start(subset?: Question[]) {
   missedIds.value = new Set()
   knownIds.value = new Set()
   finished.value = false
+  savedResult.value = null
+  saveProgress()
+}
+
+function resume(saved: FlashcardProgress): boolean {
+  const questionsById = new Map(props.quiz.questions.map((question) => [question.id, question]))
+  const restoredQueue = saved.queue
+    .map((id) => questionsById.get(id))
+    .filter((question): question is Question => !!question)
+  if (restoredQueue.length === 0) return false
+
+  queue.value = restoredQueue
+  index.value = Math.min(Math.max(saved.index, 0), restoredQueue.length - 1)
+  flipped.value = saved.flipped
+  deckSize.value = Math.max(saved.deckSize, 0)
+  missedIds.value = new Set(saved.missedIds.filter((id) => questionsById.has(id)))
+  knownIds.value = new Set(saved.knownIds.filter((id) => questionsById.has(id)))
+  finished.value = false
+  savedResult.value = null
+  return true
+}
+
+function showSavedResult() {
+  const result = progress.resultFor(props.quiz.id, 'flashcard')
+  if (result) {
+    savedResult.value = result
+    finished.value = true
+  } else {
+    start()
+  }
 }
 
 function advance() {
@@ -47,8 +106,11 @@ function advance() {
     progress.record(props.quiz.id, 'flashcard', knewCount.value, deckSize.value, [
       ...missedIds.value,
     ])
+    progress.clearActiveQuiz(props.quiz.id)
+    savedResult.value = progress.resultFor(props.quiz.id, 'flashcard') ?? null
   } else {
     index.value++
+    saveProgress()
   }
 }
 
@@ -62,21 +124,32 @@ function knew() {
 function didntKnow() {
   const card = current.value
   if (!card) return
-  missedIds.value = new Set(missedIds.value).add(card.id)
-  queue.value.push(card) // comes back at the end of the round
+  if (!missedIds.value.has(card.id)) {
+    missedIds.value = new Set(missedIds.value).add(card.id)
+    knownIds.value = new Set(knownIds.value)
+    knownIds.value.delete(card.id)
+    queue.value.push(card) // comes back once at the end of the round
+  }
   advance()
+}
+
+function toggleFlip() {
+  flipped.value = !flipped.value
+  saveProgress()
 }
 
 function prev() {
   if (index.value > 0) {
     index.value--
     flipped.value = false
+    saveProgress()
   }
 }
 function next() {
   if (index.value + 1 < queue.value.length) {
     index.value++
     flipped.value = false
+    saveProgress()
   }
 }
 
@@ -89,7 +162,7 @@ function onKey(e: KeyboardEvent) {
   switch (e.key) {
     case ' ':
       e.preventDefault()
-      flipped.value = !flipped.value
+      toggleFlip()
       break
     case 'ArrowLeft':
       prev()
@@ -107,12 +180,18 @@ function onKey(e: KeyboardEvent) {
 }
 
 onMounted(() => {
-  start()
+  const active = progress.activeQuizFor(props.quiz.id)
+  if (active?.mode === 'flashcard') {
+    if (!resume(active)) {
+      progress.clearActiveQuiz(props.quiz.id)
+      showSavedResult()
+    }
+  } else {
+    showSavedResult()
+  }
   window.addEventListener('keydown', onKey)
 })
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
-
-const missedCards = computed(() => props.quiz.questions.filter((q) => missedIds.value.has(q.id)))
 </script>
 
 <template>
@@ -143,7 +222,7 @@ const missedCards = computed(() => props.quiz.questions.filter((q) => missedIds.
         :key="`${current.id}-${index}`"
         :question="current"
         :flipped="flipped"
-        @flip="flipped = !flipped"
+        @flip="toggleFlip"
       />
 
       <div class="flex items-center justify-between gap-2">
@@ -181,19 +260,23 @@ const missedCards = computed(() => props.quiz.questions.filter((q) => missedIds.
     <ResultScreen
       v-else-if="finished"
       title="Deck complete"
-      :percentage="deckSize ? Math.round((knewCount / deckSize) * 100) : 0"
+      :percentage="displayPercentage"
       :stats="[
-        { label: 'Cards', value: deckSize },
-        { label: 'Knew first time', value: knewCount, tone: 'green' },
-        { label: 'Needed review', value: missedIds.size, tone: 'red' },
+        { label: 'Cards', value: displayDeckSize },
+        { label: 'Knew first time', value: displayKnewCount, tone: 'green' },
+        { label: 'Needed review', value: displayMissedCount, tone: 'red' },
       ]"
     >
       <template #actions>
-        <button v-if="missedCards.length" class="btn-primary" @click="start(missedCards)">
+        <button
+          v-if="displayMissedCards.length"
+          class="btn-primary"
+          @click="start(displayMissedCards)"
+        >
           Study missed cards again
         </button>
         <button class="btn-secondary" @click="start()">
-          <AppIcon name="refresh" :size="16" /> Restart all cards
+          <AppIcon name="refresh" :size="16" /> Redo quiz
         </button>
       </template>
     </ResultScreen>

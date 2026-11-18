@@ -163,6 +163,11 @@ Before the first commit, run `git status` and confirm that no `.env`, `node_modu
 ### 3.4 Quiz play page `/quizzes/:quizId/play?mode=...`
 **Images in both modes:** clicking any image opens it full-screen in a lightbox (zoomable, closes with Esc). Images use `loading="lazy"`, and the next question's images are preloaded so they appear without delay.
 
+**Progress and results**
+- Save the user's in-progress QCM or Flashcard attempt in browser storage, including their position and answers/card state, and resume it when they return to that quiz and mode.
+- Keep one unfinished attempt at a time across quizzes and modes. Starting a different quiz or switching modes while an attempt is unfinished asks whether to continue the previous attempt, clear only its progress and proceed, or go back. Completed results must not be removed when clearing unfinished progress.
+- Show the saved result when revisiting a completed quiz and provide a "Redo quiz" action to start a new attempt.
+- Cap completed quiz results at `VITE_MAX_SAVED_RESULTS` (default 1,000,000); when adding a result at capacity, evict the oldest result by last-played time.
 **QCM mode**
 - One question at a time, with an optional question image.
 - Options can be text, image, or both. When options have images, show them as a responsive grid of image cards instead of a vertical list.
@@ -171,12 +176,14 @@ Before the first commit, run `git status` and confirm that no `.env`, `node_modu
 - The user submits an answer, sees right or wrong plus the explanation, then clicks Next.
 - Shows a progress bar and score. End screen: score, percentage, list of missed questions, "Retry" and "Retry missed only" buttons.
 - Option order is shuffled each attempt; question order can be shuffled with a toggle.
+- Save question order, option order, current selection, submitted answers, and position so an unfinished attempt can resume.
 
 **Flashcard mode**
 - **Card front** = question text and/or the question image (`image_key`). Image-only fronts are allowed, for example a UI screenshot with no text where the student must name the design principle.
 - **Card back** = answer text and/or the answer image (`answer_image_key`), plus the explanation. Image-only backs are allowed too.
 - So a card can be text→text, image→text, text→image or image→image. Images on cards scale to fit without cropping (`object-contain`) and can be tapped to zoom without flipping the card. Click or press Space to flip.
 - Buttons: "I knew it" / "Didn't know". Cards marked "Didn't know" come back at the end of the round.
+- Save card order, position, flipped state, and self-ratings so an unfinished attempt can resume; a card marked "Didn't know" is re-queued at most once per attempt.
 - Keyboard shortcuts: Space = flip, ← / → = previous/next, 1 / 2 = knew / didn't know.
 - End screen with counts and "Study missed cards again".
 
@@ -401,6 +408,7 @@ Vite only exposes `VITE_`-prefixed values to the browser. Never put secrets here
 VITE_APP_NAME=GIC Review
 VITE_API_BASE_URL=http://localhost:8080/api
 VITE_SITE_URL=http://localhost:5173   # public address of the website, for link previews
+VITE_MAX_SAVED_RESULTS=1000000        # maximum completed quiz results saved in this browser
 ```
 
 ### `backend/.env.example`

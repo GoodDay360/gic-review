@@ -17,6 +17,7 @@ use std::{
     time::Duration,
 };
 
+use axum::body::HttpBody as _;
 use axum::{
     body::Body,
     extract::{Request, State},
@@ -148,10 +149,17 @@ pub async fn layer(State(state): State<AppState>, req: Request, next: Next) -> R
     if response.status() != StatusCode::OK {
         return with_cache_header(response, "miss");
     }
+    if response
+        .body()
+        .size_hint()
+        .upper()
+        .is_none_or(|size| size > cache.max_entry_bytes as u64)
+    {
+        return with_cache_header(response, "miss");
+    }
     let (parts, body) = response.into_parts();
-    // These handlers already build the whole JSON in memory, so buffering it costs nothing
-    // extra. Big responses are still sent in full; they are just not cached.
-    let bytes = match axum::body::to_bytes(body, usize::MAX).await {
+    // Keep an explicit per-response bound even when a body reports an incorrect size hint.
+    let bytes = match axum::body::to_bytes(body, cache.max_entry_bytes).await {
         Ok(bytes) => bytes,
         Err(err) => {
             tracing::error!(error = %err, "could not read response body for caching");

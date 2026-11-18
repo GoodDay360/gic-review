@@ -69,10 +69,10 @@ before building for production).
 
 Deployment notes: set `APP_ENV=production` so the session cookie is `Secure`, and set
 `FRONTEND_URL` to the exact frontend origin (CORS and cookie-authenticated write protection).
-Production cookies use `SameSite=None` to support a frontend and API on separate sites, such as
-Cloudflare Pages and Render. A shared custom domain is still preferable because some browsers
-block or partition third-party cookies; API requests also enforce the configured frontend origin
-for cookie-authenticated writes. Serve R2 from its own domain.
+HTTPS frontend cookies use `SameSite=None; Secure; Partitioned` to support a frontend and API on
+separate sites, such as Cloudflare Pages and Render. The browser partitions the session by
+top-level site; API requests also enforce the configured frontend origin for cookie-authenticated
+writes. This relies on browser support for partitioned cookies. Serve R2 from its own domain.
 
 ## Deploying the backend (Docker: Render, Railway, …)
 
@@ -97,11 +97,9 @@ Set the environment variables from `backend/.env.example` in the platform's dash
 Things to know:
 - **Database:** the cloud service must reach your MySQL, so use a hosted MySQL (Railway MySQL,
   Aiven, PlanetScale-compatible, a VPS…), not one on your own machine. Keep `DB_SSL_REQUIRED=true`.
-- **Cookie compatibility:** cross-site sessions require a browser that permits the API's
-  `SameSite=None; Secure` cookie in a credentialed request. If the browser blocks third-party
-  cookies, use a shared custom domain (e.g. `gic.example.com` and `api.gic.example.com`) or a
-  same-origin API proxy. Set `FRONTEND_URL` to the exact dashboard origin. API keys work from
-  anywhere regardless.
+- **Cookie compatibility:** cross-site sessions use a `Partitioned` cookie. Set `FRONTEND_URL` to
+  the exact dashboard origin. Browsers without partitioned-cookie support need a shared custom
+  domain or same-origin API proxy instead. API keys work from anywhere regardless.
 - Free instances sleep when idle; the first request after a pause can take a while.
 
 ## API keys (for scripts and AI assistants)

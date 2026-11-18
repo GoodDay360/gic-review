@@ -12,7 +12,7 @@ mod common;
 use axum::http::StatusCode;
 use common::{app_with_pool, app_without_db, send, send_key, test_config};
 use gic_review_api::{
-    auth::{Role, create_token, hash_password, session_cookie},
+    auth::{Role, clear_session_cookie, create_token, hash_password, session_cookie},
     bootstrap,
     config::AppEnv,
 };
@@ -57,8 +57,14 @@ fn production_session_cookie_allows_cross_site_requests_securely() {
 
     let cookie = session_cookie(&config, "test-token".into()).to_string();
     assert!(cookie.contains("SameSite=None"));
+    assert!(cookie.contains("Partitioned"));
     assert!(cookie.contains("Secure"));
     assert!(cookie.contains("HttpOnly"));
+    assert!(
+        clear_session_cookie(&config)
+            .to_string()
+            .contains("Partitioned")
+    );
 }
 
 #[test]
@@ -68,6 +74,7 @@ fn https_frontend_uses_secure_cross_site_cookie_without_production_flag() {
 
     let cookie = session_cookie(&config, "test-token".into()).to_string();
     assert!(cookie.contains("SameSite=None"));
+    assert!(cookie.contains("Partitioned"));
     assert!(cookie.contains("Secure"));
 }
 

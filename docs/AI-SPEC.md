@@ -129,6 +129,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ CORS limited to `FRONTEND_URL` (credentials + `Authorization` header)
 - ✅ JSON errors `{ "error": { "code", "message" } }` without stack traces or SQL, including malformed/incomplete JSON bodies (`AppJson` extractor)
 - ✅ First admin bootstrapped from `.env`; no API path creates admins; created users are always managers
+- ✅ `ADMIN_PASSWORD` changes in `backend/.env` are applied on restart (sessions signed out); unchanged `.env` keeps a password changed in the dashboard (`users.env_password_hash`)
 
 ### Infrastructure
 - ✅ Separate `frontend/` and `backend/` projects with their own `.env.example` and `.gitignore`, plus the root `.gitignore`
@@ -152,7 +153,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 ## Database schema (current)
 
 ```
-users               id, email UNIQUE, password_hash, session_version, display_name, role ENUM('admin','manager'),
+users               id, email UNIQUE, password_hash, session_version, env_password_hash NULL, display_name, role ENUM('admin','manager'),
                     is_active, created_by NULL → users (SET NULL), created_at, updated_at
 years               id, slug UNIQUE, name, description NULL, sort_order, created_by NULL → users (SET NULL)
                     (owner; NULL = admins only), created_at, updated_at
@@ -178,7 +179,7 @@ api_keys            id, user_id → users (CASCADE), name, key_prefix, key_hash 
 
 Migrations: `20261118000001_init_schema.sql`, `20261118000002_seed_hci_subject.sql`,
 `20261118000003_api_keys.sql`, `20261118000004_content_shares.sql`, `20261118000005_years.sql` (creates the default year "General"), `20261118000006_year_owners.sql`, `20261118000007_year_subject_shares.sql` (adds year/subject shares, drops the item share tables),
-`20261118000008_session_version.sql`. R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
+`20261118000008_session_version.sql`, `20261118000009_admin_env_password.sql`. R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
 `reviews/{subject_id}/{uuid}.html`.
 
 ## API endpoints (current, prefix `/api`)
@@ -246,6 +247,8 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-18: Admin from `.env` synced on every start: a changed `ADMIN_PASSWORD` is applied (sessions
+  signed out), an unchanged one keeps dashboard password changes; a new `ADMIN_EMAIL` creates that admin.
 - 2026-11-18: My account page with password change (current password required, rate-limited);
   `users.session_version` + JWT `sv` claim so password changes/resets sign out other sessions.
 - 2026-11-18: Default font Plus Jakarta Sans, self-hosted with `vite-plugin-webfont-dl`.

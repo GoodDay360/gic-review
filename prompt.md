@@ -225,7 +225,7 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 - **Content access and sharing (years and subjects):** a quiz/review's creator is `created_by`. A manager reaches an item when they created it (`access: "owner"`), it is in a year they own (`"year_owner"`), or its **year or subject is shared with them** (`"shared"`); admins reach everything (`"admin"`). Others get `404`. `owner`, `year_owner` and `admin` have full rights (edit, publish, delete); `shared` can view, edit and publish, and add new content there, but not delete. The year's owner (or an admin) shares a whole year or a single subject with other active managers/admins **by email** and can remove them; recipients can leave. Sharing is dashboard-only (API keys get `403 api_key_not_allowed`). **There is no per-item sharing** (removed 2026-11-18). When a manager is deleted, each of their years goes to the person it was first shared with (never-shared years keep no owner: admins only); content they created stays in place. Students are unaffected: published content is public.
 - **Admins have every manager permission**, on **all** content: they see every quiz and review (`access: "admin"`, with owner rights: edit, publish, delete, manage sharing), create content (owned by them), and can create their own API key (max 1 active; like every key it never reaches session-only endpoints). Items show "Owned by …" so admins know whose content they're editing.
 
-- **Initial admin bootstrap:** when the backend starts, if no admin exists, create one from `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `backend/.env`. Log a warning telling the operator to change the password. Never log the password itself.
+- **Admin from `.env`, synced on every start:** the account with `ADMIN_EMAIL` is created as an admin if it doesn't exist. If `ADMIN_PASSWORD` in `backend/.env` **changed** since it was last applied, the admin's password is updated to it and the admin's sessions are signed out. If it did **not** change, the account is left alone, so a password changed in the dashboard (My account) survives restarts. The last applied value is tracked as an Argon2 hash in `users.env_password_hash`. If `ADMIN_EMAIL` belongs to a manager, nothing is changed (warning logged). Log a warning whenever the admin is created or its password is updated. Never log the password itself.
 - Only an admin can create users, and created users are always `manager`. There is no API path to create another admin; that is done manually in the database.
 
 ### 4.1 Auth and security requirements
@@ -249,7 +249,7 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 ### 4.2 Database schema (MySQL, via migrations)
 
 ```
-users              (id, email UNIQUE, password_hash, session_version INT DEFAULT 0, display_name, role ENUM('admin','manager'),
+users              (id, email UNIQUE, password_hash, session_version INT DEFAULT 0, env_password_hash NULL, display_name, role ENUM('admin','manager'),
                     is_active BOOL, created_by NULL FK users, created_at, updated_at)
 years              (id, slug UNIQUE, name, description NULL, sort_order, created_by NULL FK users ON DELETE SET NULL
                     (= owner; NULL: admins only), created_at, updated_at)

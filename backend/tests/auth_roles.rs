@@ -1405,3 +1405,97 @@ async fn db_change_own_password_requires_the_current_one() {
     assert_eq!(last, StatusCode::TOO_MANY_REQUESTS);
     tdb.cleanup().await;
 }
+
+#[tokio::test]
+async fn db_admin_password_follows_env_but_keeps_dashboard_changes() {
+    let Some(tdb) = common::test_db().await else {
+        return;
+    };
+    let db = tdb.pool.clone();
+    let mut config = test_config();
+
+    // First start: admin created from .env.
+    bootstrap::ensure_admin(&db, &config).await.unwrap();
+    let app = app_with_pool(db.clone());
+    let session = cookie_from(
+        &login(&app, "admin@example.com", "admin-password-123")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+
+    // Restart with the SAME .env password: nothing changes, the session survives.
+    bootstrap::ensure_admin(&db, &config).await.unwrap();
+    assert_eq!(
+        send(&app, "GET", "/api/auth/me", Some(&session), None)
+            .await
+            .status,
+        StatusCode::OK
+    );
+
+    // ADMIN_PASSWORD changed in .env → applied on restart; old password and sessions stop working.
+    config.admin_password = "env-password-new-1".into();
+    bootstrap::ensure_admin(&db, &config).await.unwrap();
+    assert_eq!(
+        send(&app, "GET", "/api/auth/me", Some(&session), None)
+            .await
+            .status,
+        StatusCode::UNAUTHORIZED
+    );
+    let app = app_with_pool(db.clone()); // fresh login rate limiter
+    assert_eq!(
+        login(&app, "admin@example.com", "admin-password-123")
+            .await
+            .status,
+        StatusCode::UNAUTHORIZED
+    );
+    let r = login(&app, "admin@example.com", "env-password-new-1").await;
+    assert_eq!(r.status, StatusCode::OK);
+    let session = cookie_from(&r.set_cookie.unwrap());
+
+    // The admin changes the password in the dashboard; a restart with the unchanged .env keeps it.
+    let r = send(
+        &app,
+        "POST",
+        "/api/auth/change-password",
+        Some(&session),
+        Some(
+            json!({ "current_password": "env-password-new-1", "new_password": "dashboard-pass-2" }),
+        ),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
+    bootstrap::ensure_admin(&db, &config).await.unwrap();
+    let app = app_with_pool(db.clone());
+    assert_eq!(
+        login(&app, "admin@example.com", "dashboard-pass-2")
+            .await
+            .status,
+        StatusCode::OK
+    );
+
+    // Changing .env again wins over the dashboard password.
+    config.admin_password = "env-password-new-3".into();
+    bootstrap::ensure_admin(&db, &config).await.unwrap();
+    assert_eq!(
+        login(&app, "admin@example.com", "env-password-new-3")
+            .await
+            .status,
+        StatusCode::OK
+    );
+    assert_eq!(
+        login(&app, "admin@example.com", "dashboard-pass-2")
+            .await
+            .status,
+        StatusCode::UNAUTHORIZED
+    );
+
+    // A new ADMIN_EMAIL creates that admin account too.
+    config.admin_email = "new-admin@example.com".into();
+    bootstrap::ensure_admin(&db, &config).await.unwrap();
+    let app = app_with_pool(db);
+    let r = login(&app, "new-admin@example.com", "env-password-new-3").await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json["role"], "admin");
+    tdb.cleanup().await;
+}

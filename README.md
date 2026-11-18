@@ -32,7 +32,9 @@ cargo run -- migrate        # optional: migrations also run automatically at sta
 cargo run                   # API on http://127.0.0.1:8080/api (try /api/health)
 ```
 
-On first start, if no admin exists, one is created from `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+On every start the admin account from `ADMIN_EMAIL` / `ADMIN_PASSWORD` is kept in sync: it is
+created if missing, and if you change `ADMIN_PASSWORD` in `.env` the new password is applied on the
+next restart (a password changed in the dashboard is kept as long as `.env` stays the same).
 Log in and change that password. The server refuses to start, with a list of what is
 wrong, if a required variable is missing.
 

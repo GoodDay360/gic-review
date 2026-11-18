@@ -237,11 +237,13 @@ from the file storage domain:
 | UTF-8, a real `<html>` document, file name ending in `.html` | Exceed the size limit (default 10 MB) |
 | Accessible: headings in order, `alt` on images, buttons as `<button>` | Copy large copyrighted text verbatim; summarise and explain instead |
 
-**Theme:** students can pick one of four Catppuccin flavors (Latte light, Frappé, Macchiato,
-Mocha dark) and an accent color. The site sends the choice to your page with
-`postMessage({ type: "gic-theme", flavor: "mocha", accent: "mauve" })`. The template already
-listens for it and falls back to the device's light/dark setting. Keep that block unchanged and
-style everything with the `--ctp-*` variables so the review always matches the site.
+**Theme and scroll progress:** students can pick one of four Catppuccin flavors (Latte light,
+Frappé, Macchiato, Mocha dark) and an accent color. The site sends the choice to your page with
+`postMessage({ type: "gic-theme", flavor, accent })`. It also sends
+`{ type: "gic-review-restore", scrollY }` when opening a review; the page should respond to scroll
+events with `{ type: "gic-review-scroll", scrollY }` so the site can save and restore progress
+separately for each review. The starter template implements both messages. The parent stores the
+position; the sandboxed review does not need or use browser storage.
 
 Available variables: `--ctp-base` (page background), `--ctp-mantle` / `--ctp-crust` (panels),
 `--ctp-surface0/1/2` (cards, borders), `--ctp-overlay0/1/2` (muted), `--ctp-text`,
@@ -463,16 +465,38 @@ Available variables: `--ctp-base` (page background), `--ctp-mantle` / `--ctp-cru
         media.addEventListener("change", applySystem);
 
         window.addEventListener("message", function (event) {
-          // Only accept theme messages from the embedding GIC Review page.
           if (event.source !== window.parent) return;
           var data = event.data;
-          if (!data || data.type !== "gic-theme") return;
-          if (FLAVORS.indexOf(data.flavor) >= 0) {
-            fromParent = true;
-            root.setAttribute("data-flavor", data.flavor);
+          if (!data || typeof data !== "object") return;
+          if (data.type === "gic-theme") {
+            if (FLAVORS.indexOf(data.flavor) >= 0) {
+              fromParent = true;
+              root.setAttribute("data-flavor", data.flavor);
+            }
+            if (ACCENTS.indexOf(data.accent) >= 0) root.setAttribute("data-accent", data.accent);
+          } else if (
+            data.type === "gic-review-restore" &&
+            typeof data.scrollY === "number" &&
+            Number.isFinite(data.scrollY) &&
+            data.scrollY >= 0
+          ) {
+            window.scrollTo(0, data.scrollY);
           }
-          if (ACCENTS.indexOf(data.accent) >= 0) root.setAttribute("data-accent", data.accent);
         });
+
+        var scrollTimer = 0;
+        function reportScroll(final) {
+          window.clearTimeout(scrollTimer);
+          scrollTimer = 0;
+          window.parent.postMessage(
+            { type: "gic-review-scroll", scrollY: window.scrollY, final: final },
+            "*"
+          );
+        }
+        window.addEventListener("scroll", function () {
+          if (!scrollTimer) scrollTimer = window.setTimeout(function () { reportScroll(false); }, 250);
+        }, { passive: true });
+        window.addEventListener("pagehide", function () { reportScroll(true); }, { once: true });
       })();
     </script>
   </head>

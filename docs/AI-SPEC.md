@@ -78,6 +78,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Activity modal per subject (Interactive Review / Quiz); review shown disabled with "Coming soon" when there is none
 - ✅ Interactive review page: list when there are several, sandboxed iframe (`sandbox="allow-scripts"`, no `allow-same-origin`) loaded from the R2 domain, back button
 - ✅ Review theme sync via `postMessage({ type: 'gic-theme', flavor, accent })`
+- ✅ Per-review scroll position saved in browser `localStorage` and restored through the sandbox-safe `postMessage` bridge; review HTML must implement the scroll protocol
 - ✅ Quiz list per subject: published quizzes with title, description, question count, available modes
 - ✅ Quiz mode modal built from the mode registry (only modes the quiz supports)
 - ✅ Image lightbox (full screen, zoom, Esc closes), `loading="lazy"`, next question's images preloaded
@@ -250,6 +251,7 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-18: Interactive review progress: save each review's scroll position in browser storage and restore it through the sandbox-safe iframe message protocol; updated the starter HTML and AI review guide.
 - 2026-11-18: Response cache (moka) for anonymous public reads, sized by `CACHE_MAX_MB` / `CACHE_TTL_SECONDS`;
   cleared on every successful editor write; `Cache-Control: no-cache` so browsers never keep old data.
 - 2026-11-18: Admin from `.env` synced on every start: a changed `ADMIN_PASSWORD` is applied (sessions

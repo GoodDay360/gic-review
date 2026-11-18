@@ -3,9 +3,9 @@
  * Interactive review viewer. The HTML comes from the R2 public domain and runs in a
  * sandboxed iframe WITHOUT allow-same-origin, so its scripts get an opaque origin and
  * cannot read this app's cookies, storage or DOM. The current theme is sent with
- * postMessage: { type: 'gic-theme', flavor, accent }.
+ * postMessage: { type: 'gic-theme', flavor, accent } and per-review scroll progress.
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { api, errorMessage } from '@/api/client'
@@ -18,6 +18,11 @@ import SkeletonBlock from '@/components/SkeletonBlock.vue'
 import { useInfiniteSearch } from '@/composables/useInfiniteSearch'
 import { useAsync } from '@/composables/useAsync'
 import { useThemeStore } from '@/stores/theme'
+import {
+  getReviewScrollPosition,
+  isReviewScrollMessage,
+  saveReviewScrollPosition,
+} from '@/utils/reviewProgress'
 
 const props = defineProps<{ subjectSlug: string }>()
 const route = useRoute()
@@ -52,7 +57,6 @@ const {
     `/subjects/${encodeURIComponent(props.subjectSlug)}/reviews?${query}`,
   )
 })
-onMounted(run)
 watch(
   () => props.subjectSlug,
   () => {
@@ -85,6 +89,24 @@ watch(
   { immediate: true },
 )
 
+function handleReviewMessage(event: MessageEvent<unknown>) {
+  const review = selected.value
+  if (
+    !review ||
+    event.source !== frame.value?.contentWindow ||
+    !isReviewScrollMessage(event.data)
+  ) {
+    return
+  }
+  saveReviewScrollPosition(review.id, event.data.scrollY)
+}
+
+onMounted(() => {
+  window.addEventListener('message', handleReviewMessage)
+  run()
+})
+onBeforeUnmount(() => window.removeEventListener('message', handleReviewMessage))
+
 /** Never render a review from our own origin (it would not be isolated). */
 const safeUrl = computed(() => {
   const url = selected.value?.url
@@ -99,8 +121,12 @@ const safeUrl = computed(() => {
 function sendTheme() {
   // The sandboxed frame has an opaque ("null") origin, so '*' is the only usable target.
   // The message contains nothing sensitive.
-  frame.value?.contentWindow?.postMessage(
-    { type: 'gic-theme', flavor: theme.flavor, accent: theme.accent },
+  const review = selected.value
+  const target = frame.value?.contentWindow
+  if (!review || !target) return
+  target.postMessage({ type: 'gic-theme', flavor: theme.flavor, accent: theme.accent }, '*')
+  target.postMessage(
+    { type: 'gic-review-restore', scrollY: getReviewScrollPosition(review.id) },
     '*',
   )
 }

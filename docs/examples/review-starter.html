@@ -11,6 +11,7 @@
         no localStorage/cookies from the parent, no calls to the GIC Review API, no trackers.
       - Theme: the parent sends postMessage({ type: "gic-theme", flavor, accent }).
         Without a message, it follows prefers-color-scheme (Latte light / Mocha dark).
+      - Scroll: the parent sends gic-review-restore; this page reports gic-review-scroll.
       Rules and upload steps: docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md
     -->
     <style>
@@ -208,16 +209,38 @@
         media.addEventListener("change", applySystem);
 
         window.addEventListener("message", function (event) {
-          // Only accept theme messages from the embedding GIC Review page.
           if (event.source !== window.parent) return;
           var data = event.data;
-          if (!data || data.type !== "gic-theme") return;
-          if (FLAVORS.indexOf(data.flavor) >= 0) {
-            fromParent = true;
-            root.setAttribute("data-flavor", data.flavor);
+          if (!data || typeof data !== "object") return;
+          if (data.type === "gic-theme") {
+            if (FLAVORS.indexOf(data.flavor) >= 0) {
+              fromParent = true;
+              root.setAttribute("data-flavor", data.flavor);
+            }
+            if (ACCENTS.indexOf(data.accent) >= 0) root.setAttribute("data-accent", data.accent);
+          } else if (
+            data.type === "gic-review-restore" &&
+            typeof data.scrollY === "number" &&
+            Number.isFinite(data.scrollY) &&
+            data.scrollY >= 0
+          ) {
+            window.scrollTo(0, data.scrollY);
           }
-          if (ACCENTS.indexOf(data.accent) >= 0) root.setAttribute("data-accent", data.accent);
         });
+
+        var scrollTimer = 0;
+        function reportScroll(final) {
+          window.clearTimeout(scrollTimer);
+          scrollTimer = 0;
+          window.parent.postMessage(
+            { type: "gic-review-scroll", scrollY: window.scrollY, final: final },
+            "*"
+          );
+        }
+        window.addEventListener("scroll", function () {
+          if (!scrollTimer) scrollTimer = window.setTimeout(function () { reportScroll(false); }, 250);
+        }, { passive: true });
+        window.addEventListener("pagehide", function () { reportScroll(true); }, { once: true });
       })();
     </script>
   </head>

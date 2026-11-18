@@ -149,6 +149,7 @@ Before the first commit, run `git status` and confirm that no `.env`, `node_modu
 - Shows the subject's interactive review (a static HTML file stored in R2).
 - If a subject has several reviews, show a simple list first and open the selected one.
 - Render the HTML inside a **sandboxed `<iframe>`** (`sandbox="allow-scripts"`, do NOT add `allow-same-origin`) loaded from the **R2 public domain**, never from the main site origin. This keeps scripts in the uploaded HTML from reaching the main app's cookies or DOM.
+- Save and restore scroll position separately for each review ID in browser storage. The parent and review HTML communicate through validated `postMessage` events (`gic-review-scroll` / `gic-review-restore`); the review HTML must not use browser storage. Keep the iframe sandbox unchanged.
 - Include a back button to the home page.
 
 ### 3.3 Quiz list page `/subjects/:subjectSlug/quizzes`

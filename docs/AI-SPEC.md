@@ -91,6 +91,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 
 ### Staff / Admin
 - ✅ `/login` with email + password, no public sign-up
+- ✅ My account page: change your own password (current password verified first, rate-limited); signs out every other session
 - ✅ Role-based dashboard: managers get Quizzes, Bulk import, Interactive reviews, API key; admins get Managers, API keys, Subjects
 - ✅ Admins have every manager permission: create content, own API key, and owner rights on **all** quizzes/reviews (`access: "admin"`, "Owned by …" badge)
 - ✅ Content ownership: quizzes and reviews are private to the manager who created them (others get 404)
@@ -122,6 +123,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ API keys refused on session-only endpoints (users, API key management, sharing, subjects, cleanup), so a leaked key cannot escalate
 - ✅ Access checks on every content endpoint (creator, year owner, admin, or shared year/subject; else 404; delete needs full rights → 403 `owner_only`), also for drafts on `GET /quizzes/:id`
 - ✅ Login rate limit (5 attempts / minute / IP)
+- ✅ Password change / admin reset bumps `session_version`; session JWTs with an older `sv` are rejected (other devices signed out)
 - ✅ Input validation and parameterized SQL only
 - ✅ Uploads: MIME + extension + magic-number checks, size limits from `.env`, random UUID keys, re-encoding strips EXIF
 - ✅ CORS limited to `FRONTEND_URL` (credentials + `Authorization` header)
@@ -150,7 +152,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 ## Database schema (current)
 
 ```
-users               id, email UNIQUE, password_hash, display_name, role ENUM('admin','manager'),
+users               id, email UNIQUE, password_hash, session_version, display_name, role ENUM('admin','manager'),
                     is_active, created_by NULL → users (SET NULL), created_at, updated_at
 years               id, slug UNIQUE, name, description NULL, sort_order, created_by NULL → users (SET NULL)
                     (owner; NULL = admins only), created_at, updated_at
@@ -175,7 +177,8 @@ api_keys            id, user_id → users (CASCADE), name, key_prefix, key_hash 
 ```
 
 Migrations: `20261118000001_init_schema.sql`, `20261118000002_seed_hci_subject.sql`,
-`20261118000003_api_keys.sql`, `20261118000004_content_shares.sql`, `20261118000005_years.sql` (creates the default year "General"), `20261118000006_year_owners.sql`, `20261118000007_year_subject_shares.sql` (adds year/subject shares, drops the item share tables). R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
+`20261118000003_api_keys.sql`, `20261118000004_content_shares.sql`, `20261118000005_years.sql` (creates the default year "General"), `20261118000006_year_owners.sql`, `20261118000007_year_subject_shares.sql` (adds year/subject shares, drops the item share tables),
+`20261118000008_session_version.sql`. R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
 `reviews/{subject_id}/{uuid}.html`.
 
 ## API endpoints (current, prefix `/api`)
@@ -193,6 +196,7 @@ or admin session only, **A-s** = admin session only, **any** = any session or AP
 | `GET /quizzes/:id` | public / M | unpublished only for managers |
 | `POST /auth/login`, `POST /auth/logout` | public | login is rate-limited |
 | `GET /auth/me` | any | adds `auth_method` and `api_key_scopes` |
+| `POST /auth/change-password` | session | `{current_password, new_password}`; signs out other sessions |
 | `GET/POST /admin/quizzes`, `GET/PUT/DELETE /admin/quizzes/:id` | M `quizzes:write` | |
 | `PATCH /admin/quizzes/:id/publish` | M `quizzes:write` | |
 | `POST /admin/quizzes/:id/questions`, `PUT/DELETE …/questions/:qid`, `PUT …/questions/reorder` | M `quizzes:write` | |
@@ -242,6 +246,8 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-18: My account page with password change (current password required, rate-limited);
+  `users.session_version` + JWT `sv` claim so password changes/resets sign out other sessions.
 - 2026-11-18: Default font Plus Jakarta Sans, self-hosted with `vite-plugin-webfont-dl`.
 - 2026-11-18: Link previews (Open Graph/Twitter tags, `og-image.png`), full icon set (`favicon.ico`, PNGs,
   `apple-touch-icon.png`, `site.webmanifest`) and `VITE_SITE_URL`; fixed Vite's native-config-loader warning.

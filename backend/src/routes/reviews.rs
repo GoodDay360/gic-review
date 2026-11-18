@@ -10,7 +10,7 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
-    auth::RequireStaff,
+    auth::{RequireManager, ReviewManager},
     config::Config,
     error::{AppError, AppResult},
     models::{ReviewDto, ReviewRow, review_columns},
@@ -141,7 +141,7 @@ struct ListQuery {
 }
 
 async fn list_reviews(
-    _staff: RequireStaff,
+    _manager: ReviewManager,
     State(state): State<AppState>,
     Query(q): Query<ListQuery>,
 ) -> AppResult<Json<Vec<ReviewDto>>> {
@@ -164,7 +164,7 @@ async fn list_reviews(
 
 /// multipart: `file` (.html), `subject_id`, `title`, optional `slug`, `sort_order`, `is_published`.
 async fn create_review(
-    RequireStaff(user): RequireStaff,
+    RequireManager(user, _): ReviewManager,
     State(state): State<AppState>,
     multipart: Multipart,
 ) -> AppResult<(StatusCode, Json<ReviewDto>)> {
@@ -231,7 +231,7 @@ async fn create_review(
 /// Same fields as create, all optional. A new `file` overwrites the SAME R2 key, so the
 /// review's public URL does not change.
 async fn update_review(
-    _staff: RequireStaff,
+    _manager: ReviewManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     multipart: Multipart,
@@ -264,7 +264,7 @@ async fn update_review(
 }
 
 async fn delete_review(
-    _staff: RequireStaff,
+    _manager: ReviewManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<StatusCode> {

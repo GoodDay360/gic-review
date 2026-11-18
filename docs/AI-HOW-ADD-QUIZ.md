@@ -6,6 +6,39 @@ format, image fields or quiz modes, update this file in the same commit.
 
 ---
 
+## Authenticating as an AI assistant or script: API keys
+
+Content is created by **managers**. Admins cannot create quizzes or reviews (the API answers
+`403 forbidden`). An AI assistant works **on behalf of a manager** with that manager's API key:
+
+1. The manager logs in to the dashboard and opens **API key** (`/admin/api-key`).
+2. They create a key with the permission needed (`quizzes:write` for quizzes, `reviews:write`
+   for interactive reviews; both is fine) and copy it. It is shown **only once**.
+3. The AI sends it on every request:
+
+   ```bash
+   export GIC_API=http://localhost:8080/api        # the backend URL
+   export GIC_KEY=gic_…                            # never commit or paste it into files
+
+   curl -H "Authorization: Bearer $GIC_KEY" $GIC_API/auth/me
+   # → { …, "role": "manager", "auth_method": "api_key", "api_key_scopes": ["quizzes:write", …] }
+   ```
+
+Rules for API keys:
+
+| Rule | Details |
+|---|---|
+| One active key per manager | Creating a second one returns `409`; **Regenerate** in the dashboard replaces it (the old key stops working immediately). |
+| Scopes | `quizzes:write`: quizzes, questions, reorder, publish, bulk import, image uploads. `reviews:write`: interactive reviews, image uploads. Missing scope → `403 missing_scope`. |
+| Session-only endpoints | Keys never work for user management, API key management, subjects or orphan cleanup → `403 api_key_not_allowed`. |
+| Revocation | The manager can revoke or regenerate it; any admin can revoke it; deactivating or deleting the manager disables it. A revoked/expired key → `401`. |
+| Keep it secret | Treat it like a password: environment variable or secret store, never in the repo, docs or chat logs. |
+
+The dashboard session cookie also works for every endpoint below (e.g. from a browser), but
+scripts and AI assistants should use API keys.
+
+---
+
 ## Part 1: Adding quiz content
 
 There are three ways, in order of preference.
@@ -30,8 +63,8 @@ mode availability in the frontend.
 
 ### (a) Admin panel (preferred)
 
-1. Log in at `/login` (admin or manager).
-2. **Admin → Quizzes → New quiz**, pick the subject, enter a title.
+1. Log in at `/login` as a **manager** (admins can't create quizzes).
+2. **Dashboard → Quizzes → New quiz**, pick the subject, enter a title.
 3. On the quiz page, set the description and the **cover image**.
 4. **Add question** for each question. Every image field (question, each option,
    flashcard answer, explanation) uses the `ImageUploader`: click to browse, drag & drop,
@@ -88,14 +121,9 @@ the two.
 1. **Upload first, then reference the key** (works for private images too):
 
    ```bash
-   # Log in once and keep the session cookie
-   curl -c cookies.txt -H 'Content-Type: application/json' \
-     -d '{"email":"you@example.com","password":"…"}' \
-     http://localhost:8080/api/auth/login
-
    # Upload an image → returns { "key": "tmp/<uuid>.png", "url": "https://files…/tmp/<uuid>.png" }
-   curl -b cookies.txt -F 'file=@screenshot.png' \
-     http://localhost:8080/api/admin/uploads/image
+   curl -H "Authorization: Bearer $GIC_KEY" -F 'file=@screenshot.png' \
+     $GIC_API/admin/uploads/image
    ```
 
    Then put the returned `key` in `image_key` (or `answer_image_key`, `cover_image_key`, …).
@@ -164,9 +192,17 @@ any images is in `docs/examples/hci-sample-quiz.json`.
 Import with curl:
 
 ```bash
-curl -b cookies.txt -H 'Content-Type: application/json' \
+curl -H "Authorization: Bearer $GIC_KEY" -H 'Content-Type: application/json' \
   --data @docs/examples/hci-sample-quiz.json \
-  http://localhost:8080/api/admin/quizzes/import
+  $GIC_API/admin/quizzes/import
+```
+
+The response is the created quiz (with its `id` and `available_modes`). It starts
+unpublished; publish it when the manager has reviewed it:
+
+```bash
+curl -H "Authorization: Bearer $GIC_KEY" -H 'Content-Type: application/json' \
+  -X PATCH -d '{"is_published": true}' $GIC_API/admin/quizzes/<id>/publish
 ```
 
 ### (c) SQL seed / migration (last resort)

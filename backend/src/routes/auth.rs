@@ -6,13 +6,14 @@ use axum::{
     routing::{get, post},
 };
 use axum_extra::extract::cookie::CookieJar;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use crate::{
+    api_keys::ApiScope,
     auth::{
-        ClientIp, RequireStaff, Role, UserDto, UserRow, clear_session_cookie, create_token,
-        dummy_hash, session_cookie, user_columns, verify_password,
+        AuthMethod, ClientIp, RequireAuth, Role, UserDto, UserRow, clear_session_cookie,
+        create_token, dummy_hash, session_cookie, user_columns, verify_password,
     },
     error::{AppError, AppResult},
     state::AppState,
@@ -87,6 +88,25 @@ async fn logout(
     )
 }
 
-async fn me(RequireStaff(user): RequireStaff) -> Json<UserDto> {
-    Json(user.row.into())
+#[derive(Debug, Serialize)]
+struct MeResponse {
+    #[serde(flatten)]
+    user: UserDto,
+    /// `"session"` (dashboard) or `"api_key"`.
+    auth_method: &'static str,
+    /// Scopes of the API key used for this request (`null` for sessions).
+    api_key_scopes: Option<Vec<ApiScope>>,
+}
+
+/// Who am I? Works with the session cookie and with API keys (handy to test a key).
+async fn me(RequireAuth(user): RequireAuth) -> Json<MeResponse> {
+    let (auth_method, api_key_scopes) = match user.method {
+        AuthMethod::Session => ("session", None),
+        AuthMethod::ApiKey { scopes, .. } => ("api_key", Some(scopes)),
+    };
+    Json(MeResponse {
+        user: user.row.into(),
+        auth_method,
+        api_key_scopes,
+    })
 }

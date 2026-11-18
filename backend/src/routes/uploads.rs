@@ -13,7 +13,7 @@ use serde::Serialize;
 use serde_json::json;
 
 use crate::{
-    auth::{RequireAdmin, RequireStaff},
+    auth::{ContentManager, RequireAdmin},
     config::Config,
     error::{AppError, AppResult},
     images,
@@ -84,7 +84,7 @@ pub async fn store_image(
 
 /// `multipart/form-data` with a `file` field and an optional `quiz_id` field.
 async fn upload_image(
-    _staff: RequireStaff,
+    _manager: ContentManager,
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> AppResult<(StatusCode, Json<UploadedImage>)> {
@@ -159,7 +159,7 @@ async fn referenced_keys(state: &AppState) -> AppResult<HashSet<String>> {
 /// Delete an uploaded image that is not (or no longer) used by any row, e.g. when an
 /// editor discards an image before saving.
 async fn delete_image(
-    _staff: RequireStaff,
+    _manager: ContentManager,
     State(state): State<AppState>,
     Path(key): Path<String>,
 ) -> AppResult<StatusCode> {

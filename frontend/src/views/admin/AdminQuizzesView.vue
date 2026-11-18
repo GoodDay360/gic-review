@@ -10,12 +10,10 @@ import EmptyState from '@/components/EmptyState.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
 import { useAsync } from '@/composables/useAsync'
 import { getQuizMode } from '@/quiz-modes/registry'
-import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 
 const router = useRouter()
 const toast = useToastStore()
-const auth = useAuthStore()
 
 const subjectFilter = ref<number | ''>('')
 const subjects = ref<Subject[]>([])
@@ -82,21 +80,6 @@ async function confirmDelete() {
     toast.error(errorMessage(err))
   }
 }
-
-const cleaning = ref(false)
-async function cleanupOrphans() {
-  cleaning.value = true
-  try {
-    const res = await api.post<{ scanned: number; deleted: number }>(
-      '/admin/uploads/cleanup-orphans',
-    )
-    toast.success(`Scanned ${res.scanned} files, deleted ${res.deleted} orphaned file(s).`)
-  } catch (err) {
-    toast.error(errorMessage(err))
-  } finally {
-    cleaning.value = false
-  }
-}
 </script>
 
 <template>
@@ -104,16 +87,6 @@ async function cleanupOrphans() {
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-2xl font-bold text-ctp-text">Quizzes</h1>
       <div class="flex flex-wrap gap-2">
-        <button
-          v-if="auth.isAdmin"
-          class="btn-secondary"
-          :disabled="cleaning"
-          title="Delete R2 files that no quiz, question, option or review uses"
-          @click="cleanupOrphans"
-        >
-          <AppIcon name="trash" :size="16" />
-          {{ cleaning ? 'Cleaning…' : 'Clean up orphaned images' }}
-        </button>
         <button class="btn-primary" :disabled="!subjects.length" @click="openCreate">
           <AppIcon name="plus" :size="16" /> New quiz
         </button>

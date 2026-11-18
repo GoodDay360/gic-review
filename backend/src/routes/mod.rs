@@ -1,6 +1,7 @@
 //! HTTP routes. Everything is mounted under `/api` in [`crate::build_router`].
 
 pub mod admin_quizzes;
+pub mod api_keys;
 pub mod auth;
 pub mod import;
 pub mod public;
@@ -23,4 +24,5 @@ pub fn api(config: &Config) -> Router<AppState> {
         .merge(reviews::router(config))
         .merge(users::router())
         .merge(subjects::router())
+        .merge(api_keys::router())
 }

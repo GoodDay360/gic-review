@@ -10,7 +10,7 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
-    auth::RequireStaff,
+    auth::{QuizManager, RequireManager},
     error::{AppError, AppResult},
     images,
     models::QuizDetail,
@@ -190,7 +190,7 @@ async fn resolve(
 }
 
 async fn import_quiz(
-    RequireStaff(user): RequireStaff,
+    RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Json(body): Json<ImportQuiz>,
 ) -> AppResult<(StatusCode, Json<QuizDetail>)> {

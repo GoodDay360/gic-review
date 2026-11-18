@@ -1,5 +1,6 @@
 //! GIC Review API: Axum + Tokio + SQLx (MySQL) + Cloudflare R2.
 
+pub mod api_keys;
 pub mod auth;
 pub mod bootstrap;
 pub mod config;
@@ -42,7 +43,7 @@ pub fn build_router(state: AppState) -> Router {
             Method::PATCH,
             Method::DELETE,
         ])
-        .allow_headers([header::CONTENT_TYPE, header::ACCEPT])
+        .allow_headers([header::CONTENT_TYPE, header::ACCEPT, header::AUTHORIZATION])
         .max_age(Duration::from_secs(3600));
 
     Router::new()

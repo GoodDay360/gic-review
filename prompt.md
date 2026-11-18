@@ -12,7 +12,7 @@ Work in the phases listed at the bottom. At the end of every phase the project m
 - open an **Interactive Review**: a static HTML review page made for that subject, or
 - take a **Quiz**: pick a quiz made by an admin/manager, then choose how to study it (**QCM** or **Flashcard**).
 
-Anyone can browse and do quizzes **without logging in**. Only staff accounts (admin/manager) can log in to create content.
+Anyone can browse and do quizzes **without logging in**. Only staff accounts can log in: **managers** create content (in the dashboard, or through the API with their personal **API key**, which is how AI assistants add quizzes and reviews); **admins** only manage manager accounts, managers' API keys and subjects.
 
 ---
 
@@ -176,14 +176,17 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 
 ### 3.5 Staff area
 - `/login`: email + password login for admin/manager only. There is no public sign-up.
-- `/admin` (admin + manager):
+- `/admin` is the dashboard. Its menu depends on the role (managers: Quizzes, Bulk import, Interactive reviews, API key; admins: Managers, API keys, Subjects).
+- Manager dashboard (**manager only**; admins cannot create or edit content):
   - **Quizzes**: create, edit, delete, publish/unpublish quizzes; add, edit and reorder questions and options.
   - **Image inputs**: every image field (quiz cover, question, each option, flashcard back, explanation) uses a reusable `ImageUploader` component. It supports click-to-browse, **drag & drop**, and **paste from clipboard (Ctrl+V)**, which is handy for screenshots. It shows an upload progress bar, a preview thumbnail, an alt-text field, and Replace/Remove buttons.
   - **Preview**: a "Preview" button shows the question exactly as students will see it in QCM and Flashcard mode, images included.
   - **Interactive Reviews**: upload an `.html` file for a subject, set title and order, replace or delete it.
   - **Bulk import**: paste or upload JSON in the format defined in `docs/AI-HOW-ADD-QUIZ.md` to create a whole quiz at once.
+  - **API key** (`/admin/api-key`): a manager can create **one** personal API key (shown once, with a copy button and curl examples), choose its permissions (`quizzes:write`, `reviews:write`) and expiry (30/90/365 days or never), see when it was last used, **regenerate** it (the old key stops working immediately) or revoke it. Scripts and AI assistants send it as `Authorization: Bearer gic_…` to add quizzes and interactive reviews through the API.
 - `/admin/users` (**admin only**): create manager accounts, reset a manager's password, deactivate or delete managers.
-- `/admin/subjects` (**admin only**): create and edit subjects (name, slug, description, icon/color, order).
+- `/admin/api-keys` (**admin only**): see every manager's API keys (owner, name, prefix, permissions, created/last used/expiry, status), filter by manager or status, and revoke any key. Admins cannot create API keys.
+- `/admin/subjects` (**admin only**): create and edit subjects (name, slug, description, icon/color, order), plus the "clean up orphaned images" maintenance action.
 - Route guards hide staff pages from users without the role, AND the backend enforces the same rules (never trust the frontend).
 
 ---
@@ -193,10 +196,15 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 | Action | Guest (no login) | Manager | Admin |
 |---|---|---|---|
 | View subjects, reviews, quizzes; play quizzes | ✅ | ✅ | ✅ |
-| Create/edit/delete quizzes, questions, images | ❌ | ✅ | ✅ |
-| Upload/edit interactive reviews | ❌ | ✅ | ✅ |
-| Create/edit subjects | ❌ | ❌ | ✅ |
+| Create/edit/delete quizzes, questions, images (dashboard or API key) | ❌ | ✅ | ❌ |
+| Upload/edit interactive reviews (dashboard or API key) | ❌ | ✅ | ❌ |
+| Preview unpublished quizzes | ❌ | ✅ | ❌ |
+| Create/regenerate/revoke **own** API key (max 1 active) | ❌ | ✅ | ❌ |
+| See and revoke **any manager's** API keys | ❌ | ❌ | ✅ |
+| Create/edit subjects, clean up orphaned images | ❌ | ❌ | ✅ |
 | Create/manage manager accounts | ❌ | ❌ | ✅ |
+
+- **Admins cannot do anything else:** they only manage manager accounts, managers' API keys and subjects (+ orphan cleanup). The backend returns `403` when an admin calls a content endpoint.
 
 - **Initial admin bootstrap:** when the backend starts, if no admin exists, create one from `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `backend/.env`. Log a warning telling the operator to change the password. Never log the password itself.
 - Only an admin can create users, and created users are always `manager`. There is no API path to create another admin; that is done manually in the database.
@@ -204,7 +212,14 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 ### 4.1 Auth and security requirements
 - Hash passwords with **Argon2id**.
 - Login returns a JWT stored in an **httpOnly, Secure (in production), SameSite=Strict cookie**. Expiry comes from `JWT_EXPIRES_IN_HOURS`.
-- Add Axum middleware/extractors `RequireStaff` and `RequireAdmin`. Check the user's role and `is_active` from the database on each staff request, so a deactivated manager loses access right away.
+- Add Axum extractors for the roles: `RequireManager<Scope>` (manager via session **or** API key with the needed scope), `RequireManagerSession`, `RequireAdmin` and `RequireSession` (dashboard session only). Check the user's role and `is_active` from the database on each request, so a deactivated manager (and their API key) loses access right away.
+- **API keys:**
+  - Format `gic_` + 64 hex characters from a CSPRNG. Store only the SHA-256 hash plus a short display prefix; show the full key once, at creation.
+  - Sent as `Authorization: Bearer <key>`. If the header is present, the cookie is ignored. CORS allows the `Authorization` header.
+  - Only managers own keys, at most **1 active key per manager** (enforced in a transaction). "Regenerate" revokes the active key and creates a new one atomically.
+  - Scopes: `quizzes:write` (quizzes, questions, reorder, publish, import, image uploads) and `reviews:write` (interactive reviews, image uploads). A key without the needed scope gets `403 missing_scope`.
+  - Keys never work on session-only endpoints (users, API key management, subjects, orphan cleanup): `403 api_key_not_allowed`. So a leaked key cannot create more keys or escalate.
+  - Optional expiry (1–365 days), `last_used_at` tracking, revocation by the owner or any admin. Deleting a manager deletes their keys; deactivating them disables the keys.
 - Rate-limit `POST /api/auth/login` (for example 5 attempts per minute per IP).
 - Validate every input. Use parameterized SQLx queries only, never string-concatenated SQL.
 - Uploads: check MIME type and extension (images: png/jpg/webp/gif; reviews: `.html` only), enforce size limits from `backend/.env`, and generate random object keys (UUID). Never use the original filename as the key.
@@ -231,6 +246,8 @@ questions          (id, quiz_id FK ON DELETE CASCADE, position,
                     explanation_image_key VARCHAR NULL,  -- e.g. a diagram shown after answering
                     multi_select BOOL DEFAULT false,
                     created_at, updated_at)
+api_keys           (id, user_id FK users ON DELETE CASCADE, name, key_prefix, key_hash UNIQUE (sha-256 hex),
+                    scopes, expires_at NULL, last_used_at NULL, revoked_at NULL, created_at)
 question_options   (id, question_id FK ON DELETE CASCADE, position,
                     text TEXT NULL,                      -- text and/or image required
                     image_key VARCHAR NULL, image_alt VARCHAR NULL,               -- image answer choice
@@ -240,7 +257,7 @@ question_options   (id, question_id FK ON DELETE CASCADE, position,
 The database stores only R2 object keys, never full URLs. The API builds full URLs as `R2_PUBLIC_BASE_URL + "/" + key`, so the storage domain can change later without editing data. Validation rule: a question needs `prompt` or `image_key` (or both), and an option needs `text` or `image_key` (or both).
 
 ### 4.2.1 Images in quizzes
-Admins and managers can add images to:
+Managers can add images to:
 - the **quiz** (cover image on the quiz card),
 - the **question** (for example a screenshot of a UI to evaluate),
 - each **answer option** (image-based choices, such as "Which of these layouts follows Fitts's law?"),
@@ -277,20 +294,24 @@ Public:
 - `GET  /health`
 
 Auth:
-- `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`
+- `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` (also works with an API key and then returns `auth_method: "api_key"` and the key's scopes, handy to test a key)
 
-Staff (manager + admin):
-- `POST/PUT/DELETE /admin/quizzes[/:id]`, `PATCH /admin/quizzes/:id/publish`
-- `POST/PUT/DELETE /admin/quizzes/:id/questions[/:qid]`, `PUT /admin/quizzes/:id/questions/reorder`
-- `POST /admin/quizzes/import`, which takes bulk JSON (schema in `AI-HOW-ADD-QUIZ.md`) and runs in a single DB transaction
-- `POST /admin/uploads/image` (multipart, optional `quiz_id`), which returns `{ key, url }`
-- `DELETE /admin/uploads/image/:key`
-- `POST /admin/uploads/cleanup-orphans` (admin only)
-- `POST/PUT/DELETE /admin/reviews[/:id]` (multipart `.html` upload)
+Manager only, via session cookie **or** API key (`Authorization: Bearer gic_…`) with the scope in brackets:
+- `POST/PUT/DELETE /admin/quizzes[/:id]`, `PATCH /admin/quizzes/:id/publish` (`quizzes:write`)
+- `POST/PUT/DELETE /admin/quizzes/:id/questions[/:qid]`, `PUT /admin/quizzes/:id/questions/reorder` (`quizzes:write`)
+- `POST /admin/quizzes/import`, which takes bulk JSON (schema in `AI-HOW-ADD-QUIZ.md`) and runs in a single DB transaction (`quizzes:write`)
+- `POST /admin/uploads/image` (multipart, optional `quiz_id`), which returns `{ key, url }` (`quizzes:write` or `reviews:write`)
+- `DELETE /admin/uploads/image/:key` (`quizzes:write` or `reviews:write`)
+- `POST/PUT/DELETE /admin/reviews[/:id]` (multipart `.html` upload) (`reviews:write`)
 
-Admin only:
+Manager only, dashboard session only (never with an API key):
+- `GET /admin/api-keys/mine`, `POST /admin/api-keys` (`{ name, scopes, expires_in_days | null, replace_existing }` → `{ key, api_key }`, the key is shown only in this response), `DELETE /admin/api-keys/:id` (own key)
+
+Admin only, dashboard session only:
 - `GET/POST /admin/users`, `PATCH /admin/users/:id` (active flag, display name), `POST /admin/users/:id/reset-password`, `DELETE /admin/users/:id`
+- `GET /admin/api-keys[?user_id=]` (all managers' keys), `DELETE /admin/api-keys/:id` (revoke any key)
 - `POST/PUT/DELETE /admin/subjects[/:id]`
+- `POST /admin/uploads/cleanup-orphans`
 
 ---
 
@@ -437,9 +458,10 @@ Two parts:
 3. **Public browsing:** home subjects grid → activity modal → quiz list → mode modal. ✔ Works with no login.
 4. **Quiz players:** QCM and Flashcard players with result screens and the mode registry. ✔ A sample quiz is playable in both modes.
 5. **Auth and staff area:** login, role guards (frontend and backend), quiz CRUD, image upload to R2 (drag & drop, paste, preview) for every image field, bulk import. ✔ A manager can create a quiz with images on the cover, questions, options and flashcard backs, and all of them display in both play modes. Deleting a question also deletes its images from R2. A guest gets `401`/`403` on admin endpoints.
-6. **Admin features:** manager management and subject management (admin only). ✔ A manager cannot reach `/admin/users` (UI and API).
+6. **Admin features:** manager management, API key oversight and subject management (admin only). ✔ A manager cannot reach `/admin/users` (UI and API), and an admin gets `403` on quiz/review endpoints.
 7. **Interactive reviews:** HTML upload to R2 and the sandboxed iframe viewer. ✔ The uploaded HTML renders, and scripts inside it cannot read the main site's cookies.
 8. **Docs:** write all three `docs/` files. Commit this `prompt.md` to the repo root if it isn't already there. ✔ `AI-SPEC.md` matches what was actually built, includes the "Keep features in sync" rules and a Changelog, and its Features checklist matches the requirements in `prompt.md` one-to-one (no other content duplicated between the two files).
+9. **API keys:** manager API key page and admin API keys page, Bearer authentication with scopes. ✔ A manager creates one key (a second one is refused), uses it with curl to import a quiz and upload a review, regenerating makes the old key fail, an admin can revoke it, and the key gets `403` on user/key/subject endpoints.
 
 General quality bar:
 - Rust passes `cargo fmt` and `cargo clippy` with no warnings. The frontend passes `bun run build` and ESLint/Prettier (`bun run lint`).
@@ -453,10 +475,11 @@ General quality bar:
 
 These refine the requirements above; they do not remove any of them.
 
-- **Admin read endpoints:** `GET /admin/quizzes[?subject_id=]`, `GET /admin/quizzes/:id` and `GET /admin/reviews[?subject_id=]` (staff) list drafts/unpublished items for the admin UI.
+- **Manager read endpoints:** `GET /admin/quizzes[?subject_id=]`, `GET /admin/quizzes/:id` (`quizzes:write`) and `GET /admin/reviews[?subject_id=]` (`reviews:write`) list drafts/unpublished items for the dashboard and for API clients.
 - **Subjects API** also returns `quiz_count` (published quizzes). Subject `color` is one of the 14 Catppuccin accent names.
 - **Publishing** a quiz is refused while it has no available mode.
 - **Deleting** a subject is refused (409) while it still has quizzes or reviews. Deleting a manager keeps their content (`created_by` becomes NULL, so `created_by` columns are nullable with `ON DELETE SET NULL`).
+- **Roles changed (2026-11-18):** admins no longer create or edit quizzes, reviews or images; that is manager-only. Admins manage manager accounts, managers' API keys, subjects and orphan cleanup.
 - **Uploads:** `DELETE /admin/uploads/image/:key` only deletes images no row references (409 otherwise). The question editor deletes images uploaded during an edit session that end up unused (cancel/close/replace). Orphan cleanup skips files younger than one hour.
 - **Bulk import:** unknown JSON fields are rejected; `*_url` images must be public http(s) URLs (no private IPs, no redirects); the admin import page has a "Load HCI sample" button (`docs/examples/hci-sample-quiz.json`, text-only, playable in QCM and Flashcard).
 - **Interactive reviews:** replacing the file overwrites the same R2 key; the API returns the URL with a `?v=<updated_at>` cache-buster. The viewer refuses to render a review URL on the site's own origin.

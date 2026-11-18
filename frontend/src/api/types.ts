@@ -88,6 +88,29 @@ export interface User {
   updated_at: string
 }
 
+export type ApiScope = 'quizzes:write' | 'reviews:write'
+
+export interface ApiKey {
+  id: number
+  user_id: number
+  owner_email: string
+  owner_name: string
+  name: string
+  key_prefix: string
+  scopes: ApiScope[]
+  status: 'active' | 'revoked' | 'expired'
+  expires_at: string | null
+  last_used_at: string | null
+  revoked_at: string | null
+  created_at: string
+}
+
+export interface CreatedApiKey {
+  /** Full key, shown only once. */
+  key: string
+  api_key: ApiKey
+}
+
 export interface UploadedImage {
   key: string
   url: string

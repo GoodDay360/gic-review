@@ -109,14 +109,18 @@ Minimal skeleton (see the example file for the full palette):
 
 ## How to upload
 
-### Admin panel
+Uploading is a **manager** job (admins cannot upload reviews). Scripts and AI assistants use the
+manager's **API key** with the `reviews:write` scope; see "Authenticating as an AI assistant or
+script" in `docs/AI-HOW-ADD-QUIZ.md` for how to get one and the rules.
 
-**Admin → Interactive reviews → Upload review**: choose the subject, title, optional slug
+### Dashboard
+
+**Dashboard → Interactive reviews → Upload review**: choose the subject, title, optional slug
 (derived from the title if empty), order, *Published*, and the `.html` file.
 
 ### API
 
-`POST /api/admin/reviews` (staff only), `multipart/form-data`:
+`POST /api/admin/reviews` (manager session, or API key with `reviews:write`), `multipart/form-data`:
 
 | Field | Required | Meaning |
 |---|---|---|
@@ -128,15 +132,18 @@ Minimal skeleton (see the example file for the full palette):
 | `is_published` | no | `true`/`false` (default `false`); only published reviews are public |
 
 ```bash
-curl -c cookies.txt -H 'Content-Type: application/json' \
-  -d '{"email":"you@example.com","password":"…"}' http://localhost:8080/api/auth/login
+export GIC_API=http://localhost:8080/api
+export GIC_KEY=gic_…   # the manager's API key (reviews:write)
 
-curl -b cookies.txt \
+curl -H "Authorization: Bearer $GIC_KEY" \
   -F 'subject_id=1' -F 'title=HCI Review' -F 'slug=hci-review' \
   -F 'sort_order=0' -F 'is_published=true' \
   -F 'file=@docs/examples/review-starter.html;type=text/html' \
-  http://localhost:8080/api/admin/reviews
+  $GIC_API/admin/reviews
 ```
+
+`subject_id` comes from `GET $GIC_API/subjects` (public). List existing reviews, including
+unpublished ones, with `GET $GIC_API/admin/reviews?subject_id=1`.
 
 The subject's `has_review` flag (`GET /api/subjects/:slug`) becomes `true` once at least
 one published review exists. Until then the home page shows "Coming soon".
@@ -151,8 +158,8 @@ one published review exists. Until then the home page shows "Coming soon".
 - Changing `slug` changes the `?r=` link on the site; keep it if people bookmarked it.
 
 ```bash
-curl -b cookies.txt -X PUT -F 'file=@review-v2.html;type=text/html' \
-  http://localhost:8080/api/admin/reviews/3
+curl -H "Authorization: Bearer $GIC_KEY" -X PUT -F 'file=@review-v2.html;type=text/html' \
+  $GIC_API/admin/reviews/3
 ```
 
 `DELETE /api/admin/reviews/:id` removes the row and the R2 object.

@@ -20,6 +20,10 @@ pub enum AppError {
     InvalidCredentials,
     #[error("you do not have permission to do this")]
     Forbidden,
+    #[error("API keys cannot be used for this endpoint; log in to the dashboard instead")]
+    ApiKeyNotAllowed,
+    #[error("this API key is missing the required scope: {0}")]
+    MissingScope(String),
     #[error("{0} not found")]
     NotFound(&'static str),
     #[error("{0}")]
@@ -44,6 +48,8 @@ impl AppError {
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             Self::InvalidCredentials => (StatusCode::UNAUTHORIZED, "invalid_credentials"),
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
+            Self::ApiKeyNotAllowed => (StatusCode::FORBIDDEN, "api_key_not_allowed"),
+            Self::MissingScope(_) => (StatusCode::FORBIDDEN, "missing_scope"),
             Self::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
             Self::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             Self::PayloadTooLarge(_) => (StatusCode::PAYLOAD_TOO_LARGE, "payload_too_large"),

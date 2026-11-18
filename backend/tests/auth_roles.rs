@@ -9,7 +9,7 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{app_with_pool, app_without_db, send, test_config};
+use common::{app_with_pool, app_without_db, send, send_key, test_config};
 use gic_review_api::{
     auth::{Role, create_token, hash_password},
     bootstrap,
@@ -38,6 +38,24 @@ const STAFF_ENDPOINTS: &[(&str, &str)] = &[
     ("PUT", "/api/admin/subjects/1"),
     ("DELETE", "/api/admin/subjects/1"),
     ("GET", "/api/auth/me"),
+    ("GET", "/api/admin/api-keys"),
+    ("POST", "/api/admin/api-keys"),
+    ("GET", "/api/admin/api-keys/mine"),
+    ("DELETE", "/api/admin/api-keys/1"),
+];
+
+/// Endpoints that only accept a dashboard session: an API key must be refused
+/// (403 api_key_not_allowed) before any database access.
+const SESSION_ONLY_ENDPOINTS: &[(&str, &str)] = &[
+    ("GET", "/api/admin/users"),
+    ("POST", "/api/admin/users"),
+    ("PATCH", "/api/admin/users/2"),
+    ("POST", "/api/admin/subjects"),
+    ("POST", "/api/admin/uploads/cleanup-orphans"),
+    ("GET", "/api/admin/api-keys"),
+    ("POST", "/api/admin/api-keys"),
+    ("GET", "/api/admin/api-keys/mine"),
+    ("DELETE", "/api/admin/api-keys/1"),
 ];
 
 #[tokio::test]
@@ -71,6 +89,30 @@ async fn garbage_or_forged_tokens_are_rejected() {
     let cookie = format!("gic_session={forged}");
     let res = send(&app, "GET", "/api/admin/users", Some(&cookie), None).await;
     assert_eq!(res.status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn api_keys_are_refused_on_session_only_endpoints() {
+    let app = app_without_db();
+    let key = gic_review_api::api_keys::generate();
+    for (method, uri) in SESSION_ONLY_ENDPOINTS {
+        let body = (*method != "GET" && *method != "DELETE").then(|| json!({}));
+        let res = send_key(&app, method, uri, &key, body).await;
+        assert_eq!(res.status, StatusCode::FORBIDDEN, "{method} {uri}");
+        assert_eq!(
+            res.json["error"]["code"], "api_key_not_allowed",
+            "{method} {uri}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn malformed_api_keys_are_unauthorized() {
+    let app = app_without_db();
+    for key in ["nope", "gic_123", "Basic abc"] {
+        let res = send_key(&app, "GET", "/api/admin/quizzes", key, None).await;
+        assert_eq!(res.status, StatusCode::UNAUTHORIZED, "{key}");
+    }
 }
 
 #[tokio::test]
@@ -201,16 +243,33 @@ async fn db_manager_cannot_reach_admin_only_endpoints(db: MySqlPool) {
         assert_eq!(r.status, StatusCode::FORBIDDEN, "{method} {uri}");
     }
 
-    // Staff endpoints work for a manager.
+    // Content endpoints work for a manager.
     let r = send(&app, "GET", "/api/admin/quizzes", Some(&manager), None).await;
     assert_eq!(r.status, StatusCode::OK);
 
-    // Admin can list users.
+    // Admin can list users…
     let res = login(&app, "admin@example.com", "admin-password-123").await;
     let admin = cookie_from(&res.set_cookie.unwrap());
     let r = send(&app, "GET", "/api/admin/users", Some(&admin), None).await;
     assert_eq!(r.status, StatusCode::OK);
     assert_eq!(r.json.as_array().unwrap().len(), 2);
+
+    // …but cannot create content or API keys.
+    for (method, uri, body) in [
+        ("GET", "/api/admin/quizzes", None),
+        ("POST", "/api/admin/quizzes", Some(json!({}))),
+        ("POST", "/api/admin/quizzes/import", Some(json!({}))),
+        ("POST", "/api/admin/reviews", None),
+        ("POST", "/api/admin/uploads/image", None),
+        (
+            "POST",
+            "/api/admin/api-keys",
+            Some(json!({ "name": "x", "scopes": ["quizzes:write"], "expires_in_days": null })),
+        ),
+    ] {
+        let r = send(&app, method, uri, Some(&admin), body).await;
+        assert_eq!(r.status, StatusCode::FORBIDDEN, "admin {method} {uri}");
+    }
 }
 
 #[ignore = "needs MySQL (DATABASE_URL)"]
@@ -276,4 +335,165 @@ async fn db_admin_accounts_cannot_be_changed_through_the_api(db: MySqlPool) {
     .await;
     assert_eq!(r.status, StatusCode::CREATED);
     assert_eq!(r.json["role"], "manager");
+}
+
+async fn create_key(
+    app: &axum::Router,
+    cookie: &str,
+    scopes: &[&str],
+    replace: bool,
+) -> common::TestResponse {
+    send(
+        app,
+        "POST",
+        "/api/admin/api-keys",
+        Some(cookie),
+        Some(json!({
+            "name": "AI assistant",
+            "scopes": scopes,
+            "expires_in_days": 30,
+            "replace_existing": replace
+        })),
+    )
+    .await
+}
+
+#[ignore = "needs MySQL (DATABASE_URL)"]
+#[sqlx::test(migrations = "./migrations")]
+async fn db_manager_api_key_lifecycle(db: MySqlPool) {
+    bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
+    let manager_id = insert_manager(&db, "ai-owner@example.com", "manager-pass-3", true).await;
+    let app = app_with_pool(db);
+    let manager = cookie_from(
+        &login(&app, "ai-owner@example.com", "manager-pass-3")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+
+    // Create: the full key is returned once; only a prefix is stored/listed.
+    let created = create_key(&app, &manager, &["quizzes:write"], false).await;
+    assert_eq!(created.status, StatusCode::CREATED);
+    let key = created.json["key"].as_str().unwrap().to_string();
+    assert!(key.starts_with("gic_"));
+    let mine = send(
+        &app,
+        "GET",
+        "/api/admin/api-keys/mine",
+        Some(&manager),
+        None,
+    )
+    .await;
+    assert!(!mine.json.to_string().contains(&key));
+
+    // One active key per manager.
+    let second = create_key(&app, &manager, &["quizzes:write"], false).await;
+    assert_eq!(second.status, StatusCode::CONFLICT);
+
+    // The key works for quiz content…
+    let me = send_key(&app, "GET", "/api/auth/me", &key, None).await;
+    assert_eq!(me.json["auth_method"], "api_key");
+    let quiz = send_key(
+        &app,
+        "POST",
+        "/api/admin/quizzes",
+        &key,
+        Some(json!({ "subject_id": 1, "title": "From an AI", "description": null, "cover_image_key": null })),
+    )
+    .await;
+    assert_eq!(quiz.status, StatusCode::CREATED);
+    assert_eq!(quiz.json["is_published"], false);
+
+    // …but not for reviews (missing scope) or key management (session only).
+    let r = send_key(&app, "POST", "/api/admin/reviews", &key, None).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    assert_eq!(r.json["error"]["code"], "missing_scope");
+    let r = send_key(&app, "GET", "/api/admin/api-keys/mine", &key, None).await;
+    assert_eq!(r.json["error"]["code"], "api_key_not_allowed");
+
+    // Regenerate: the old key stops working, the new one works.
+    let regen = create_key(&app, &manager, &["quizzes:write", "reviews:write"], true).await;
+    assert_eq!(regen.status, StatusCode::CREATED);
+    let new_key = regen.json["key"].as_str().unwrap().to_string();
+    let r = send_key(&app, "GET", "/api/admin/quizzes", &key, None).await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    let r = send_key(&app, "GET", "/api/admin/quizzes", &new_key, None).await;
+    assert_eq!(r.status, StatusCode::OK);
+
+    // Admin sees every manager's keys and can revoke them.
+    let admin = cookie_from(
+        &login(&app, "admin@example.com", "admin-password-123")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    let all = send(&app, "GET", "/api/admin/api-keys", Some(&admin), None).await;
+    let active = all
+        .json
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|k| k["status"] == "active")
+        .unwrap();
+    assert_eq!(active["user_id"], manager_id);
+    let id = active["id"].as_i64().unwrap();
+    let r = send(
+        &app,
+        "DELETE",
+        &format!("/api/admin/api-keys/{id}"),
+        Some(&admin),
+        None,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json["status"], "revoked");
+    let r = send_key(&app, "GET", "/api/admin/quizzes", &new_key, None).await;
+    assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+}
+
+#[ignore = "needs MySQL (DATABASE_URL)"]
+#[sqlx::test(migrations = "./migrations")]
+async fn db_deactivating_a_manager_disables_their_api_key(db: MySqlPool) {
+    bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
+    let id = insert_manager(&db, "m4@example.com", "manager-pass-4", true).await;
+    let app = app_with_pool(db);
+    let manager = cookie_from(
+        &login(&app, "m4@example.com", "manager-pass-4")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    let key = create_key(&app, &manager, &["reviews:write"], false)
+        .await
+        .json["key"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        send_key(&app, "GET", "/api/auth/me", &key, None)
+            .await
+            .status,
+        StatusCode::OK
+    );
+
+    let admin = cookie_from(
+        &login(&app, "admin@example.com", "admin-password-123")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    send(
+        &app,
+        "PATCH",
+        &format!("/api/admin/users/{id}"),
+        Some(&admin),
+        Some(json!({ "is_active": false })),
+    )
+    .await;
+    assert_eq!(
+        send_key(&app, "GET", "/api/auth/me", &key, None)
+            .await
+            .status,
+        StatusCode::UNAUTHORIZED
+    );
 }

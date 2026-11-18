@@ -80,9 +80,34 @@ pub async fn send(
     cookie: Option<&str>,
     body: Option<serde_json::Value>,
 ) -> TestResponse {
+    send_auth(app, method, uri, cookie, None, body).await
+}
+
+/// Like `send`, with an `Authorization: Bearer <api_key>` header.
+pub async fn send_key(
+    app: &Router,
+    method: &str,
+    uri: &str,
+    api_key: &str,
+    body: Option<serde_json::Value>,
+) -> TestResponse {
+    send_auth(app, method, uri, None, Some(api_key), body).await
+}
+
+pub async fn send_auth(
+    app: &Router,
+    method: &str,
+    uri: &str,
+    cookie: Option<&str>,
+    api_key: Option<&str>,
+    body: Option<serde_json::Value>,
+) -> TestResponse {
     let mut req = Request::builder().method(method).uri(uri);
     if let Some(c) = cookie {
         req = req.header(header::COOKIE, c);
+    }
+    if let Some(k) = api_key {
+        req = req.header(header::AUTHORIZATION, format!("Bearer {k}"));
     }
     let req = match body {
         Some(b) => req

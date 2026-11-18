@@ -1,10 +1,12 @@
 # GIC Review
 
-> **AI assistants:** read `prompt.md` and `docs/AI-SPEC.md` first, and keep both in sync.
+> **AI assistants:** read `prompt.md` (build brief) and `docs/AI-SPEC.md` (current status) first. When you add or change a feature, update the feature/requirement list in both.
 
 A study website for exam review. Students pick a subject, then read its **Interactive
 Review** or practise with **Quizzes** in **QCM** or **Flashcard** mode, with no account
-needed. Staff (admins and managers) log in to create quizzes, upload images and reviews.
+needed. **Managers** create quizzes and interactive reviews in the dashboard, or through the
+API with their personal **API key** (how AI assistants add content). **Admins** only manage
+manager accounts, managers' API keys and subjects.
 
 | Part | Stack | Folder |
 |---|---|---|
@@ -16,7 +18,7 @@ The two projects are fully separate (own dependencies, own `.env`) and talk only
 ## Prerequisites
 
 - Rust (stable) and `sqlx-cli`: `cargo install sqlx-cli --no-default-features --features mysql,rustls`
-- Node.js 20+ and npm
+- [Bun](https://bun.sh) 1.3+ (the frontend uses Bun only; don't use npm, yarn or pnpm)
 - MySQL 8 (an empty database, e.g. `CREATE DATABASE gic_review CHARACTER SET utf8mb4;`)
 - A Cloudflare R2 bucket with **public access** enabled (custom domain or `r2.dev` URL) and
   an R2 API token (Object Read & Write)
@@ -43,10 +45,10 @@ DB-backed tests: `DATABASE_URL=mysql://user:pass@host:3306/gic_review cargo test
 ```bash
 cd frontend
 cp .env.example .env
-npm install
-npm run dev                 # http://localhost:5173
-npm run build               # type-check + production build into dist/
-npm run lint:check && npm run format:check
+bun install
+bun run dev                 # http://localhost:5173
+bun run build               # type-check + production build into dist/
+bun run lint && bun run format:check
 ```
 
 ## Configuration
@@ -63,10 +65,24 @@ Deployment notes: serve the frontend and the API on the same site (e.g. `example
 `APP_ENV=production` so the cookie is `Secure`; set `FRONTEND_URL` to the frontend origin
 (CORS); serve R2 from its own domain.
 
+## API keys (for scripts and AI assistants)
+
+A manager opens **Dashboard → API key**, creates a key (one per manager, permissions
+`quizzes:write` / `reviews:write`, optional expiry) and copies it; it is shown once. Then:
+
+```bash
+curl -H "Authorization: Bearer gic_…" http://localhost:8080/api/auth/me
+curl -H "Authorization: Bearer gic_…" -H 'Content-Type: application/json' \
+  --data @docs/examples/hci-sample-quiz.json http://localhost:8080/api/admin/quizzes/import
+```
+
+Admins can see and revoke every manager's key under **Dashboard → API keys**. Keys never work
+for user, key or subject management. Details: `docs/AI-HOW-ADD-QUIZ.md`.
+
 ## Documentation
 
-- `prompt.md`: requirements (source of truth for intent)
-- `docs/AI-SPEC.md`: what is built, schema, endpoints, limitations, changelog
+- `prompt.md`: build brief (requirements and how to build the project)
+- `docs/AI-SPEC.md`: status sheet (features checklist, schema, endpoints, limitations, changelog)
 - `docs/AI-HOW-ADD-QUIZ.md`: adding quizzes (admin panel, JSON import, SQL) and new quiz modes
 - `docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md`: writing and uploading interactive reviews
 - `docs/examples/`: a text-only sample quiz JSON and an interactive review starter template

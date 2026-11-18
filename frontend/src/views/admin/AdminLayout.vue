@@ -6,17 +6,21 @@ import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
 
-const links = computed(() => [
-  { to: '/admin/quizzes', label: 'Quizzes', icon: 'list-check' },
-  { to: '/admin/import', label: 'Bulk import', icon: 'import' },
-  { to: '/admin/reviews', label: 'Interactive reviews', icon: 'book' },
-  ...(auth.isAdmin
+// Managers create content; admins only manage manager accounts, API keys and subjects.
+const links = computed(() =>
+  auth.isAdmin
     ? [
-        { to: '/admin/subjects', label: 'Subjects', icon: 'folder' },
         { to: '/admin/users', label: 'Managers', icon: 'users' },
+        { to: '/admin/api-keys', label: 'API keys', icon: 'key' },
+        { to: '/admin/subjects', label: 'Subjects', icon: 'folder' },
       ]
-    : []),
-])
+    : [
+        { to: '/admin/quizzes', label: 'Quizzes', icon: 'list-check' },
+        { to: '/admin/import', label: 'Bulk import', icon: 'import' },
+        { to: '/admin/reviews', label: 'Interactive reviews', icon: 'book' },
+        { to: '/admin/api-key', label: 'API key', icon: 'key' },
+      ],
+)
 </script>
 
 <template>

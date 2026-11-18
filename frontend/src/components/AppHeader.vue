@@ -32,7 +32,7 @@ async function logout() {
         <template v-if="auth.isStaff">
           <RouterLink to="/admin" class="btn-ghost px-2.5 text-sm">
             <AppIcon name="pencil" :size="16" />
-            <span class="hidden sm:inline">Admin</span>
+            <span class="hidden sm:inline">Dashboard</span>
           </RouterLink>
           <button class="btn-ghost px-2.5 text-sm" aria-label="Log out" @click="logout">
             <AppIcon name="logout" :size="16" />

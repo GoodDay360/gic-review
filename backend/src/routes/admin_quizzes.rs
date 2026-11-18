@@ -12,7 +12,7 @@ use serde::Deserialize;
 use sqlx::{MySql, Transaction};
 
 use crate::{
-    auth::RequireStaff,
+    auth::{QuizManager, RequireManager},
     error::{AppError, AppResult},
     models::{QuizDetail, QuizSummary, question_image_keys},
     repo,
@@ -250,7 +250,7 @@ struct ListQuery {
 }
 
 async fn list_quizzes(
-    _staff: RequireStaff,
+    _manager: QuizManager,
     State(state): State<AppState>,
     Query(q): Query<ListQuery>,
 ) -> AppResult<Json<Vec<QuizSummary>>> {
@@ -260,7 +260,7 @@ async fn list_quizzes(
 }
 
 async fn get_quiz(
-    _staff: RequireStaff,
+    _manager: QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<Json<QuizDetail>> {
@@ -268,7 +268,7 @@ async fn get_quiz(
 }
 
 async fn create_quiz(
-    RequireStaff(user): RequireStaff,
+    RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Json(body): Json<QuizInput>,
 ) -> AppResult<(StatusCode, Json<QuizDetail>)> {
@@ -291,7 +291,7 @@ async fn create_quiz(
 }
 
 async fn update_quiz(
-    _staff: RequireStaff,
+    _manager: QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Json(body): Json<QuizInput>,
@@ -319,7 +319,7 @@ async fn update_quiz(
 }
 
 async fn delete_quiz(
-    _staff: RequireStaff,
+    _manager: QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<StatusCode> {
@@ -346,7 +346,7 @@ struct PublishInput {
 }
 
 async fn set_published(
-    _staff: RequireStaff,
+    _manager: QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Json(body): Json<PublishInput>,
@@ -370,7 +370,7 @@ async fn set_published(
 // ---------- Question handlers ----------
 
 async fn create_question(
-    _staff: RequireStaff,
+    _manager: QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Json(body): Json<QuestionInput>,
@@ -391,7 +391,7 @@ async fn create_question(
 }
 
 async fn update_question(
-    _staff: RequireStaff,
+    _manager: QuizManager,
     State(state): State<AppState>,
     Path((id, qid)): Path<(i64, i64)>,
     Json(body): Json<QuestionInput>,
@@ -441,7 +441,7 @@ async fn update_question(
 }
 
 async fn delete_question(
-    _staff: RequireStaff,
+    _manager: QuizManager,
     State(state): State<AppState>,
     Path((id, qid)): Path<(i64, i64)>,
 ) -> AppResult<Json<QuizDetail>> {
@@ -468,7 +468,7 @@ struct ReorderInput {
 }
 
 async fn reorder_questions(
-    _staff: RequireStaff,
+    _manager: QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Json(body): Json<ReorderInput>,

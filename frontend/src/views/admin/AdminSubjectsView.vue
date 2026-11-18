@@ -79,15 +79,42 @@ async function confirmDelete() {
     toast.error(errorMessage(err))
   }
 }
+
+// Maintenance: remove R2 files that no row references (admin only).
+const cleaning = ref(false)
+async function cleanupOrphans() {
+  cleaning.value = true
+  try {
+    const res = await api.post<{ scanned: number; deleted: number }>(
+      '/admin/uploads/cleanup-orphans',
+    )
+    toast.success(`Scanned ${res.scanned} files, deleted ${res.deleted} orphaned file(s).`)
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    cleaning.value = false
+  }
+}
 </script>
 
 <template>
   <div class="space-y-5">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-2xl font-bold text-ctp-text">Subjects</h1>
-      <button class="btn-primary" @click="openNew">
-        <AppIcon name="plus" :size="16" /> New subject
-      </button>
+      <div class="flex flex-wrap gap-2">
+        <button
+          class="btn-secondary"
+          :disabled="cleaning"
+          title="Delete R2 files that no quiz, question, option or review uses (keeps files younger than 1 hour)"
+          @click="cleanupOrphans"
+        >
+          <AppIcon name="trash" :size="16" />
+          {{ cleaning ? 'Cleaning…' : 'Clean up orphaned images' }}
+        </button>
+        <button class="btn-primary" @click="openNew">
+          <AppIcon name="plus" :size="16" /> New subject
+        </button>
+      </div>
     </div>
 
     <div v-if="loading" class="space-y-2">

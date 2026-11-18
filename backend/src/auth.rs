@@ -1,20 +1,29 @@
 //! Password hashing (Argon2id), JWT session cookies and the auth extractors
-//! `RequireStaff`, `RequireAdmin` and `MaybeStaff`.
+//! `RequireManager<Scope>`, `RequireManagerSession`, `RequireAdmin`, `RequireAuth`, `MaybeManager`.
 //!
-//! Every staff request re-reads the user's role and `is_active` flag from the database,
+//! Roles: managers create content (dashboard or API key); admins only manage manager
+//! accounts, their API keys, subjects and orphan cleanup (dashboard only).
+//!
+//! Every authenticated request re-reads the user's role and `is_active` flag from the database,
 //! so deactivating a manager takes effect immediately even if their JWT is still valid.
 
 use argon2::{
     Argon2,
     password_hash::{PasswordHasher, PasswordVerifier, phc::PasswordHash},
 };
-use axum::{extract::FromRequestParts, http::request::Parts};
+use std::marker::PhantomData;
+
+use axum::{
+    extract::FromRequestParts,
+    http::{header, request::Parts},
+};
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{NaiveDateTime, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    api_keys::{self, ApiScope},
     config::Config,
     error::{AppError, AppResult},
     state::AppState,
@@ -172,14 +181,106 @@ pub fn clear_session_cookie(config: &Config) -> Cookie<'static> {
 // ---------- Extractors ----------
 
 /// An authenticated, active staff member, freshly loaded from the database.
+/// How the request was authenticated.
+#[derive(Debug, Clone)]
+pub enum AuthMethod {
+    /// Browser session cookie (dashboard).
+    Session,
+    /// `Authorization: Bearer gic_...` API key (scripts / AI assistants).
+    ApiKey { key_id: i64, scopes: Vec<ApiScope> },
+}
+
+/// An authenticated, active user, freshly loaded from the database.
 #[derive(Debug, Clone)]
 pub struct AuthUser {
     pub id: i64,
     pub role: Role,
     pub row: UserRow,
+    pub method: AuthMethod,
 }
 
-async fn load_user_from_parts(parts: &Parts, state: &AppState) -> AppResult<Option<AuthUser>> {
+impl AuthUser {
+    pub fn is_api_key(&self) -> bool {
+        matches!(self.method, AuthMethod::ApiKey { .. })
+    }
+}
+
+/// The raw value of an `Authorization: Bearer ...` header, if any.
+fn bearer(parts: &Parts) -> Option<Option<String>> {
+    let value = parts.headers.get(header::AUTHORIZATION)?;
+    let value = value.to_str().ok().map(str::trim).unwrap_or_default();
+    let token = value
+        .split_once(' ')
+        .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
+        .map(|(_, t)| t.trim().to_string());
+    Some(token)
+}
+
+async fn load_active_user(state: &AppState, user_id: i64) -> AppResult<Option<(UserRow, Role)>> {
+    let row: Option<UserRow> = sqlx::query_as(concat!(
+        "SELECT ",
+        user_columns!(),
+        " FROM users WHERE id = ?"
+    ))
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await?;
+    Ok(row.and_then(|row| {
+        if !row.is_active {
+            return None;
+        }
+        let role = Role::parse(&row.role)?;
+        Some((row, role))
+    }))
+}
+
+#[derive(sqlx::FromRow)]
+struct KeyLookup {
+    id: i64,
+    user_id: i64,
+    scopes: String,
+}
+
+async fn authenticate_api_key(state: &AppState, key: &str) -> AppResult<Option<AuthUser>> {
+    if !api_keys::looks_like_key(key) {
+        return Ok(None);
+    }
+    let found: Option<KeyLookup> = sqlx::query_as(
+        "SELECT id, user_id, scopes FROM api_keys \
+         WHERE key_hash = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())",
+    )
+    .bind(api_keys::hash(key))
+    .fetch_optional(&state.db)
+    .await?;
+    let Some(found) = found else {
+        return Ok(None);
+    };
+    // The owner must still be an active manager: deactivating them disables their keys.
+    let Some((row, role)) = load_active_user(state, found.user_id).await? else {
+        return Ok(None);
+    };
+    if role != Role::Manager {
+        return Ok(None);
+    }
+    sqlx::query(
+        "UPDATE api_keys SET last_used_at = NOW() \
+         WHERE id = ? AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL 1 MINUTE)",
+    )
+    .bind(found.id)
+    .execute(&state.db)
+    .await?;
+    Ok(Some(AuthUser {
+        id: row.id,
+        role,
+        row,
+        method: AuthMethod::ApiKey {
+            key_id: found.id,
+            scopes: api_keys::parse_scopes(&found.scopes),
+        },
+    }))
+}
+
+async fn authenticate_session(parts: &Parts, state: &AppState) -> AppResult<Option<AuthUser>> {
     let jar = CookieJar::from_headers(&parts.headers);
     let Some(token) = jar.get(SESSION_COOKIE).map(|c| c.value().to_string()) else {
         return Ok(None);
@@ -190,47 +291,112 @@ async fn load_user_from_parts(parts: &Parts, state: &AppState) -> AppResult<Opti
     let Ok(user_id) = claims.sub.parse::<i64>() else {
         return Ok(None);
     };
-
-    let row: Option<UserRow> = sqlx::query_as(concat!(
-        "SELECT ",
-        user_columns!(),
-        " FROM users WHERE id = ?"
-    ))
-    .bind(user_id)
-    .fetch_optional(&state.db)
-    .await?;
-
-    Ok(row.and_then(|row| {
-        if !row.is_active {
-            return None;
-        }
-        let role = Role::parse(&row.role)?;
-        Some(AuthUser {
+    Ok(load_active_user(state, user_id)
+        .await?
+        .map(|(row, role)| AuthUser {
             id: row.id,
             role,
             row,
-        })
-    }))
+            method: AuthMethod::Session,
+        }))
 }
 
-/// Any active admin or manager.
-pub struct RequireStaff(pub AuthUser);
+/// Authenticate with an API key if an `Authorization` header is present (the cookie is
+/// then ignored), otherwise with the session cookie.
+async fn authenticate(parts: &Parts, state: &AppState) -> AppResult<Option<AuthUser>> {
+    match bearer(parts) {
+        Some(Some(key)) => authenticate_api_key(state, &key).await,
+        Some(None) => Ok(None), // malformed Authorization header
+        None => authenticate_session(parts, state).await,
+    }
+}
 
-impl FromRequestParts<AppState> for RequireStaff {
+/// Session-only endpoints reject API keys before touching the database.
+fn reject_api_key(parts: &Parts) -> AppResult<()> {
+    if bearer(parts).is_some() {
+        Err(AppError::ApiKeyNotAllowed)
+    } else {
+        Ok(())
+    }
+}
+
+// ----- Scope requirements for endpoints that accept API keys -----
+
+/// Which API key scopes satisfy an endpoint (any one of them is enough).
+pub trait ScopeRequirement {
+    const ANY_OF: &'static [ApiScope];
+}
+
+/// Quiz content (quizzes, questions, import).
+pub struct QuizzesScope;
+impl ScopeRequirement for QuizzesScope {
+    const ANY_OF: &'static [ApiScope] = &[ApiScope::QuizzesWrite];
+}
+
+/// Interactive reviews.
+pub struct ReviewsScope;
+impl ScopeRequirement for ReviewsScope {
+    const ANY_OF: &'static [ApiScope] = &[ApiScope::ReviewsWrite];
+}
+
+/// Image uploads (used by both quizzes and reviews).
+pub struct ContentScope;
+impl ScopeRequirement for ContentScope {
+    const ANY_OF: &'static [ApiScope] = &[ApiScope::QuizzesWrite, ApiScope::ReviewsWrite];
+}
+
+/// An active **manager**, via session cookie or an API key holding scope `S`.
+/// Admins are rejected: they only manage accounts and subjects.
+pub struct RequireManager<S: ScopeRequirement>(pub AuthUser, pub PhantomData<S>);
+
+impl<S: ScopeRequirement> FromRequestParts<AppState> for RequireManager<S> {
     type Rejection = AppError;
 
     async fn from_request_parts(
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        match load_user_from_parts(parts, state).await? {
-            Some(user) => Ok(Self(user)),
+        let user = authenticate(parts, state)
+            .await?
+            .ok_or(AppError::Unauthorized)?;
+        if user.role != Role::Manager {
+            return Err(AppError::Forbidden);
+        }
+        if let AuthMethod::ApiKey { scopes, .. } = &user.method
+            && !S::ANY_OF.iter().any(|s| scopes.contains(s))
+        {
+            return Err(AppError::MissingScope(
+                S::ANY_OF
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" or "),
+            ));
+        }
+        Ok(Self(user, PhantomData))
+    }
+}
+
+/// An active manager logged in through the dashboard (no API keys).
+pub struct RequireManagerSession(pub AuthUser);
+
+impl FromRequestParts<AppState> for RequireManagerSession {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        reject_api_key(parts)?;
+        match authenticate_session(parts, state).await? {
+            Some(user) if user.role == Role::Manager => Ok(Self(user)),
+            Some(_) => Err(AppError::Forbidden),
             None => Err(AppError::Unauthorized),
         }
     }
 }
 
-/// An active admin only.
+/// An active admin logged in through the dashboard (no API keys).
 pub struct RequireAdmin(pub AuthUser);
 
 impl FromRequestParts<AppState> for RequireAdmin {
@@ -240,7 +406,8 @@ impl FromRequestParts<AppState> for RequireAdmin {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        match load_user_from_parts(parts, state).await? {
+        reject_api_key(parts)?;
+        match authenticate_session(parts, state).await? {
             Some(user) if user.role == Role::Admin => Ok(Self(user)),
             Some(_) => Err(AppError::Forbidden),
             None => Err(AppError::Unauthorized),
@@ -248,22 +415,44 @@ impl FromRequestParts<AppState> for RequireAdmin {
     }
 }
 
-/// Staff if a valid session is present, otherwise a guest. Never rejects.
-pub struct MaybeStaff(pub Option<AuthUser>);
+/// Any authenticated user (session or API key). Used by `GET /auth/me`.
+pub struct RequireAuth(pub AuthUser);
 
-impl FromRequestParts<AppState> for MaybeStaff {
+impl FromRequestParts<AppState> for RequireAuth {
     type Rejection = AppError;
 
     async fn from_request_parts(
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        // Avoid a DB round-trip for guests without a cookie.
+        authenticate(parts, state)
+            .await?
+            .map(Self)
+            .ok_or(AppError::Unauthorized)
+    }
+}
+
+/// A manager (session or any API key) if present, otherwise a guest. Never rejects.
+/// Used to let managers preview unpublished quizzes.
+pub struct MaybeManager(pub Option<AuthUser>);
+
+impl FromRequestParts<AppState> for MaybeManager {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        // Avoid a DB round-trip for guests.
         let jar = CookieJar::from_headers(&parts.headers);
-        if jar.get(SESSION_COOKIE).is_none() {
+        if jar.get(SESSION_COOKIE).is_none() && bearer(parts).is_none() {
             return Ok(Self(None));
         }
-        Ok(Self(load_user_from_parts(parts, state).await?))
+        Ok(Self(
+            authenticate(parts, state)
+                .await?
+                .filter(|u| u.role == Role::Manager),
+        ))
     }
 }
 
@@ -280,5 +469,30 @@ impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
             .map(|ci| ci.0.ip().to_string())
             .unwrap_or_else(|| "unknown".to_string());
         Ok(Self(ip))
+    }
+}
+
+/// Manager allowed to change quizzes (session, or API key with `quizzes:write`).
+pub type QuizManager = RequireManager<QuizzesScope>;
+/// Manager allowed to change interactive reviews (session, or API key with `reviews:write`).
+pub type ReviewManager = RequireManager<ReviewsScope>;
+/// Manager allowed to upload images (session, or API key with either write scope).
+pub type ContentManager = RequireManager<ContentScope>;
+
+/// Any active user (admin or manager) logged in through the dashboard (no API keys).
+pub struct RequireSession(pub AuthUser);
+
+impl FromRequestParts<AppState> for RequireSession {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        reject_api_key(parts)?;
+        authenticate_session(parts, state)
+            .await?
+            .map(Self)
+            .ok_or(AppError::Unauthorized)
     }
 }

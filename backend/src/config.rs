@@ -68,6 +68,11 @@ impl Config {
         self.app_env == AppEnv::Production
     }
 
+    /// Use secure cross-site cookies when either production mode or the public frontend is HTTPS.
+    pub fn uses_secure_cookies(&self) -> bool {
+        self.is_production() || self.frontend_url.starts_with("https://")
+    }
+
     /// MySQL connection options built from the `DB_*` values.
     pub fn connect_options(&self) -> MySqlConnectOptions {
         mysql_options(

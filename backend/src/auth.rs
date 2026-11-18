@@ -172,7 +172,7 @@ pub fn decode_token(config: &Config, token: &str) -> Option<Claims> {
 pub fn session_cookie(config: &Config, token: String) -> Cookie<'static> {
     Cookie::build((SESSION_COOKIE, token))
         .http_only(true)
-        .secure(config.is_production())
+        .secure(config.uses_secure_cookies())
         .same_site(session_cookie_same_site(config))
         .path("/")
         .max_age(time::Duration::hours(config.jwt_expires_in_hours))
@@ -182,7 +182,7 @@ pub fn session_cookie(config: &Config, token: String) -> Cookie<'static> {
 pub fn clear_session_cookie(config: &Config) -> Cookie<'static> {
     Cookie::build((SESSION_COOKIE, ""))
         .http_only(true)
-        .secure(config.is_production())
+        .secure(config.uses_secure_cookies())
         .same_site(session_cookie_same_site(config))
         .path("/")
         .max_age(time::Duration::ZERO)
@@ -190,7 +190,7 @@ pub fn clear_session_cookie(config: &Config) -> Cookie<'static> {
 }
 
 fn session_cookie_same_site(config: &Config) -> SameSite {
-    if config.is_production() {
+    if config.uses_secure_cookies() {
         SameSite::None
     } else {
         SameSite::Strict

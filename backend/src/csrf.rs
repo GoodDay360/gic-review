@@ -48,7 +48,7 @@ pub async fn layer(State(state): State<AppState>, request: Request, next: Next) 
         request.method(),
         request.headers(),
         &state.config.frontend_url,
-        state.config.is_production(),
+        state.config.uses_secure_cookies(),
     ) {
         return AppError::Forbidden.into_response();
     }

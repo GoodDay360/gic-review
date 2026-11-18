@@ -61,6 +61,16 @@ fn production_session_cookie_allows_cross_site_requests_securely() {
     assert!(cookie.contains("HttpOnly"));
 }
 
+#[test]
+fn https_frontend_uses_secure_cross_site_cookie_without_production_flag() {
+    let mut config = test_config();
+    config.frontend_url = "https://gicreview.pages.dev".into();
+
+    let cookie = session_cookie(&config, "test-token".into()).to_string();
+    assert!(cookie.contains("SameSite=None"));
+    assert!(cookie.contains("Secure"));
+}
+
 /// Endpoints that only accept a dashboard session: an API key must be refused
 /// (403 api_key_not_allowed) before any database access.
 const SESSION_ONLY_ENDPOINTS: &[(&str, &str)] = &[

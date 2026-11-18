@@ -1,0 +1,133 @@
+{
+  "subject_slug": "hci",
+  "title": "HCI Fundamentals (sample)",
+  "description": "Usability principles, Nielsen's heuristics and Fitts's law. Text-only sample quiz that works in QCM and Flashcard mode.",
+  "questions": [
+    {
+      "prompt": "Which of Nielsen's heuristics is violated when a system gives no feedback after the user clicks \"Save\"?",
+      "answer_text": "Visibility of system status",
+      "explanation": "The system should always keep users informed about what is going on, through appropriate feedback within reasonable time.",
+      "options": [
+        {
+          "text": "Visibility of system status",
+          "is_correct": true
+        },
+        {
+          "text": "Aesthetic and minimalist design",
+          "is_correct": false
+        },
+        {
+          "text": "Help and documentation",
+          "is_correct": false
+        },
+        {
+          "text": "Flexibility and efficiency of use",
+          "is_correct": false
+        }
+      ]
+    },
+    {
+      "prompt": "According to Fitts's law, the time to reach a target depends on…",
+      "answer_text": "The distance to the target and the size (width) of the target.",
+      "explanation": "MT = a + b · log2(D / W + 1). Bigger and closer targets are faster to hit.",
+      "multi_select": true,
+      "options": [
+        {
+          "text": "The distance to the target",
+          "is_correct": true
+        },
+        {
+          "text": "The size of the target",
+          "is_correct": true
+        },
+        {
+          "text": "The color of the target",
+          "is_correct": false
+        },
+        {
+          "text": "The number of items on screen",
+          "is_correct": false
+        }
+      ]
+    },
+    {
+      "prompt": "What does Hick's law describe?",
+      "answer_text": "Decision time grows logarithmically with the number of choices.",
+      "explanation": "Fewer, well-grouped choices make decisions faster.",
+      "options": [
+        {
+          "text": "Decision time grows with the number of choices",
+          "is_correct": true
+        },
+        {
+          "text": "Short-term memory holds about 7 ± 2 items",
+          "is_correct": false
+        },
+        {
+          "text": "Pointing time depends on distance and size",
+          "is_correct": false
+        }
+      ]
+    },
+    {
+      "prompt": "Which usability evaluation method involves experts checking an interface against a list of principles, without users?",
+      "answer_text": "Heuristic evaluation",
+      "options": [
+        {
+          "text": "Heuristic evaluation",
+          "is_correct": true
+        },
+        {
+          "text": "Think-aloud protocol",
+          "is_correct": false
+        },
+        {
+          "text": "A/B testing",
+          "is_correct": false
+        },
+        {
+          "text": "Field study",
+          "is_correct": false
+        }
+      ]
+    },
+    {
+      "prompt": "Name Norman's term for the gap between what a user wants to do and the actions the system allows.",
+      "answer_text": "The gulf of execution",
+      "explanation": "Its counterpart, the gulf of evaluation, is the gap between the system's state and the user's understanding of it.",
+      "options": [
+        {
+          "text": "The gulf of execution",
+          "is_correct": true
+        },
+        {
+          "text": "The gulf of evaluation",
+          "is_correct": false
+        },
+        {
+          "text": "The mental model gap",
+          "is_correct": false
+        }
+      ]
+    },
+    {
+      "prompt": "A \"Delete\" button placed right next to \"Save\" with the same style mostly violates which heuristic?",
+      "answer_text": "Error prevention",
+      "explanation": "Good design prevents problems from occurring, e.g. by separating destructive actions and asking for confirmation.",
+      "options": [
+        {
+          "text": "Error prevention",
+          "is_correct": true
+        },
+        {
+          "text": "Match between system and the real world",
+          "is_correct": false
+        },
+        {
+          "text": "Recognition rather than recall",
+          "is_correct": false
+        }
+      ]
+    }
+  ]
+}

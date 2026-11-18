@@ -41,8 +41,6 @@ Follow the instructions from:
 https://github.com/GoodDay360/gic-review/blob/main/docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md
 https://github.com/GoodDay360/gic-review/blob/main/docs/AI-HOW-ADD-QUIZ.md
 
-
-- Write the quiz and the review in English.
 - Keep everything unpublished (draft). I will review it and publish it myself.
 - When you are done, tell me the quiz and review IDs and titles.
 ```

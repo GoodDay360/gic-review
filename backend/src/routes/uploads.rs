@@ -13,7 +13,8 @@ use serde::Serialize;
 use serde_json::json;
 
 use crate::{
-    auth::{ContentManager, RequireAdmin},
+    access::{self, Content},
+    auth::{ContentManager, RequireAdmin, RequireManager},
     config::Config,
     error::{AppError, AppResult},
     images,
@@ -84,7 +85,7 @@ pub async fn store_image(
 
 /// `multipart/form-data` with a `file` field and an optional `quiz_id` field.
 async fn upload_image(
-    _manager: ContentManager,
+    RequireManager(user, _): ContentManager,
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> AppResult<(StatusCode, Json<UploadedImage>)> {
@@ -126,15 +127,13 @@ async fn upload_image(
         ));
     }
 
-    // Only use the quiz prefix for quizzes that really exist.
-    if let Some(qid) = quiz_id {
-        let exists: Option<(i64,)> = sqlx::query_as("SELECT id FROM quizzes WHERE id = ?")
-            .bind(qid)
-            .fetch_optional(&state.db)
-            .await?;
-        if exists.is_none() {
-            quiz_id = None;
-        }
+    // Only use the quiz prefix for quizzes this manager can manage.
+    if let Some(qid) = quiz_id
+        && access::require(&state.db, Content::Quiz, qid, user.id)
+            .await
+            .is_err()
+    {
+        quiz_id = None;
     }
 
     let uploaded = store_image(&state, bytes, filename, quiz_id).await?;

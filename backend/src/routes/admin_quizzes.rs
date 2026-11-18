@@ -1,6 +1,7 @@
-//! Staff (manager + admin) quiz management: quizzes, questions, options, reorder, publish.
+//! Manager quiz management: quizzes, questions, options, reorder, publish.
+//! A manager can only manage quizzes they own or that were shared with them (see `access`).
 
-use std::collections::HashSet;
+use std::{collections::HashSet, ops::Deref};
 
 use axum::{
     Json, Router,
@@ -8,10 +9,11 @@ use axum::{
     http::StatusCode,
     routing::{get, patch, post, put},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::{MySql, Transaction};
 
 use crate::{
+    access::{self, AccessInfo, Content},
     auth::{QuizManager, RequireManager},
     error::{AppError, AppResult},
     models::{QuizDetail, QuizSummary, question_image_keys},
@@ -236,10 +238,38 @@ async fn ensure_subject(state: &AppState, subject_id: i64) -> AppResult<()> {
         .ok_or(AppError::Validation("subject_id: subject not found".into()))
 }
 
-async fn load_quiz(state: &AppState, id: i64) -> AppResult<QuizDetail> {
-    repo::quiz_detail(&state.db, &state.storage, id)
+/// A quiz as seen by a manager: the full quiz plus who owns it and whether it is shared.
+#[derive(Debug, Serialize)]
+pub struct ManagedQuiz {
+    #[serde(flatten)]
+    pub detail: QuizDetail,
+    #[serde(flatten)]
+    pub access: AccessInfo,
+}
+
+impl Deref for ManagedQuiz {
+    type Target = QuizDetail;
+    fn deref(&self) -> &QuizDetail {
+        &self.detail
+    }
+}
+
+/// A quiz card in the manager's list.
+#[derive(Debug, Serialize)]
+pub struct ManagedQuizSummary {
+    #[serde(flatten)]
+    pub summary: QuizSummary,
+    #[serde(flatten)]
+    pub access: AccessInfo,
+}
+
+/// Load a quiz the manager may manage (owner or shared), else 404.
+pub async fn load_quiz(state: &AppState, id: i64, user_id: i64) -> AppResult<ManagedQuiz> {
+    let access = access::require(&state.db, Content::Quiz, id, user_id).await?;
+    let detail = repo::quiz_detail(&state.db, &state.storage, id)
         .await?
-        .ok_or(AppError::NotFound("quiz"))
+        .ok_or(AppError::NotFound("quiz"))?;
+    Ok(ManagedQuiz { detail, access })
 }
 
 // ---------- Quiz handlers ----------
@@ -249,29 +279,39 @@ struct ListQuery {
     subject_id: Option<i64>,
 }
 
+/// Quizzes the manager owns or that were shared with them (drafts included).
 async fn list_quizzes(
-    _manager: QuizManager,
+    RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Query(q): Query<ListQuery>,
-) -> AppResult<Json<Vec<QuizSummary>>> {
+) -> AppResult<Json<Vec<ManagedQuizSummary>>> {
+    let mut access = access::accessible(&state.db, Content::Quiz, user.id).await?;
+    let quizzes = repo::quiz_summaries(&state.db, &state.storage, q.subject_id, false).await?;
     Ok(Json(
-        repo::quiz_summaries(&state.db, &state.storage, q.subject_id, false).await?,
+        quizzes
+            .into_iter()
+            .filter_map(|summary| {
+                access
+                    .remove(&summary.id)
+                    .map(|access| ManagedQuizSummary { summary, access })
+            })
+            .collect(),
     ))
 }
 
 async fn get_quiz(
-    _manager: QuizManager,
+    RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
-) -> AppResult<Json<QuizDetail>> {
-    Ok(Json(load_quiz(&state, id).await?))
+) -> AppResult<Json<ManagedQuiz>> {
+    Ok(Json(load_quiz(&state, id, user.id).await?))
 }
 
 async fn create_quiz(
     RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Json(body): Json<QuizInput>,
-) -> AppResult<(StatusCode, Json<QuizDetail>)> {
+) -> AppResult<(StatusCode, Json<ManagedQuiz>)> {
     let body = body.normalize()?;
     ensure_subject(&state, body.subject_id).await?;
     // New quizzes always start unpublished.
@@ -287,17 +327,20 @@ async fn create_quiz(
     .execute(&state.db)
     .await?;
     let id = res.last_insert_id() as i64;
-    Ok((StatusCode::CREATED, Json(load_quiz(&state, id).await?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(load_quiz(&state, id, user.id).await?),
+    ))
 }
 
 async fn update_quiz(
-    _manager: QuizManager,
+    RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Json(body): Json<QuizInput>,
-) -> AppResult<Json<QuizDetail>> {
+) -> AppResult<Json<ManagedQuiz>> {
     let body = body.normalize()?;
-    let existing = load_quiz(&state, id).await?;
+    let existing = load_quiz(&state, id, user.id).await?;
     ensure_subject(&state, body.subject_id).await?;
     sqlx::query(
         "UPDATE quizzes SET subject_id = ?, title = ?, description = ?, cover_image_key = ? WHERE id = ?",
@@ -310,20 +353,21 @@ async fn update_quiz(
     .execute(&state.db)
     .await?;
 
-    if let Some(old) = existing.summary.cover_image_key
+    if let Some(old) = existing.summary.cover_image_key.clone()
         && Some(&old) != body.cover_image_key.as_ref()
     {
         state.storage.delete_many_best_effort([old]).await;
     }
-    Ok(Json(load_quiz(&state, id).await?))
+    Ok(Json(load_quiz(&state, id, user.id).await?))
 }
 
 async fn delete_quiz(
-    _manager: QuizManager,
+    RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<StatusCode> {
-    let quiz = load_quiz(&state, id).await?;
+    let quiz = load_quiz(&state, id, user.id).await?;
+    quiz.access.require_owner("delete this quiz")?;
     let mut keys: Vec<String> = quiz
         .questions
         .iter()
@@ -346,12 +390,12 @@ struct PublishInput {
 }
 
 async fn set_published(
-    _manager: QuizManager,
+    RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Json(body): Json<PublishInput>,
-) -> AppResult<Json<QuizDetail>> {
-    let quiz = load_quiz(&state, id).await?;
+) -> AppResult<Json<ManagedQuiz>> {
+    let quiz = load_quiz(&state, id, user.id).await?;
     if body.is_published && quiz.summary.available_modes.is_empty() {
         return Err(AppError::Validation(
             "this quiz cannot be published yet: no quiz mode is available. Add questions with \
@@ -364,19 +408,19 @@ async fn set_published(
         .bind(id)
         .execute(&state.db)
         .await?;
-    Ok(Json(load_quiz(&state, id).await?))
+    Ok(Json(load_quiz(&state, id, user.id).await?))
 }
 
 // ---------- Question handlers ----------
 
 async fn create_question(
-    _manager: QuizManager,
+    RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Json(body): Json<QuestionInput>,
-) -> AppResult<(StatusCode, Json<QuizDetail>)> {
+) -> AppResult<(StatusCode, Json<ManagedQuiz>)> {
     let body = body.normalize("question")?;
-    let quiz = load_quiz(&state, id).await?;
+    let quiz = load_quiz(&state, id, user.id).await?;
     let next_position = quiz
         .questions
         .iter()
@@ -387,17 +431,20 @@ async fn create_question(
     let mut tx = state.db.begin().await?;
     insert_question(&mut tx, id, next_position, &body).await?;
     tx.commit().await?;
-    Ok((StatusCode::CREATED, Json(load_quiz(&state, id).await?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(load_quiz(&state, id, user.id).await?),
+    ))
 }
 
 async fn update_question(
-    _manager: QuizManager,
+    RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Path((id, qid)): Path<(i64, i64)>,
     Json(body): Json<QuestionInput>,
-) -> AppResult<Json<QuizDetail>> {
+) -> AppResult<Json<ManagedQuiz>> {
     let body = body.normalize("question")?;
-    let quiz = load_quiz(&state, id).await?;
+    let quiz = load_quiz(&state, id, user.id).await?;
     let existing = quiz
         .questions
         .iter()
@@ -437,15 +484,15 @@ async fn update_question(
     let removed: Vec<&String> = old_keys.difference(&new_keys).collect();
     state.storage.delete_many_best_effort(removed).await;
 
-    Ok(Json(load_quiz(&state, id).await?))
+    Ok(Json(load_quiz(&state, id, user.id).await?))
 }
 
 async fn delete_question(
-    _manager: QuizManager,
+    RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Path((id, qid)): Path<(i64, i64)>,
-) -> AppResult<Json<QuizDetail>> {
-    let quiz = load_quiz(&state, id).await?;
+) -> AppResult<Json<ManagedQuiz>> {
+    let quiz = load_quiz(&state, id, user.id).await?;
     let existing = quiz
         .questions
         .iter()
@@ -459,7 +506,7 @@ async fn delete_question(
         .execute(&state.db)
         .await?;
     state.storage.delete_many_best_effort(keys).await;
-    Ok(Json(load_quiz(&state, id).await?))
+    Ok(Json(load_quiz(&state, id, user.id).await?))
 }
 
 #[derive(Debug, Deserialize)]
@@ -468,12 +515,12 @@ struct ReorderInput {
 }
 
 async fn reorder_questions(
-    _manager: QuizManager,
+    RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Json(body): Json<ReorderInput>,
-) -> AppResult<Json<QuizDetail>> {
-    let quiz = load_quiz(&state, id).await?;
+) -> AppResult<Json<ManagedQuiz>> {
+    let quiz = load_quiz(&state, id, user.id).await?;
     let current: HashSet<i64> = quiz.questions.iter().map(|q| q.id).collect();
     let requested: HashSet<i64> = body.question_ids.iter().copied().collect();
     if current != requested || requested.len() != body.question_ids.len() {
@@ -491,5 +538,5 @@ async fn reorder_questions(
             .await?;
     }
     tx.commit().await?;
-    Ok(Json(load_quiz(&state, id).await?))
+    Ok(Json(load_quiz(&state, id, user.id).await?))
 }

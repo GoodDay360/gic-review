@@ -1,5 +1,6 @@
 //! GIC Review API: Axum + Tokio + SQLx (MySQL) + Cloudflare R2.
 
+pub mod access;
 pub mod api_keys;
 pub mod auth;
 pub mod bootstrap;

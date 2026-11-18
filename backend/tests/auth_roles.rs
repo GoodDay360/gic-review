@@ -526,3 +526,226 @@ async fn db_deactivating_a_manager_disables_their_api_key() {
     );
     tdb.cleanup().await;
 }
+
+#[tokio::test]
+async fn db_content_is_private_until_shared_by_email() {
+    let Some(tdb) = common::test_db().await else {
+        return;
+    };
+    let db = tdb.pool.clone();
+    bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
+    let a_id = insert_manager(&db, "owner-a@example.com", "manager-pass-a", true).await;
+    let b_id = insert_manager(&db, "editor-b@example.com", "manager-pass-b", true).await;
+    let app = app_with_pool(db.clone());
+    let a = cookie_from(
+        &login(&app, "owner-a@example.com", "manager-pass-a")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    let b = cookie_from(
+        &login(&app, "editor-b@example.com", "manager-pass-b")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+
+    // A creates a quiz; B can't see or touch it (404, not even its existence).
+    let quiz = send(&app, "POST", "/api/admin/quizzes", Some(&a),
+        Some(json!({ "subject_id": 1, "title": "A's quiz", "description": null, "cover_image_key": null }))).await;
+    assert_eq!(quiz.status, StatusCode::CREATED);
+    assert_eq!(quiz.json["access"], "owner");
+    let qid = quiz.json["id"].as_i64().unwrap();
+    let q = format!("/api/admin/quizzes/{qid}");
+    let update = json!({ "subject_id": 1, "title": "Edited by B", "description": null, "cover_image_key": null });
+    assert_eq!(
+        send(&app, "GET", "/api/admin/quizzes", Some(&b), None)
+            .await
+            .json
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
+    assert_eq!(
+        send(&app, "GET", &q, Some(&b), None).await.status,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        send(&app, "PUT", &q, Some(&b), Some(update.clone()))
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        send(&app, "GET", &format!("/api/quizzes/{qid}"), Some(&b), None)
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+
+    // A shares with B by email.
+    let shares = format!("{q}/shares");
+    let r = send(
+        &app,
+        "POST",
+        &shares,
+        Some(&a),
+        Some(json!({ "email": "Editor-B@example.com" })),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json["shared_with"][0]["user_id"], b_id);
+    assert_eq!(
+        send(
+            &app,
+            "POST",
+            &shares,
+            Some(&a),
+            Some(json!({ "email": "editor-b@example.com" }))
+        )
+        .await
+        .status,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        send(
+            &app,
+            "POST",
+            &shares,
+            Some(&a),
+            Some(json!({ "email": "nobody@example.com" }))
+        )
+        .await
+        .status,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+
+    // B can now edit, but not delete or manage sharing.
+    let list = send(&app, "GET", "/api/admin/quizzes", Some(&b), None).await;
+    assert_eq!(list.json[0]["access"], "shared");
+    assert_eq!(list.json[0]["owner_id"], a_id);
+    let r = send(&app, "PUT", &q, Some(&b), Some(update)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json["title"], "Edited by B");
+    let r = send(&app, "DELETE", &q, Some(&b), None).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    assert_eq!(r.json["error"]["code"], "owner_only");
+    assert_eq!(
+        send(
+            &app,
+            "POST",
+            &shares,
+            Some(&b),
+            Some(json!({ "email": "owner-a@example.com" }))
+        )
+        .await
+        .status,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(&app, "DELETE", &format!("{shares}/{a_id}"), Some(&b), None)
+            .await
+            .status,
+        StatusCode::FORBIDDEN
+    );
+
+    // A unshares: B loses access again.
+    assert_eq!(
+        send(&app, "DELETE", &format!("{shares}/{b_id}"), Some(&a), None)
+            .await
+            .status,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(&app, "GET", &q, Some(&b), None).await.status,
+        StatusCode::NOT_FOUND
+    );
+
+    // Shared again, then B leaves by themselves.
+    send(
+        &app,
+        "POST",
+        &shares,
+        Some(&a),
+        Some(json!({ "email": "editor-b@example.com" })),
+    )
+    .await;
+    assert_eq!(
+        send(&app, "DELETE", &format!("{shares}/{b_id}"), Some(&b), None)
+            .await
+            .status,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(&app, "GET", &q, Some(&b), None).await.status,
+        StatusCode::NOT_FOUND
+    );
+
+    // Reviews follow the same rules.
+    let rid = sqlx::query(
+        "INSERT INTO interactive_reviews (subject_id, title, slug, r2_key, created_by) \
+         VALUES (1, 'A review', 'a-review', 'reviews/1/x.html', ?)",
+    )
+    .bind(a_id)
+    .execute(&db)
+    .await
+    .unwrap()
+    .last_insert_id();
+    let rv = format!("/api/admin/reviews/{rid}");
+    assert_eq!(
+        send(&app, "GET", &rv, Some(&b), None).await.status,
+        StatusCode::NOT_FOUND
+    );
+    send(
+        &app,
+        "POST",
+        &format!("{rv}/shares"),
+        Some(&a),
+        Some(json!({ "email": "editor-b@example.com" })),
+    )
+    .await;
+    let r = send(&app, "GET", &rv, Some(&b), None).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json["access"], "shared");
+    assert_eq!(
+        send(&app, "DELETE", &rv, Some(&b), None).await.status,
+        StatusCode::FORBIDDEN
+    );
+
+    // Deleting the owner hands the content to the manager it was shared with.
+    send(
+        &app,
+        "POST",
+        &shares,
+        Some(&a),
+        Some(json!({ "email": "editor-b@example.com" })),
+    )
+    .await;
+    let admin = cookie_from(
+        &login(&app, "admin@example.com", "admin-password-123")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    assert_eq!(
+        send(
+            &app,
+            "DELETE",
+            &format!("/api/admin/users/{a_id}"),
+            Some(&admin),
+            None
+        )
+        .await
+        .status,
+        StatusCode::NO_CONTENT
+    );
+    let r = send(&app, "GET", &q, Some(&b), None).await;
+    assert_eq!(r.json["access"], "owner");
+    assert_eq!(r.json["share_count"], 0);
+    assert_eq!(
+        send(&app, "GET", &rv, Some(&b), None).await.json["access"],
+        "owner"
+    );
+    tdb.cleanup().await;
+}

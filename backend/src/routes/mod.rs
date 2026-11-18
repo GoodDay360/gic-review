@@ -6,6 +6,7 @@ pub mod auth;
 pub mod import;
 pub mod public;
 pub mod reviews;
+pub mod shares;
 pub mod subjects;
 pub mod uploads;
 pub mod users;
@@ -25,4 +26,5 @@ pub fn api(config: &Config) -> Router<AppState> {
         .merge(users::router())
         .merge(subjects::router())
         .merge(api_keys::router())
+        .merge(shares::router())
 }

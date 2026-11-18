@@ -12,11 +12,9 @@ use serde::Deserialize;
 use crate::{
     auth::{QuizManager, RequireManager},
     error::{AppError, AppResult},
-    images,
-    models::QuizDetail,
-    repo,
+    images, repo,
     routes::{
-        admin_quizzes::{OptionInput, QuestionInput, insert_question},
+        admin_quizzes::{ManagedQuiz, OptionInput, QuestionInput, insert_question, load_quiz},
         uploads::store_image,
     },
     state::AppState,
@@ -193,7 +191,7 @@ async fn import_quiz(
     RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Json(body): Json<ImportQuiz>,
-) -> AppResult<(StatusCode, Json<QuizDetail>)> {
+) -> AppResult<(StatusCode, Json<ManagedQuiz>)> {
     // ---- Validate everything up front ----
     let subject_id = match (&body.subject_id, clean(body.subject_slug.clone())) {
         (Some(id), _) => *id,
@@ -272,12 +270,10 @@ async fn import_quiz(
     .await;
 
     match result {
-        Ok(quiz_id) => {
-            let quiz = repo::quiz_detail(&state.db, &state.storage, quiz_id)
-                .await?
-                .ok_or(AppError::NotFound("quiz"))?;
-            Ok((StatusCode::CREATED, Json(quiz)))
-        }
+        Ok(quiz_id) => Ok((
+            StatusCode::CREATED,
+            Json(load_quiz(&state, quiz_id, user.id).await?),
+        )),
         Err(err) => {
             state.storage.delete_many_best_effort(&uploaded).await;
             Err(err)

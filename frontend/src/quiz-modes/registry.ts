@@ -1,7 +1,7 @@
 /**
  * Quiz mode registry. The mode-select modal and the play page both read from here.
  *
- * To add a mode (see docs/AI-HOW-ADD-QUIZ.md → "Adding a new quiz mode"):
+ * To add a mode (see docs/DEV-ADD-QUIZ-MODE.md):
  *   1. backend: add a `QuizMode` variant + availability rule in backend/src/quiz_modes.rs
  *   2. frontend: add the id to `QuizModeId` in src/api/types.ts
  *   3. create the player component in src/quiz-modes/

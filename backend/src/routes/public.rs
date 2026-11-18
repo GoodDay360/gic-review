@@ -10,6 +10,7 @@ use axum::{
 use serde_json::json;
 
 use crate::{
+    access::{self, Content},
     auth::MaybeManager,
     error::{AppError, AppResult},
     models::{ReviewDto, ReviewRow, SubjectDto, SubjectRow, review_columns, subject_columns},
@@ -142,9 +143,12 @@ async fn get_quiz(
     let quiz = repo::quiz_detail(&state.db, &state.storage, id)
         .await?
         .ok_or(AppError::NotFound("quiz"))?;
-    // Unpublished quizzes are only visible to managers (e.g. for preview).
-    if !quiz.summary.is_published && manager.is_none() {
-        return Err(AppError::NotFound("quiz"));
+    // Unpublished quizzes are only visible to managers who can manage them (preview).
+    if !quiz.summary.is_published {
+        let Some(manager) = manager else {
+            return Err(AppError::NotFound("quiz"));
+        };
+        access::require(&state.db, Content::Quiz, id, manager.id).await?;
     }
     Ok(Json(quiz))
 }

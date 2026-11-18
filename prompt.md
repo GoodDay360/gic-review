@@ -56,7 +56,8 @@ gic-review/                    # single Git repo
 ├── docs/
 │   ├── AI-SPEC.md
 │   ├── AI-HOW-ADD-QUIZ.md
-│   └── AI-HOW-ADD-INTERACTIVE-REVIEW.md
+│   ├── AI-HOW-ADD-INTERACTIVE-REVIEW.md
+│   └── DEV-ADD-QUIZ-MODE.md
 ├── prompt.md                  # THIS file: build brief (feature list kept in sync with docs/AI-SPEC.md)
 ├── .gitignore                 # repo-wide ignores (OS/editor files, any .env anywhere)
 └── README.md                  # how to set up and run each part
@@ -184,6 +185,7 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
   - **Preview**: a "Preview" button shows the question exactly as students will see it in QCM and Flashcard mode, images included.
   - **Interactive Reviews**: upload an `.html` file for a subject, set title and order, replace or delete it.
   - **Bulk import**: paste or upload JSON in the format defined in `docs/AI-HOW-ADD-QUIZ.md` to create a whole quiz at once.
+  - **Sharing**: every quiz and interactive review has a **Share** button. The owner types another manager's email to give them access, sees who has access, and can remove people; a manager something was shared with sees "Shared by <owner>", can edit and publish it, and can **leave**. Lists show "Shared by …" / "Shared with N" badges, and the delete button only appears for the owner.
   - **API key** (`/admin/api-key`): a manager can create **one** personal API key (shown once, with a copy button and curl examples), choose its permissions (`quizzes:write`, `reviews:write`) and expiry (30/90/365 days or never), see when it was last used, **regenerate** it (the old key stops working immediately) or revoke it. Scripts and AI assistants send it as `Authorization: Bearer gic_…` to add quizzes and interactive reviews through the API.
 - `/admin/users` (**admin only**): create manager accounts, reset a manager's password, deactivate or delete managers.
 - `/admin/api-keys` (**admin only**): see every manager's API keys (owner, name, prefix, permissions, created/last used/expiry, status), filter by manager or status, and revoke any key. Admins cannot create API keys.
@@ -197,14 +199,17 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 | Action | Guest (no login) | Manager | Admin |
 |---|---|---|---|
 | View subjects, reviews, quizzes; play quizzes | ✅ | ✅ | ✅ |
-| Create/edit/delete quizzes, questions, images (dashboard or API key) | ❌ | ✅ | ❌ |
-| Upload/edit interactive reviews (dashboard or API key) | ❌ | ✅ | ❌ |
-| Preview unpublished quizzes | ❌ | ✅ | ❌ |
+| Create quizzes and interactive reviews (dashboard or API key) | ❌ | ✅ | ❌ |
+| Edit/publish **own** content and content **shared with them** | ❌ | ✅ | ❌ |
+| Delete content and manage who it is shared with | ❌ | owner only | ❌ |
+| See other managers' unshared content | ❌ | ❌ | ❌ |
+| Preview unpublished quizzes they can manage | ❌ | ✅ | ❌ |
 | Create/regenerate/revoke **own** API key (max 1 active) | ❌ | ✅ | ❌ |
 | See and revoke **any manager's** API keys | ❌ | ❌ | ✅ |
 | Create/edit subjects, clean up orphaned images | ❌ | ❌ | ✅ |
 | Create/manage manager accounts | ❌ | ❌ | ✅ |
 
+- **Content ownership and sharing:** the owner of a quiz or interactive review is the manager who created it (`created_by`). Content is private to its owner in the manager area (others get `404`). The owner shares it with other active managers **by email**; shared managers can view, edit (questions, images, file) and publish it, in the dashboard or with their API key, but only the owner can delete it or add/remove people; a shared manager can remove themselves. Sharing is dashboard-only (API keys get `403`). When an owner account is deleted, each of their items goes to the manager it was shared with first; never-shared items stay online (if published) without an owner. Students are unaffected: published content is public.
 - **Admins cannot do anything else:** they only manage manager accounts, managers' API keys and subjects (+ orphan cleanup). The backend returns `403` when an admin calls a content endpoint.
 
 - **Initial admin bootstrap:** when the backend starts, if no admin exists, create one from `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `backend/.env`. Log a warning telling the operator to change the password. Never log the password itself.
@@ -247,6 +252,10 @@ questions          (id, quiz_id FK ON DELETE CASCADE, position,
                     explanation_image_key VARCHAR NULL,  -- e.g. a diagram shown after answering
                     multi_select BOOL DEFAULT false,
                     created_at, updated_at)
+quiz_shares        (quiz_id FK ON DELETE CASCADE, user_id FK users ON DELETE CASCADE, granted_by NULL FK users,
+                    created_at, PRIMARY KEY (quiz_id, user_id))
+review_shares      (review_id FK ON DELETE CASCADE, user_id FK users ON DELETE CASCADE, granted_by NULL FK users,
+                    created_at, PRIMARY KEY (review_id, user_id))
 api_keys           (id, user_id FK users ON DELETE CASCADE, name, key_prefix, key_hash UNIQUE (sha-256 hex),
                     scopes, expires_at NULL, last_used_at NULL, revoked_at NULL, created_at)
 question_options   (id, question_id FK ON DELETE CASCADE, position,
@@ -303,9 +312,11 @@ Manager only, via session cookie **or** API key (`Authorization: Bearer gic_…`
 - `POST /admin/quizzes/import`, which takes bulk JSON (schema in `AI-HOW-ADD-QUIZ.md`) and runs in a single DB transaction (`quizzes:write`)
 - `POST /admin/uploads/image` (multipart, optional `quiz_id`), which returns `{ key, url }` (`quizzes:write` or `reviews:write`)
 - `DELETE /admin/uploads/image/:key` (`quizzes:write` or `reviews:write`)
-- `POST/PUT/DELETE /admin/reviews[/:id]` (multipart `.html` upload) (`reviews:write`)
+- `GET /admin/reviews[?subject_id=]`, `GET /admin/reviews/:id`, `POST/PUT/DELETE /admin/reviews[/:id]` (multipart `.html` upload) (`reviews:write`)
+- All of the above only for content the manager owns or that was shared with them (`404` otherwise); `DELETE` of a quiz or review is owner-only (`403 owner_only`). List endpoints return `access` (`owner`/`shared`), `owner_id`, `owner_name`, `share_count`.
 
 Manager only, dashboard session only (never with an API key):
+- `GET /admin/quizzes/:id/shares`, `POST /admin/quizzes/:id/shares` (`{ email }`, owner only), `DELETE /admin/quizzes/:id/shares/:user_id` (owner, or yourself to leave); the same three under `/admin/reviews/:id/shares`
 - `GET /admin/api-keys/mine`, `POST /admin/api-keys` (`{ name, scopes, expires_in_days | null, replace_existing }` → `{ key, api_key }`, the key is shown only in this response), `DELETE /admin/api-keys/:id` (own key)
 
 Admin only, dashboard session only:
@@ -411,25 +422,30 @@ The backend must fail fast at startup, with a clear message, if a required varia
 
 ## 9. Documentation to write (in `docs/`)
 
-These files are instructions **for future AI assistants** (and humans) working on this repo. Write them clearly and concretely, with real file paths, commands and examples.
+Two audiences:
 
-### `docs/AI-HOW-ADD-QUIZ.md`
-Two parts:
-1. **Adding quiz content to the database.** Cover the three supported ways, in order of preference:
-   - (a) the admin panel,
-   - (b) the bulk import API/JSON (give the full JSON schema plus a complete example quiz for `hci` showing every image field: a quiz cover, a question image, a question whose options are images, a flashcard answer image, and an explanation image. Explain both ways to supply images: upload first and reference the returned `key`, or give an `image_url` that the import step downloads and re-uploads to R2),
-   - (c) a SQL seed / migration as a last resort (show the INSERT order: quiz → questions → options, inside a transaction).
+- **External API clients** (`AI-HOW-ADD-QUIZ.md`, `AI-HOW-ADD-INTERACTIVE-REVIEW.md`): usually an AI assistant that a manager gave an API key, e.g. "read this PDF and create a quiz / interactive review". They only use the REST API and **have no access to the code base**, so these two documents must be fully **self-contained**: no source paths, no SQL, no repo commands; every schema, example, template and error code inline; placeholders `$GIC_API` (base URL) and `$GIC_KEY` (API key).
+- **Developers working in this repo** (`AI-SPEC.md`, `DEV-ADD-QUIZ-MODE.md`, `prompt.md`).
 
-   Include rules: how to set `is_correct`, when to use `multi_select`, how to upload images first and use the returned `key`, how to make sure the quiz supports both QCM and Flashcard, and that new quizzes start unpublished.
-2. **Adding a new quiz mode/type.** Give a step-by-step checklist: backend enum + availability rule → API `available_modes` → frontend component in `src/quiz-modes/` → registry entry → any schema change as a new migration (never edit old migrations) → add the mode as a requirement in `prompt.md` and as a Features line in `docs/AI-SPEC.md`. Include a worked example (for example "True/False").
+### `docs/AI-HOW-ADD-QUIZ.md` (external API guide)
+- What the client needs (base URL, a manager's API key with `quizzes:write`), `Authorization: Bearer` usage, keeping the key secret.
+- What the key can and cannot do: acts as its manager; only quizzes that manager owns or that were shared with them; shared ones can be edited and published but not deleted; sharing/users/subjects/keys are dashboard-only; ask the human when a subject is missing.
+- A recommended workflow from source material (e.g. a PDF): check the key → pick the subject → plan questions → upload images → one import call → check `available_modes` → report back and publish only when asked → fix with question endpoints, avoid duplicates.
+- Question-writing guidance (facts only from the source, same language, one concept per question, plausible distractors, explanations, `answer_text`, sensible quiz size) and the format rules (`is_correct`, `multi_select`, what makes QCM and Flashcard available, limits, image types/sizes, alt text).
+- The full import JSON schema plus a text-only example and an example using every image field (cover, question image, image options, flashcard answer image, explanation image), with both ways to supply images (upload and use the returned `key`, or a public `*_url`).
+- Image upload, a full endpoint reference with the quiz response object, the error code table, and a final checklist.
 
-### `docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md`
-- What an interactive review is: a single self-contained `.html` file (inline CSS/JS, images either inline as data URIs or uploaded to R2 and referenced by their absolute public URL).
-- Rules for the HTML: it must work inside a sandboxed iframe with no same-origin access, so no `localStorage`/cookie dependence on the parent, no calls to the GIC Review API, no external trackers, and it must be responsive.
-- How to upload it: the admin panel or `POST /api/admin/reviews` (with a curl example), and how it is linked to a subject (`subject_id`, `slug`, `sort_order`, `is_published`).
-- Styling: use the Catppuccin palette so reviews match the site. Because the iframe is sandboxed, the review cannot read the parent's theme directly. The parent page sends the current flavor to the iframe with `postMessage` (`{ type: "gic-theme", flavor: "mocha", accent: "mauve" }`), and the review template listens for it and switches its own CSS variables. Without a message, the review follows `prefers-color-scheme` (Latte for light, Mocha for dark).
-- How to replace or update an existing review without breaking its URL.
-- A minimal starter HTML template that already includes the Catppuccin CSS variables for all 4 flavors and the `postMessage` theme listener.
+### `docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md` (external API guide)
+- What an interactive review is: a single self-contained `.html` file (inline CSS/JS; images as data URIs/inline SVG or uploaded with `POST /admin/uploads/image` and referenced by their absolute public URL).
+- What the client needs and what the key can do (same rules as for quizzes, with `reviews:write`).
+- A recommended workflow (e.g. PDF → review page), including checking existing reviews to avoid duplicates and uploading unpublished first.
+- Rules for the HTML: works in a sandboxed iframe with no same-origin access (no storage/cookies, no calls to the API, no external trackers/assets), responsive, accessible, and styled only with the Catppuccin `--ctp-*` variables.
+- Theme protocol: the parent sends `postMessage({ type: "gic-theme", flavor, accent })`; without a message the page follows `prefers-color-scheme` (Latte light / Mocha dark).
+- The **complete starter template inline** (all 4 flavors' variables, accent overrides, theme listener, example content).
+- Create/replace (same URL)/read/delete endpoints with curl examples and field tables, the review response object, the error code table, and a final checklist.
+
+### `docs/DEV-ADD-QUIZ-MODE.md` (developers)
+- **Adding a new quiz mode/type.** Give a step-by-step checklist: backend enum + availability rule → API `available_modes` → frontend component in `src/quiz-modes/` → registry entry → any schema change as a new migration (never edit old migrations) → add the mode as a requirement in `prompt.md`, as a Features line in `docs/AI-SPEC.md`, and to the external quiz guide. Include a worked example (for example "True/False").
 
 ### `docs/AI-SPEC.md`
 - A short project summary, the tech stack, the folder structure and how to run it.

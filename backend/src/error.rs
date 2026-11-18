@@ -24,6 +24,8 @@ pub enum AppError {
     ApiKeyNotAllowed,
     #[error("this API key is missing the required scope: {0}")]
     MissingScope(String),
+    #[error("only the owner can {0}")]
+    OwnerOnly(String),
     #[error("{0} not found")]
     NotFound(&'static str),
     #[error("{0}")]
@@ -48,6 +50,7 @@ impl AppError {
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             Self::InvalidCredentials => (StatusCode::UNAUTHORIZED, "invalid_credentials"),
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
+            Self::OwnerOnly(_) => (StatusCode::FORBIDDEN, "owner_only"),
             Self::ApiKeyNotAllowed => (StatusCode::FORBIDDEN, "api_key_not_allowed"),
             Self::MissingScope(_) => (StatusCode::FORBIDDEN, "missing_scope"),
             Self::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),

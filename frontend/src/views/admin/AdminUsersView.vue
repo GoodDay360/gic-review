@@ -169,7 +169,9 @@ async function confirmDelete() {
 
     <BaseModal :open="!!deleting" title="Delete manager?" size="sm" @close="deleting = null">
       <p class="text-sm text-ctp-subtext1">
-        {{ deleting?.email }} will be deleted. Quizzes they created are kept.
+        {{ deleting?.email }} will be deleted. Their quizzes and reviews go to the manager each one
+        was shared with first; anything never shared stays online (if published) but nobody can edit
+        it. Consider deactivating instead.
       </p>
       <template #footer>
         <button class="btn-ghost" @click="deleting = null">Cancel</button>

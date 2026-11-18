@@ -89,6 +89,9 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ `/login` with email + password, no public sign-up
 - ✅ Role-based dashboard: managers get Quizzes, Bulk import, Interactive reviews, API key; admins get Managers, API keys, Subjects
 - ✅ Admins cannot create or edit content (backend returns 403; dashboard hides it)
+- ✅ Content ownership: quizzes and reviews are private to the manager who created them (others get 404)
+- ✅ Sharing by email: owner shares a quiz/review with other managers (Share dialog), shared managers can edit and publish, only the owner deletes or manages access, shared managers can leave; badges "Shared by …" / "Shared with N"
+- ✅ Deleting a manager hands each of their items to the manager it was shared with first
 - ✅ Quizzes (manager): create, edit, delete, publish/unpublish (refused while no mode is available)
 - ✅ Questions (manager): add, edit, delete, reorder (drag & drop and ↑/↓), options add/remove/reorder
 - ✅ `ImageUploader` for every image field (cover, question, options, flashcard back, explanation): browse, drag & drop, Ctrl+V paste, progress bar, preview, alt text, Replace/Remove
@@ -96,6 +99,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Preview of a question exactly as students see it, in QCM and Flashcard mode
 - ✅ Interactive reviews (manager): upload `.html`, set title/slug/order/published, replace (same URL), delete
 - ✅ Bulk import (manager): paste or upload JSON, "Load HCI sample"
+- ✅ External API guides for AI clients without code access (`AI-HOW-ADD-QUIZ.md`, `AI-HOW-ADD-INTERACTIVE-REVIEW.md`: self-contained, PDF → content workflow, full schema, template, errors) and a developer guide `DEV-ADD-QUIZ-MODE.md`
 - ✅ Manager API key page: create one key (shown once with copy button and curl examples), choose permissions and expiry, last-used time, regenerate, revoke
 - ✅ Managers (admin only): create, reset password, activate/deactivate, delete
 - ✅ API keys overview (admin only): every manager's keys with owner, prefix, scopes, dates and status; filter; revoke
@@ -108,7 +112,8 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ JWT session in an httpOnly, SameSite=Strict cookie, Secure in production, expiry from `JWT_EXPIRES_IN_HOURS`
 - ✅ Role and `is_active` re-checked from the DB on every authenticated request (deactivation is immediate, for sessions and API keys)
 - ✅ API keys: `gic_` + 64 hex chars, only SHA-256 hash stored, shown once, Bearer auth, max 1 active per manager, scopes `quizzes:write` / `reviews:write`, optional expiry, revocable by owner or admin
-- ✅ API keys refused on session-only endpoints (users, API key management, subjects, cleanup), so a leaked key cannot escalate
+- ✅ API keys refused on session-only endpoints (users, API key management, sharing, subjects, cleanup), so a leaked key cannot escalate
+- ✅ Access checks on every content endpoint (owner or shared, else 404; owner-only delete → 403 `owner_only`), also for drafts on `GET /quizzes/:id`
 - ✅ Login rate limit (5 attempts / minute / IP)
 - ✅ Input validation and parameterized SQL only
 - ✅ Uploads: MIME + extension + magic-number checks, size limits from `.env`, random UUID keys, re-encoding strips EXIF
@@ -150,13 +155,17 @@ questions           id, quiz_id → quizzes (CASCADE), position, prompt NULL, im
                     explanation NULL, explanation_image_key NULL, multi_select, created_at, updated_at
 question_options    id, question_id → questions (CASCADE), position, text NULL, image_key NULL,
                     image_alt NULL, is_correct
+quiz_shares         quiz_id → quizzes (CASCADE), user_id → users (CASCADE), granted_by NULL → users,
+                    created_at, PK (quiz_id, user_id)
+review_shares       review_id → interactive_reviews (CASCADE), user_id → users (CASCADE),
+                    granted_by NULL → users, created_at, PK (review_id, user_id)
 api_keys            id, user_id → users (CASCADE), name, key_prefix, key_hash UNIQUE (sha-256 hex),
                     scopes ('quizzes:write,reviews:write'), expires_at NULL, last_used_at NULL,
                     revoked_at NULL, created_at
 ```
 
 Migrations: `20261118000001_init_schema.sql`, `20261118000002_seed_hci_subject.sql`,
-`20261118000003_api_keys.sql`. R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
+`20261118000003_api_keys.sql`, `20261118000004_content_shares.sql`. R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
 `reviews/{subject_id}/{uuid}.html`.
 
 ## API endpoints (current, prefix `/api`)
@@ -178,7 +187,9 @@ session only, **A-s** = admin session only, **any** = any session or API key.
 | `POST /admin/quizzes/:id/questions`, `PUT/DELETE …/questions/:qid`, `PUT …/questions/reorder` | M `quizzes:write` | |
 | `POST /admin/quizzes/import` | M `quizzes:write` | one transaction |
 | `POST /admin/uploads/image`, `DELETE /admin/uploads/image/*key` | M `quizzes:write` or `reviews:write` | |
-| `GET/POST /admin/reviews`, `PUT/DELETE /admin/reviews/:id` | M `reviews:write` | multipart `.html` |
+| `GET/POST /admin/reviews`, `GET/PUT/DELETE /admin/reviews/:id` | M `reviews:write` | multipart `.html`; delete owner-only |
+| `GET/POST /admin/quizzes/:id/shares`, `DELETE …/shares/:user_id` | M-s | add = owner only (`{email}`); delete = owner, or yourself to leave |
+| `GET/POST /admin/reviews/:id/shares`, `DELETE …/shares/:user_id` | M-s | same rules as quizzes |
 | `GET /admin/api-keys/mine`, `POST /admin/api-keys` | M-s | 409 when an active key exists (unless `replace_existing`) |
 | `DELETE /admin/api-keys/:id` (also `POST …/:id/revoke`) | M-s own / A-s any | |
 | `GET /admin/api-keys[?user_id=]` | A-s | all managers' keys |
@@ -186,7 +197,10 @@ session only, **A-s** = admin session only, **any** = any session or API key.
 | `POST /admin/subjects`, `PUT/DELETE /admin/subjects/:id` | A-s | |
 | `POST /admin/uploads/cleanup-orphans` | A-s | |
 
-Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role),
+All manager content endpoints only reach items the manager owns or that were shared with them
+(404 otherwise) and return `access`, `owner_id`, `owner_name`, `share_count`.
+
+Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), `owner_only` (403),
 `api_key_not_allowed` (403), `missing_scope` (403), `conflict` (409), `validation_error` (422),
 `too_many_requests` (429).
 
@@ -212,6 +226,10 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role),
 
 ## Changelog
 
+- 2026-11-18: Content ownership and sharing between managers by email (`quiz_shares`, `review_shares`,
+  share endpoints, Share dialog, owner-only delete, handover on manager deletion).
+- 2026-11-18: `AI-HOW-ADD-QUIZ.md` and `AI-HOW-ADD-INTERACTIVE-REVIEW.md` rewritten as self-contained
+  external API guides for AI clients; quiz-mode developer guide moved to `DEV-ADD-QUIZ-MODE.md`.
 - 2026-11-18: Footer credit "Made by: @GoodDay360" → https://github.com/GoodDay360.
 - 2026-11-18: Added `backend/Dockerfile` + `.dockerignore`; the server uses `PORT` when the platform sets it.
 - 2026-11-18: Initial build. Scaffold, Catppuccin theme system, MySQL schema + HCI seed + admin

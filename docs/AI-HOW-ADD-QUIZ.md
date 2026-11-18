@@ -1,110 +1,124 @@
-# How to add quizzes (and new quiz modes)
+# GIC Review API: how to add quizzes
 
-Audience: AI assistants and developers working on this repo. Read `prompt.md` and
-`docs/AI-SPEC.md` first. If anything you change here affects the schema, the JSON import
-format, image fields or quiz modes, update this file in the same commit.
+**Audience:** an AI assistant (or any script) that creates quizzes in GIC Review **through the
+REST API only**. You do not have, and do not need, access to the source code. A typical job:
+*"Read this PDF and create a quiz for the HCI subject."*
 
----
-
-## Authenticating as an AI assistant or script: API keys
-
-Content is created by **managers**. Admins cannot create quizzes or reviews (the API answers
-`403 forbidden`). An AI assistant works **on behalf of a manager** with that manager's API key:
-
-1. The manager logs in to the dashboard and opens **API key** (`/admin/api-key`).
-2. They create a key with the permission needed (`quizzes:write` for quizzes, `reviews:write`
-   for interactive reviews; both is fine) and copy it. It is shown **only once**.
-3. The AI sends it on every request:
-
-   ```bash
-   export GIC_API=http://localhost:8080/api        # the backend URL
-   export GIC_KEY=gic_…                            # never commit or paste it into files
-
-   curl -H "Authorization: Bearer $GIC_KEY" $GIC_API/auth/me
-   # → { …, "role": "manager", "auth_method": "api_key", "api_key_scopes": ["quizzes:write", …] }
-   ```
-
-Rules for API keys:
-
-| Rule | Details |
-|---|---|
-| One active key per manager | Creating a second one returns `409`; **Regenerate** in the dashboard replaces it (the old key stops working immediately). |
-| Scopes | `quizzes:write`: quizzes, questions, reorder, publish, bulk import, image uploads. `reviews:write`: interactive reviews, image uploads. Missing scope → `403 missing_scope`. |
-| Session-only endpoints | Keys never work for user management, API key management, subjects or orphan cleanup → `403 api_key_not_allowed`. |
-| Revocation | The manager can revoke or regenerate it; any admin can revoke it; deactivating or deleting the manager disables it. A revoked/expired key → `401`. |
-| Keep it secret | Treat it like a password: environment variable or secret store, never in the repo, docs or chat logs. |
-
-The dashboard session cookie also works for every endpoint below (e.g. from a browser), but
-scripts and AI assistants should use API keys.
+This document is self-contained: it has everything you need (authentication, the workflow,
+the full JSON format, every endpoint, and error codes). Interactive reviews are covered in the
+companion document `AI-HOW-ADD-INTERACTIVE-REVIEW.md`.
 
 ---
 
-## Part 1: Adding quiz content
+## 1. What you need from the human
 
-There are three ways, in order of preference.
+| Value | Example | Where it comes from |
+|---|---|---|
+| **API base URL** | `https://api.example.com/api` | The site owner. Every path below is relative to it. |
+| **API key** | `gic_3f9a…` (68 characters) | A **manager** creates it in the dashboard: **Dashboard → API key**, permission `quizzes:write`. |
 
-### Key rules (apply to every method)
+```bash
+export GIC_API=https://api.example.com/api   # no trailing slash
+export GIC_KEY=gic_…                         # keep it secret
+```
+
+Send the key on **every** request:
+
+```
+Authorization: Bearer <API key>
+```
+
+Treat the key like a password: never print it in answers, never put it in files or quiz
+content. If a request returns `401`, the key is wrong, expired or revoked: ask the human for a
+new one.
+
+---
+
+## 2. What your key can and cannot do
+
+- The key acts **as the manager who created it**.
+- You can manage the quizzes that manager **owns** (created by them or by you with their key) and
+  quizzes **another manager shared with them**.
+- You **cannot see** other managers' quizzes (you get `404`, as if they did not exist).
+- On a **shared** quiz you can edit and publish, but you **cannot delete** it (`403 owner_only`).
+- Sharing, user accounts, subjects and API keys are managed by humans in the dashboard. Your key
+  is refused there (`403 api_key_not_allowed`).
+- Subjects (e.g. "Human Computer Interaction") are created by an admin. If the subject you need
+  does not exist, stop and ask the human.
+
+---
+
+## 3. Recommended workflow (e.g. from a PDF)
+
+1. **Check the key:** `GET /auth/me`. Expect `"role": "manager"` and `"api_key_scopes"` containing
+   `"quizzes:write"`.
+2. **Pick the subject:** `GET /subjects` (public). Use its `slug` (e.g. `hci`) as `subject_slug`.
+3. **Read the source and plan the questions** (see section 4 for writing rules).
+4. **Upload images** you need (figures, screenshots, diagrams): `POST /admin/uploads/image`
+   returns a `key`. Alternatively give a public `https://` URL in the import (`*_url` fields).
+5. **Create the whole quiz in one call:** `POST /admin/quizzes/import` with the JSON from section 5.
+   It is created **unpublished** (a draft that students can't see).
+6. **Check the response:** `available_modes` should be `["qcm", "flashcard"]`. If a mode is
+   missing, fix the questions (section 4, "Both modes").
+7. **Report back to the human** with the quiz `id` and `title`, and ask whether to publish.
+   Publish only when asked: `PATCH /admin/quizzes/{id}/publish {"is_published": true}`.
+8. **Fix mistakes** later with the question endpoints (section 7) instead of importing again.
+   Don't create duplicates: `GET /admin/quizzes` first to see what already exists.
+
+---
+
+## 4. Writing good questions
+
+**Content rules (from the source material):**
+- Use only facts from the provided material; don't invent. Keep the source's language
+  (e.g. French in → French out) unless told otherwise.
+- One concept per question. Short, unambiguous prompts.
+- 3–5 options per question, exactly one correct unless the question says "select all".
+  Wrong options (distractors) must be plausible and about the same length as the right one.
+- Avoid "all of the above" / "none of the above" (options are shuffled for students).
+- Always add an `explanation` (1–3 sentences: why the answer is right). You may cite the source,
+  e.g. "(slide 12)".
+- Add `answer_text` (a short answer) so the flashcard back reads well on its own.
+- 10–30 questions per quiz is a good size; split big documents into several quizzes by chapter.
+
+**Format rules:**
 
 | Rule | Details |
 |---|---|
-| A question needs **`prompt` or `image_key`** (or both) | Image-only questions are fine (e.g. "Which principle does this screenshot violate?"). |
-| An option needs **`text` or `image_key`** (or both) | Image-only options are shown as a grid of image cards. |
-| `is_correct` | Mark every correct option `true`. All others `false` (the default). |
-| `multi_select` | `false` (default): exactly one correct option, shown as radio-style choices. `true`: several options may be correct; the student must select **all** of them and nothing else. The API rejects a question with more than one correct option while `multi_select` is `false`. |
-| **QCM** is available when… | **every** question has ≥ 2 options (text or image) and ≥ 1 correct option. |
-| **Flashcard** is available when… | **every** question has `answer_text`, or `answer_image_key`, or ≥ 1 correct option (then the back shows the correct option text/images). |
-| To support **both** modes | Give every question ≥ 2 options with ≥ 1 correct. Optionally add `answer_text` / `answer_image_key` for a nicer card back. |
-| New quizzes start **unpublished** | Publish from the admin panel or with `PATCH /api/admin/quizzes/:id/publish {"is_published": true}`. Publishing is refused while no mode is available. |
-| Images | Only PNG, JPEG, WebP, GIF. Max `MAX_IMAGE_SIZE_MB` (backend `.env`). Real bytes are checked (magic numbers). PNG/JPEG/WebP are re-encoded, resized to max 1600 px wide and stripped of EXIF. GIFs are kept as-is. |
-| Limits | Title ≤ 200 chars, ≤ 12 options per question, ≤ 500 questions per import, alt text ≤ 255 chars. |
+| Question content | `prompt` **or** an image (or both). Image-only questions are fine ("Which principle does this screen violate?"). |
+| Option content | `text` **or** an image (or both). Image options are shown as a grid of image cards. |
+| `is_correct` | `true` on every correct option, `false` (default) on the others. |
+| `multi_select` | `false` (default): exactly one option may be correct. `true`: several may be correct and students must select all of them. Marking 2+ correct options while `multi_select` is `false` is rejected. |
+| Both modes | **QCM** needs every question to have ≥ 2 options and ≥ 1 correct option. **Flashcard** needs every question to have `answer_text`, an answer image, or ≥ 1 correct option. → Give every question ≥ 2 options with ≥ 1 correct, plus `answer_text`, and both modes work. |
+| Limits | title ≤ 200 chars, description ≤ 5000, prompt/answer ≤ 5000, explanation ≤ 10000, option text ≤ 2000, alt text ≤ 255, ≤ 12 options per question, 1–500 questions per import, request ≤ 4 MB. |
+| Images | PNG, JPEG, WebP or GIF, max 5 MB each (the site owner may change this). They are resized to max 1600 px wide. Always add `*_alt` text describing the image for screen readers. |
 
-The backend computes `available_modes` (see `backend/src/quiz_modes.rs`); never hard-code
-mode availability in the frontend.
+---
 
-### (a) Admin panel (preferred)
-
-1. Log in at `/login` as a **manager** (admins can't create quizzes).
-2. **Dashboard → Quizzes → New quiz**, pick the subject, enter a title.
-3. On the quiz page, set the description and the **cover image**.
-4. **Add question** for each question. Every image field (question, each option,
-   flashcard answer, explanation) uses the `ImageUploader`: click to browse, drag & drop,
-   or click the drop zone and paste a screenshot with **Ctrl+V**.
-5. Use **Preview** to see the question exactly as students will, in QCM and Flashcard mode.
-6. Reorder questions with drag & drop or the ↑/↓ buttons.
-7. Click **Publish**.
-
-### (b) Bulk import JSON (`POST /api/admin/quizzes/import`)
-
-Admin panel: **Admin → Bulk import** (paste, or upload a `.json` file; "Load HCI sample"
-fills in `docs/examples/hci-sample-quiz.json`).
-
-The import runs in **one database transaction**: either the whole quiz is created or
-nothing is. Images downloaded from URLs during a failed import are deleted again.
-
-#### Schema
+## 5. Import format (`POST /admin/quizzes/import`)
 
 ```jsonc
 {
-  "subject_slug": "hci",              // required unless subject_id is given
-  "subject_id": 1,                    // optional alternative to subject_slug
-  "title": "string (1–200)",          // required
-  "description": "string | null",     // optional, ≤ 5000
-  "cover_image_key": "string | null", // EITHER an uploaded key …
-  "cover_image_url": "string | null", // … OR a public http(s) URL to download (not both)
-  "questions": [                      // required, 1–500 items, kept in this order
+  "subject_slug": "hci",              // required (or "subject_id": 1)
+  "title": "string",                  // required, 1–200 chars
+  "description": "string | null",
+  "cover_image_key": "…",             // optional cover: EITHER an uploaded key…
+  "cover_image_url": "https://…",     // …OR a public URL to download (never both)
+  "questions": [                      // required, 1–500, kept in this order
     {
-      "prompt": "string | null",      // prompt and/or image required
-      "image_key": "…", "image_url": "…", "image_alt": "string | null",
-      "answer_text": "string | null", // flashcard back
+      "prompt": "string | null",                    // prompt and/or image required
+      "image_key": "…", "image_url": "…",           // question image (= flashcard front)
+      "image_alt": "string | null",
+      "answer_text": "string | null",               // flashcard back
       "answer_image_key": "…", "answer_image_url": "…", "answer_image_alt": "string | null",
-      "explanation": "string | null", // shown after answering (QCM) and on the card back
+      "explanation": "string | null",               // shown after answering / on the card back
       "explanation_image_key": "…", "explanation_image_url": "…",
-      "multi_select": false,          // default false
-      "options": [                    // default []
+      "multi_select": false,
+      "options": [
         {
-          "text": "string | null",    // text and/or image required
+          "text": "string | null",                  // text and/or image required
           "image_key": "…", "image_url": "…", "image_alt": "string | null",
-          "is_correct": false         // default false
+          "is_correct": false
         }
       ]
     }
@@ -112,28 +126,49 @@ nothing is. Images downloaded from URLs during a failed import are deleted again
 }
 ```
 
-Unknown fields are rejected (`deny_unknown_fields`), which catches typos such as
-`"is_corect"`. Every image field comes in a `*_key` / `*_url` pair; give at most one of
-the two.
+- Unknown fields are **rejected** (this catches typos like `"is_corect"`).
+- Every image comes as a `*_key` / `*_url` pair; give at most one of the two. Omit both for no image.
+- `*_url` must be a public `http(s)` URL (no private/internal addresses, no redirects). It is
+  downloaded and stored by the server.
+- The import is all-or-nothing: on any error nothing is created, and the response says exactly
+  which field is wrong (e.g. `questions[3].options[1]: an option needs text or an image`).
 
-#### Two ways to supply images
+### Example: text-only (works in QCM and Flashcard)
 
-1. **Upload first, then reference the key** (works for private images too):
+```json
+{
+  "subject_slug": "hci",
+  "title": "Nielsen's Heuristics: basics",
+  "description": "Questions on usability heuristics and Fitts's law.",
+  "questions": [
+    {
+      "prompt": "Which heuristic is violated when a system gives no feedback after the user clicks \"Save\"?",
+      "answer_text": "Visibility of system status",
+      "explanation": "The system should keep users informed about what is going on, through timely feedback.",
+      "options": [
+        { "text": "Visibility of system status", "is_correct": true },
+        { "text": "Aesthetic and minimalist design" },
+        { "text": "Help and documentation" },
+        { "text": "Flexibility and efficiency of use" }
+      ]
+    },
+    {
+      "prompt": "According to Fitts's law, the time to reach a target depends on… (select all)",
+      "answer_text": "The distance to the target and its size.",
+      "explanation": "MT = a + b · log2(D / W + 1): bigger, closer targets are faster to hit.",
+      "multi_select": true,
+      "options": [
+        { "text": "The distance to the target", "is_correct": true },
+        { "text": "The size of the target", "is_correct": true },
+        { "text": "The color of the target" },
+        { "text": "The number of items on screen" }
+      ]
+    }
+  ]
+}
+```
 
-   ```bash
-   # Upload an image → returns { "key": "tmp/<uuid>.png", "url": "https://files…/tmp/<uuid>.png" }
-   curl -H "Authorization: Bearer $GIC_KEY" -F 'file=@screenshot.png' \
-     $GIC_API/admin/uploads/image
-   ```
-
-   Then put the returned `key` in `image_key` (or `answer_image_key`, `cover_image_key`, …).
-   Pass `-F quiz_id=12` when the quiz already exists, to get a `quizzes/12/<uuid>.png` key.
-
-2. **Give a public URL** in `image_url` (or `answer_image_url`, …). The import downloads it,
-   validates and re-encodes it, and stores it in R2 as `quizzes/<quiz_id>/<uuid>.<ext>`.
-   URLs must be public `http(s)`. Private/loopback addresses and redirects are refused.
-
-#### Complete example (every image field)
+### Example: every image field
 
 ```json
 {
@@ -143,181 +178,146 @@ the two.
   "cover_image_url": "https://example.com/images/hci-cover.png",
   "questions": [
     {
-      "prompt": "Which of Nielsen's heuristics does this dialog violate?",
-      "image_url": "https://example.com/images/delete-dialog.png",
+      "prompt": "Which heuristic does this dialog violate?",
+      "image_key": "tmp/2f1c7a8e-3b5d-4c1e-9f0a-6d2b8e4c7a11.png",
       "image_alt": "A dialog with Delete and Save buttons styled identically side by side",
       "answer_text": "Error prevention",
       "explanation": "Destructive actions should be visually distinct and confirmed.",
       "explanation_image_url": "https://example.com/images/error-prevention-diagram.png",
       "options": [
         { "text": "Error prevention", "is_correct": true },
-        { "text": "Help and documentation", "is_correct": false },
-        { "text": "Flexibility and efficiency of use", "is_correct": false }
+        { "text": "Help and documentation" },
+        { "text": "Flexibility and efficiency of use" }
       ]
     },
     {
-      "prompt": "Which of these layouts follows Fitts's law best for the primary action?",
+      "prompt": "Which layout follows Fitts's law best for the primary action?",
+      "answer_text": "Layout B: the large button next to the form.",
+      "explanation": "Bigger and closer targets are faster to reach.",
       "options": [
-        {
-          "image_url": "https://example.com/images/layout-a.png",
-          "image_alt": "Small primary button in the far corner",
-          "is_correct": false
-        },
-        {
-          "image_url": "https://example.com/images/layout-b.png",
-          "image_alt": "Large primary button next to the form fields",
-          "is_correct": true
-        }
-      ],
-      "explanation": "Bigger and closer targets are faster to reach."
+        { "image_url": "https://example.com/images/layout-a.png", "image_alt": "Small primary button far in the corner" },
+        { "image_url": "https://example.com/images/layout-b.png", "image_alt": "Large primary button next to the fields", "is_correct": true }
+      ]
     },
     {
       "prompt": "Sketch the shape of Fitts's law (movement time vs. index of difficulty).",
-      "answer_text": "A straight line: MT grows linearly with log2(D/W + 1).",
-      "answer_image_key": "tmp/2f1c7a8e-3b5d-4c1e-9f0a-6d2b8e4c7a11.png",
-      "answer_image_alt": "Line chart with movement time increasing linearly",
+      "answer_text": "A straight line.",
+      "answer_image_key": "tmp/9d1e0c55-6a2b-4f3c-8e7d-1a2b3c4d5e6f.png",
+      "answer_image_alt": "Line chart where movement time rises linearly",
       "options": [
         { "text": "A straight line", "is_correct": true },
-        { "text": "An exponential curve", "is_correct": false }
+        { "text": "An exponential curve" }
       ]
     }
   ]
 }
 ```
 
-The `answer_image_key` above must be a key returned by the upload endpoint; this example
-key will not exist on your bucket. A complete, **text-only** sample that imports without
-any images is in `docs/examples/hci-sample-quiz.json`.
-
-Import with curl:
-
-```bash
-curl -H "Authorization: Bearer $GIC_KEY" -H 'Content-Type: application/json' \
-  --data @docs/examples/hci-sample-quiz.json \
-  $GIC_API/admin/quizzes/import
-```
-
-The response is the created quiz (with its `id` and `available_modes`). It starts
-unpublished; publish it when the manager has reviewed it:
-
-```bash
-curl -H "Authorization: Bearer $GIC_KEY" -H 'Content-Type: application/json' \
-  -X PATCH -d '{"is_published": true}' $GIC_API/admin/quizzes/<id>/publish
-```
-
-### (c) SQL seed / migration (last resort)
-
-Use this only for fixtures that must exist in every environment. Create a **new**
-migration (never edit an applied one):
-
-```bash
-cd backend
-sqlx migrate add seed_my_quiz   # creates migrations/<timestamp>_seed_my_quiz.sql
-```
-
-Insert in the order **quiz → questions → options**, inside a transaction. Images must
-already be in R2; only store their keys.
-
-```sql
-START TRANSACTION;
-
-INSERT INTO quizzes (subject_id, title, description, cover_image_key, is_published)
-SELECT id, 'HCI Basics', 'Seeded quiz', NULL, FALSE FROM subjects WHERE slug = 'hci';
-SET @quiz_id = LAST_INSERT_ID();
-
-INSERT INTO questions (quiz_id, position, prompt, answer_text, explanation, multi_select)
-VALUES (@quiz_id, 0, 'What does Hick''s law describe?',
-        'Decision time grows with the number of choices.', NULL, FALSE);
-SET @q1 = LAST_INSERT_ID();
-
-INSERT INTO question_options (question_id, position, text, is_correct) VALUES
-  (@q1, 0, 'Decision time vs. number of choices', TRUE),
-  (@q1, 1, 'Pointing time vs. distance and size', FALSE);
-
-COMMIT;
-```
-
-Run it as a one-off script with `mysql gic_review < seed.sql`, which uses the explicit
-`START TRANSACTION … COMMIT` above. **Inside a sqlx migration file, drop the
-`START TRANSACTION` / `COMMIT` lines**: sqlx already runs each migration in a transaction,
-and in MySQL a nested `START TRANSACTION` silently commits the outer one. Keep seed
-migrations to plain `INSERT`s, with no DDL, because MySQL commits DDL implicitly.
+(The `tmp/…` keys above are placeholders; use the keys returned by your own uploads.)
 
 ---
 
-## Part 2: Adding a new quiz mode
+## 6. Uploading images
 
-Quiz data is mode-agnostic: one quiz can be played in several modes. Adding a mode means
-writing a new **player** and an **availability rule**; the stored data normally stays the same.
+`POST /admin/uploads/image`, `multipart/form-data`:
 
-### Checklist
+| Field | Required | Meaning |
+|---|---|---|
+| `file` | yes | the image (PNG, JPEG, WebP, GIF). The real file bytes are checked, not just the name. |
+| `quiz_id` | no | the quiz it belongs to (if it already exists) |
 
-1. **Backend enum + rule:** `backend/src/quiz_modes.rs`
-   - add a variant to `enum QuizMode` (it serializes in lowercase, e.g. `TrueFalse` → `"truefalse"`;
-     add `#[serde(rename = "true_false")]` if you want a different id),
-   - add it to `QuizMode::ALL` (order = display order),
-   - write its rule in `QuizMode::is_available` and add a unit test in the same file.
-2. **API:** nothing else to do: `available_modes` is computed from `QuizMode::ALL` for
-   every quiz in `GET /api/subjects/:slug/quizzes` and `GET /api/quizzes/:id`.
-3. **Frontend type:** add the id to `QuizModeId` in `frontend/src/api/types.ts`.
-4. **Player component:** `frontend/src/quiz-modes/<Name>Player.vue`. It receives
-   `quiz: QuizDetail` as a prop. Reuse `ResultScreen`, `ZoomableImage`,
-   `preloadQuestionImages` and `useProgressStore().record(...)`.
-5. **Registry entry:** add one object to `QUIZ_MODES` in
-   `frontend/src/quiz-modes/registry.ts`. The mode modal and the play page pick it up
-   automatically; do not edit `QuizModeModal.vue` or `QuizPlayView.vue`.
-6. **Schema (only if needed):** add a **new** migration in `backend/migrations/`
-   (never edit old ones), update `backend/src/models.rs`, the import format in
-   `backend/src/routes/import.rs`, and this document.
-7. **Docs:** add the mode to `prompt.md` (requirements) and mark it ✅ in
-   `docs/AI-SPEC.md` (with a Changelog line) in the same commit.
-
-### Worked example: True/False
-
-A question is playable as True/False when it has **exactly two options** and exactly one
-is correct (e.g. "True" / "False").
-
-```rust
-// backend/src/quiz_modes.rs
-pub enum QuizMode {
-    Qcm,
-    Flashcard,
-    #[serde(rename = "truefalse")]
-    TrueFalse,
-}
-
-impl QuizMode {
-    pub const ALL: &'static [QuizMode] = &[QuizMode::Qcm, QuizMode::Flashcard, QuizMode::TrueFalse];
-
-    pub fn is_available(self, questions: &[QuestionDto]) -> bool {
-        if questions.is_empty() {
-            return false;
-        }
-        match self {
-            // … existing arms …
-            QuizMode::TrueFalse => questions.iter().all(|q| {
-                q.options.len() == 2 && q.options.iter().filter(|o| o.is_correct).count() == 1
-            }),
-        }
-    }
-}
+```bash
+curl -H "Authorization: Bearer $GIC_KEY" -F "file=@figure-3.png" $GIC_API/admin/uploads/image
+# 201 → { "key": "tmp/2f1c7a8e-….png", "url": "https://files.example.com/tmp/2f1c7a8e-….png" }
 ```
 
-```ts
-// frontend/src/api/types.ts
-export type QuizModeId = 'qcm' | 'flashcard' | 'truefalse'
+Put the `key` into `image_key`, `answer_image_key`, `explanation_image_key`, an option's
+`image_key` or `cover_image_key`. The `url` is the public address (handy to check the result).
+An uploaded image that you end up not using can be removed with
+`DELETE /admin/uploads/image/{key}` (only works while nothing uses it).
 
-// frontend/src/quiz-modes/registry.ts  (add to QUIZ_MODES)
+From a PDF: export the figure as a PNG (crop it to the relevant part), upload it, and use the key.
+
+---
+
+## 7. Endpoint reference
+
+All endpoints need `Authorization: Bearer <key>` with the `quizzes:write` permission, except the
+public ones. Request and response bodies are JSON unless noted.
+
+| Method & path | What it does |
+|---|---|
+| `GET /auth/me` | Who you are acting as, and the key's permissions. |
+| `GET /subjects` | Public. All subjects (`id`, `slug`, `name`, …). |
+| `GET /admin/quizzes[?subject_id=1]` | Quizzes you can manage (yours + shared with you), drafts included. |
+| `GET /admin/quizzes/{id}` | One quiz with all questions and options. |
+| `POST /admin/quizzes/import` | Create a complete quiz (section 5). → `201` + the quiz. |
+| `POST /admin/quizzes` | Create an empty quiz: `{ "subject_id", "title", "description", "cover_image_key" }`. |
+| `PUT /admin/quizzes/{id}` | Update title/description/subject/cover (same body as create). |
+| `PATCH /admin/quizzes/{id}/publish` | `{ "is_published": true \| false }`. Refused while no mode is available. |
+| `DELETE /admin/quizzes/{id}` | Delete the quiz and its images. **Owner only.** Ask the human first. |
+| `POST /admin/quizzes/{id}/questions` | Add one question (same object as in `questions[]`, `*_key` image fields only). |
+| `PUT /admin/quizzes/{id}/questions/{question_id}` | Replace a question and all its options. |
+| `DELETE /admin/quizzes/{id}/questions/{question_id}` | Delete a question (and its images). |
+| `PUT /admin/quizzes/{id}/questions/reorder` | `{ "question_ids": [ … every id, in the new order ] }` |
+| `POST /admin/uploads/image` | Upload an image (section 6). |
+| `DELETE /admin/uploads/image/{key}` | Remove an unused upload. |
+
+**The quiz object** returned by these endpoints:
+
+```jsonc
 {
-  id: 'truefalse',
-  label: 'True / False',
-  description: 'Decide quickly whether each statement is true or false.',
-  icon: 'check',
-  component: defineAsyncComponent(() => import('./TrueFalsePlayer.vue')),
-  isAvailable: fromBackend('truefalse'),
-},
+  "id": 12, "subject_id": 1, "subject_slug": "hci", "subject_name": "Human Computer Interaction",
+  "title": "…", "description": "…",
+  "cover_image_key": "…", "cover_image_url": "https://…",
+  "is_published": false,
+  "question_count": 6,
+  "available_modes": ["qcm", "flashcard"],   // computed by the server
+  "access": "owner",                          // or "shared"
+  "owner_id": 4, "owner_name": "Dara", "share_count": 0,
+  "questions": [
+    { "id": 51, "position": 0, "prompt": "…", "image_key": null, "image_url": null, "image_alt": null,
+      "answer_text": "…", "answer_image_key": null, "answer_image_url": null, "answer_image_alt": null,
+      "explanation": "…", "explanation_image_key": null, "explanation_image_url": null,
+      "multi_select": false,
+      "options": [ { "id": 201, "position": 0, "text": "…", "image_key": null, "image_url": null,
+                     "image_alt": null, "is_correct": true } ] }
+  ]
+}
 ```
 
-`TrueFalsePlayer.vue` shows `question.prompt` (and `image_url`), two big buttons built
-from `question.options`, then the explanation, and ends with `ResultScreen`. No migration
-is needed because the data already fits the existing tables.
+Editing a question: send the complete question (prompt, images as `*_key`, answer,
+explanation, `multi_select`, all `options`). Options are replaced as a whole, and images no
+longer used are deleted automatically.
+
+---
+
+## 8. Errors
+
+Every error looks like `{ "error": { "code": "…", "message": "…" } }`. Read `message`: it
+names the field and the problem.
+
+| Status | `code` | Meaning / what to do |
+|---|---|---|
+| 401 | `unauthorized` | Missing, wrong, expired or revoked key. Ask the human for a new key. |
+| 403 | `forbidden` | The key's account isn't a manager. |
+| 403 | `missing_scope` | The key lacks `quizzes:write`. Ask for a key with that permission. |
+| 403 | `owner_only` | Only the quiz's owner may do this (e.g. delete a shared quiz). |
+| 403 | `api_key_not_allowed` | Dashboard-only endpoint (sharing, users, subjects, keys). |
+| 404 | `not_found` | Doesn't exist, or you have no access to it. |
+| 409 | `conflict` | Duplicate or still in use (e.g. deleting an image a question uses). |
+| 413 | `payload_too_large` | File or request too big. |
+| 415 | `unsupported_media_type` | Not a PNG/JPEG/WebP/GIF (or extension and content disagree). |
+| 422 | `validation_error` | Invalid field; the message says which. Fix and retry. |
+| 429 | `too_many_requests` | Slow down and retry a bit later. |
+
+---
+
+## 9. Checklist before you report back
+
+- [ ] Every question has a prompt or an image, ≥ 2 options with ≥ 1 correct, an
+      `answer_text` and an `explanation`.
+- [ ] Images have `*_alt` text.
+- [ ] The response shows `available_modes: ["qcm", "flashcard"]`.
+- [ ] The quiz is still a draft unless the human asked you to publish it.
+- [ ] You gave the human the quiz `id`, `title` and question count. Never include the API key.

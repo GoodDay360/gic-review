@@ -1,15 +1,17 @@
 //! Interactive reviews: self-contained `.html` files stored in R2 and shown in a sandboxed
-//! iframe. Staff (manager + admin) can upload, replace and delete them.
+//! iframe. Managers upload, replace and delete them; a manager only manages reviews they own
+//! or that were shared with them (see `access`). Only the owner can delete a review.
 
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::StatusCode,
-    routing::{get, put},
+    routing::get,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
+    access::{self, AccessInfo, Content},
     auth::{RequireManager, ReviewManager},
     config::Config,
     error::{AppError, AppResult},
@@ -27,7 +29,10 @@ pub fn router(config: &Config) -> Router<AppState> {
         )
         .route(
             "/admin/reviews/{id}",
-            put(update_review).delete(delete_review).layer(limit),
+            get(get_review)
+                .put(update_review)
+                .delete(delete_review)
+                .layer(limit),
         )
 }
 
@@ -135,16 +140,36 @@ async fn load(state: &AppState, id: i64) -> AppResult<ReviewRow> {
     .ok_or(AppError::NotFound("review"))
 }
 
+/// A review as seen by a manager: the review plus who owns it and whether it is shared.
+#[derive(Debug, Serialize)]
+pub struct ManagedReview {
+    #[serde(flatten)]
+    pub review: ReviewDto,
+    #[serde(flatten)]
+    pub access: AccessInfo,
+}
+
+async fn managed(state: &AppState, id: i64, user_id: i64) -> AppResult<ManagedReview> {
+    let access = access::require(&state.db, Content::Review, id, user_id).await?;
+    let row = load(state, id).await?;
+    Ok(ManagedReview {
+        review: ReviewDto::from_row(row, &state.storage),
+        access,
+    })
+}
+
 #[derive(Debug, Deserialize)]
 struct ListQuery {
     subject_id: Option<i64>,
 }
 
+/// Reviews the manager owns or that were shared with them (unpublished included).
 async fn list_reviews(
-    _manager: ReviewManager,
+    RequireManager(user, _): ReviewManager,
     State(state): State<AppState>,
     Query(q): Query<ListQuery>,
-) -> AppResult<Json<Vec<ReviewDto>>> {
+) -> AppResult<Json<Vec<ManagedReview>>> {
+    let mut access = access::accessible(&state.db, Content::Review, user.id).await?;
     let rows: Vec<ReviewRow> = sqlx::query_as(concat!(
         "SELECT ",
         review_columns!(),
@@ -157,9 +182,22 @@ async fn list_reviews(
     .await?;
     Ok(Json(
         rows.into_iter()
-            .map(|r| ReviewDto::from_row(r, &state.storage))
+            .filter_map(|r| {
+                access.remove(&r.id).map(|access| ManagedReview {
+                    review: ReviewDto::from_row(r, &state.storage),
+                    access,
+                })
+            })
             .collect(),
     ))
+}
+
+async fn get_review(
+    RequireManager(user, _): ReviewManager,
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> AppResult<Json<ManagedReview>> {
+    Ok(Json(managed(&state, id, user.id).await?))
 }
 
 /// multipart: `file` (.html), `subject_id`, `title`, optional `slug`, `sort_order`, `is_published`.
@@ -167,7 +205,7 @@ async fn create_review(
     RequireManager(user, _): ReviewManager,
     State(state): State<AppState>,
     multipart: Multipart,
-) -> AppResult<(StatusCode, Json<ReviewDto>)> {
+) -> AppResult<(StatusCode, Json<ManagedReview>)> {
     let form = parse_form(&state, multipart).await?;
     let subject_id = form
         .subject_id
@@ -221,21 +259,21 @@ async fn create_review(
             return Err(e.into());
         }
     };
-    let row = load(&state, res.last_insert_id() as i64).await?;
     Ok((
         StatusCode::CREATED,
-        Json(ReviewDto::from_row(row, &state.storage)),
+        Json(managed(&state, res.last_insert_id() as i64, user.id).await?),
     ))
 }
 
 /// Same fields as create, all optional. A new `file` overwrites the SAME R2 key, so the
 /// review's public URL does not change.
 async fn update_review(
-    _manager: ReviewManager,
+    RequireManager(user, _): ReviewManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     multipart: Multipart,
-) -> AppResult<Json<ReviewDto>> {
+) -> AppResult<Json<ManagedReview>> {
+    access::require(&state.db, Content::Review, id, user.id).await?;
     let existing = load(&state, id).await?;
     let form = parse_form(&state, multipart).await?;
 
@@ -259,15 +297,17 @@ async fn update_review(
     .bind(id)
     .execute(&state.db)
     .await?;
-    let row = load(&state, id).await?;
-    Ok(Json(ReviewDto::from_row(row, &state.storage)))
+    Ok(Json(managed(&state, id, user.id).await?))
 }
 
 async fn delete_review(
-    _manager: ReviewManager,
+    RequireManager(user, _): ReviewManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<StatusCode> {
+    access::require(&state.db, Content::Review, id, user.id)
+        .await?
+        .require_owner("delete this review")?;
     let existing = load(&state, id).await?;
     sqlx::query("DELETE FROM interactive_reviews WHERE id = ?")
         .bind(id)

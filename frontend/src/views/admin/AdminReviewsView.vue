@@ -3,6 +3,8 @@ import { onMounted, reactive, ref } from 'vue'
 
 import { api, errorMessage, uploadWithProgress } from '@/api/client'
 import type { Review, Subject } from '@/api/types'
+import OwnershipBadge from '@/components/admin/OwnershipBadge.vue'
+import ShareDialog from '@/components/admin/ShareDialog.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -101,6 +103,7 @@ async function save() {
   }
 }
 
+const sharing = ref<Review | null>(null)
 const deleting = ref<Review | null>(null)
 async function confirmDelete() {
   if (!deleting.value) return
@@ -161,7 +164,21 @@ async function confirmDelete() {
         <button class="btn-ghost btn-sm" aria-label="Edit" @click="openEdit(r)">
           <AppIcon name="pencil" :size="16" />
         </button>
-        <button class="btn-ghost btn-sm text-ctp-red" aria-label="Delete" @click="deleting = r">
+        <OwnershipBadge :item="r" />
+        <button
+          class="btn-ghost btn-sm"
+          aria-label="Share"
+          title="Share with managers"
+          @click="sharing = r"
+        >
+          <AppIcon name="users" :size="16" />
+        </button>
+        <button
+          v-if="r.access === 'owner'"
+          class="btn-ghost btn-sm text-ctp-red"
+          aria-label="Delete"
+          @click="deleting = r"
+        >
           <AppIcon name="trash" :size="16" />
         </button>
       </li>
@@ -220,6 +237,14 @@ async function confirmDelete() {
         </button>
       </template>
     </BaseModal>
+
+    <ShareDialog
+      kind="reviews"
+      :item="sharing"
+      @close="sharing = null"
+      @changed="load"
+      @left="load"
+    />
 
     <BaseModal :open="!!deleting" title="Delete review?" size="sm" @close="deleting = null">
       <p class="text-sm text-ctp-subtext1">

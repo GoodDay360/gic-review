@@ -16,7 +16,29 @@ export interface Subject {
   updated_at: string
 }
 
-export interface Review {
+/** Present on items returned by the manager API (`/admin/...`). */
+export interface ManagedFields {
+  /** `owner` (you created it) or `shared` (another manager shared it with you). */
+  access?: 'owner' | 'shared'
+  owner_id?: number | null
+  owner_name?: string | null
+  /** Number of other managers it is shared with. */
+  share_count?: number
+}
+
+export interface SharePerson {
+  user_id: number
+  email: string
+  display_name: string
+}
+
+export interface Shares {
+  owner: SharePerson | null
+  shared_with: (SharePerson & { shared_at: string })[]
+  you_are_owner: boolean
+}
+
+export interface Review extends ManagedFields {
   id: number
   subject_id: number
   title: string
@@ -29,7 +51,7 @@ export interface Review {
   updated_at: string
 }
 
-export interface QuizSummary {
+export interface QuizSummary extends ManagedFields {
   id: number
   subject_id: number
   title: string

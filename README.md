@@ -109,6 +109,9 @@ curl -H "Authorization: Bearer gic_…" -H 'Content-Type: application/json' \
   --data @docs/examples/hci-sample-quiz.json http://localhost:8080/api/admin/quizzes/import
 ```
 
+A key only reaches content its manager owns or that another manager shared with them.
+To let an AI build content from your course material, give it the key, the API base URL and
+`docs/AI-HOW-ADD-QUIZ.md` / `docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md`.
 Admins can see and revoke every manager's key under **Dashboard → API keys**. Keys never work
 for user, key or subject management. Details: `docs/AI-HOW-ADD-QUIZ.md`.
 
@@ -116,6 +119,7 @@ for user, key or subject management. Details: `docs/AI-HOW-ADD-QUIZ.md`.
 
 - `prompt.md`: build brief (requirements and how to build the project)
 - `docs/AI-SPEC.md`: status sheet (features checklist, schema, endpoints, limitations, changelog)
-- `docs/AI-HOW-ADD-QUIZ.md`: adding quizzes (admin panel, JSON import, SQL) and new quiz modes
-- `docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md`: writing and uploading interactive reviews
+- `docs/AI-HOW-ADD-QUIZ.md`: **give this to an AI** (with an API key) to create quizzes through the API, e.g. from a PDF; self-contained, no code access needed
+- `docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md`: **give this to an AI** to build and upload interactive review pages; includes the HTML template
+- `docs/DEV-ADD-QUIZ-MODE.md`: developer guide for adding a new quiz mode
 - `docs/examples/`: a text-only sample quiz JSON and an interactive review starter template

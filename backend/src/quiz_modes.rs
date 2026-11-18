@@ -3,7 +3,7 @@
 //! To add a mode: add a variant to [`QuizMode`], add it to [`QuizMode::ALL`], and write its
 //! rule in [`QuizMode::is_available`]. The API then reports it in `available_modes` and the
 //! frontend registry (`frontend/src/quiz-modes/registry.ts`) decides how to render it.
-//! See `docs/AI-HOW-ADD-QUIZ.md` → "Adding a new quiz mode".
+//! See `docs/DEV-ADD-QUIZ-MODE.md`.
 
 use serde::{Deserialize, Serialize};
 

@@ -1,0 +1,102 @@
+@import 'tailwindcss';
+
+/* `dark:` applies for the dark flavors; Latte counts as light. */
+@custom-variant dark (&:where([data-flavor='frappe'], [data-flavor='frappe'] *, [data-flavor='macchiato'], [data-flavor='macchiato'] *, [data-flavor='mocha'], [data-flavor='mocha'] *));
+
+/* Remove Tailwind's default palette so components can only use Catppuccin colors. */
+@theme {
+  --color-*: initial;
+}
+
+/* Map the runtime CSS variables (generated from @catppuccin/palette, see vite/catppuccin.ts)
+   into Tailwind colors: bg-ctp-base, text-ctp-text, border-ctp-surface1, bg-ctp-accent, … */
+@theme inline {
+  --color-ctp-rosewater: var(--ctp-rosewater);
+  --color-ctp-flamingo: var(--ctp-flamingo);
+  --color-ctp-pink: var(--ctp-pink);
+  --color-ctp-mauve: var(--ctp-mauve);
+  --color-ctp-red: var(--ctp-red);
+  --color-ctp-maroon: var(--ctp-maroon);
+  --color-ctp-peach: var(--ctp-peach);
+  --color-ctp-yellow: var(--ctp-yellow);
+  --color-ctp-green: var(--ctp-green);
+  --color-ctp-teal: var(--ctp-teal);
+  --color-ctp-sky: var(--ctp-sky);
+  --color-ctp-sapphire: var(--ctp-sapphire);
+  --color-ctp-blue: var(--ctp-blue);
+  --color-ctp-lavender: var(--ctp-lavender);
+  --color-ctp-text: var(--ctp-text);
+  --color-ctp-subtext1: var(--ctp-subtext1);
+  --color-ctp-subtext0: var(--ctp-subtext0);
+  --color-ctp-overlay2: var(--ctp-overlay2);
+  --color-ctp-overlay1: var(--ctp-overlay1);
+  --color-ctp-overlay0: var(--ctp-overlay0);
+  --color-ctp-surface2: var(--ctp-surface2);
+  --color-ctp-surface1: var(--ctp-surface1);
+  --color-ctp-surface0: var(--ctp-surface0);
+  --color-ctp-base: var(--ctp-base);
+  --color-ctp-mantle: var(--ctp-mantle);
+  --color-ctp-crust: var(--ctp-crust);
+  --color-ctp-accent: var(--ctp-accent);
+  --color-ctp-on-accent: var(--ctp-on-accent);
+}
+
+@layer base {
+  html,
+  body {
+    @apply bg-ctp-base text-ctp-text antialiased;
+  }
+
+  body {
+    @apply min-h-screen;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ctp-accent;
+  }
+
+  ::selection {
+    @apply bg-ctp-accent/30;
+  }
+}
+
+/* Reusable building blocks (usable in markup and in @apply). */
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-primary {
+  @apply btn bg-ctp-accent text-ctp-on-accent hover:brightness-110;
+}
+
+@utility btn-secondary {
+  @apply btn border border-ctp-surface1 bg-ctp-surface0 text-ctp-text hover:bg-ctp-surface1;
+}
+
+@utility btn-ghost {
+  @apply btn text-ctp-subtext1 hover:bg-ctp-surface0 hover:text-ctp-text;
+}
+
+@utility btn-danger {
+  @apply btn bg-ctp-red text-ctp-base hover:brightness-110;
+}
+
+@utility btn-sm {
+  @apply px-3 py-1.5 text-xs;
+}
+
+@utility card {
+  @apply rounded-xl border border-ctp-surface0 bg-ctp-mantle;
+}
+
+@utility input {
+  @apply w-full rounded-lg border border-ctp-surface1 bg-ctp-surface0 px-3 py-2 text-sm text-ctp-text placeholder:text-ctp-overlay1 focus:border-ctp-accent focus:outline-none;
+}
+
+@utility label {
+  @apply mb-1 block text-sm font-medium text-ctp-subtext1;
+}
+
+@utility link {
+  @apply text-ctp-accent underline-offset-2 hover:underline;
+}

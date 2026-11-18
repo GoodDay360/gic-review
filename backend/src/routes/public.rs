@@ -11,8 +11,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::{
-    access::{self, Content},
-    auth::MaybeManager,
+    access::{self, Actor, Content},
+    auth::MaybeEditor,
     error::{AppError, AppResult},
     models::{
         ReviewDto, ReviewRow, SubjectDto, SubjectRow, YearRow, review_columns, subject_columns,
@@ -176,7 +176,7 @@ async fn list_quizzes(
 
 async fn get_quiz(
     State(state): State<AppState>,
-    MaybeManager(manager): MaybeManager,
+    MaybeEditor(manager): MaybeEditor,
     Path(id): Path<i64>,
 ) -> AppResult<impl IntoResponse> {
     let quiz = repo::quiz_detail(&state.db, &state.storage, id)
@@ -187,7 +187,7 @@ async fn get_quiz(
         let Some(manager) = manager else {
             return Err(AppError::NotFound("quiz"));
         };
-        access::require(&state.db, Content::Quiz, id, manager.id).await?;
+        access::require(&state.db, Content::Quiz, id, Actor::of(&manager)).await?;
     }
     Ok(Json(quiz))
 }

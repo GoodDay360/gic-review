@@ -12,7 +12,7 @@ Work in the phases listed at the bottom. At the end of every phase the project m
 - open an **Interactive Review**: a static HTML review page made for that subject, or
 - take a **Quiz**: pick a quiz made by an admin/manager, then choose how to study it (**QCM** or **Flashcard**).
 
-Anyone can browse and do quizzes **without logging in**. Only staff accounts can log in: **managers** create content (in the dashboard, or through the API with their personal **API key**, which is how AI assistants add quizzes and reviews); **admins** only manage manager accounts, managers' API keys and subjects.
+Anyone can browse and do quizzes **without logging in**. Only staff accounts can log in: **managers** create content (in the dashboard, or through the API with their personal **API key**, which is how AI assistants add quizzes and reviews); **admins** can do everything a manager can (on **all** content) and also manage manager accounts, API keys, years and subjects.
 
 ---
 
@@ -182,8 +182,8 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 
 ### 3.5 Staff area
 - `/login`: email + password login for admin/manager only. There is no public sign-up.
-- `/admin` is the dashboard. Its menu depends on the role (managers: Quizzes, Bulk import, Interactive reviews, API key; admins: Managers, API keys, Years, Subjects).
-- Manager dashboard (**manager only**; admins cannot create or edit content):
+- `/admin` is the dashboard. Everyone gets Quizzes, Bulk import, Interactive reviews and API key; admins additionally get Managers, All API keys, Years and Subjects).
+- Content dashboard (**managers and admins**; admins see and manage everyone's content):
   - **Quizzes**: create, edit, delete, publish/unpublish quizzes; add, edit and reorder questions and options.
   - **Image inputs**: every image field (quiz cover, question, each option, flashcard back, explanation) uses a reusable `ImageUploader` component. It supports click-to-browse, **drag & drop**, and **paste from clipboard (Ctrl+V)**, which is handy for screenshots. It shows an upload progress bar, a preview thumbnail, an alt-text field, and Replace/Remove buttons.
   - **Preview**: a "Preview" button shows the question exactly as students will see it in QCM and Flashcard mode, images included.
@@ -204,18 +204,19 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 | Action | Guest (no login) | Manager | Admin |
 |---|---|---|---|
 | View subjects, reviews, quizzes; play quizzes | ✅ | ✅ | ✅ |
-| Create quizzes and interactive reviews (dashboard or API key) | ❌ | ✅ | ❌ |
-| Edit/publish **own** content and content **shared with them** | ❌ | ✅ | ❌ |
-| Delete content and manage who it is shared with | ❌ | owner only | ❌ |
-| See other managers' unshared content | ❌ | ❌ | ❌ |
-| Preview unpublished quizzes they can manage | ❌ | ✅ | ❌ |
-| Create/regenerate/revoke **own** API key (max 1 active) | ❌ | ✅ | ❌ |
-| See and revoke **any manager's** API keys | ❌ | ❌ | ✅ |
+| Create quizzes and interactive reviews (dashboard or API key) | ❌ | ✅ | ✅ |
+| Edit/publish **own** content and content **shared with them** | ❌ | ✅ | ✅ |
+| Edit/publish/delete **anyone's** content and manage its sharing | ❌ | ❌ | ✅ |
+| Delete content and manage who it is shared with | ❌ | owner only | ✅ (all) |
+| See other managers' unshared content | ❌ | ❌ | ✅ |
+| Preview unpublished quizzes they can manage | ❌ | ✅ | ✅ |
+| Create/regenerate/revoke **own** API key (max 1 active) | ❌ | ✅ | ✅ |
+| See and revoke **anyone's** API keys | ❌ | ❌ | ✅ |
 | Create/edit years and subjects, clean up orphaned images | ❌ | ❌ | ✅ |
 | Create/manage manager accounts | ❌ | ❌ | ✅ |
 
 - **Content ownership and sharing:** the owner of a quiz or interactive review is the manager who created it (`created_by`). Content is private to its owner in the manager area (others get `404`). The owner shares it with other active managers **by email**; shared managers can view, edit (questions, images, file) and publish it, in the dashboard or with their API key, but only the owner can delete it or add/remove people; a shared manager can remove themselves. Sharing is dashboard-only (API keys get `403`). When an owner account is deleted, each of their items goes to the manager it was shared with first; never-shared items stay online (if published) without an owner. Students are unaffected: published content is public.
-- **Admins cannot do anything else:** they only manage manager accounts, managers' API keys and subjects (+ orphan cleanup). The backend returns `403` when an admin calls a content endpoint.
+- **Admins have every manager permission**, on **all** content: they see every quiz and review (`access: "admin"`, with owner rights: edit, publish, delete, manage sharing), create content (owned by them), and can create their own API key (max 1 active; like every key it never reaches session-only endpoints). Items show "Owned by …" so admins know whose content they're editing.
 
 - **Initial admin bootstrap:** when the backend starts, if no admin exists, create one from `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `backend/.env`. Log a warning telling the operator to change the password. Never log the password itself.
 - Only an admin can create users, and created users are always `manager`. There is no API path to create another admin; that is done manually in the database.
@@ -227,7 +228,7 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 - **API keys:**
   - Format `gic_` + 64 hex characters from a CSPRNG. Store only the SHA-256 hash plus a short display prefix; show the full key once, at creation.
   - Sent as `Authorization: Bearer <key>`. If the header is present, the cookie is ignored. CORS allows the `Authorization` header.
-  - Only managers own keys, at most **1 active key per manager** (enforced in a transaction). "Regenerate" revokes the active key and creates a new one atomically.
+  - Managers and admins own keys, at most **1 active key per user** (enforced in a transaction). "Regenerate" revokes the active key and creates a new one atomically.
   - Scopes: `quizzes:write` (quizzes, questions, reorder, publish, import, image uploads) and `reviews:write` (interactive reviews, image uploads). A key without the needed scope gets `403 missing_scope`.
   - Keys never work on session-only endpoints (users, API key management, subjects, orphan cleanup): `403 api_key_not_allowed`. So a leaked key cannot create more keys or escalate.
   - Optional expiry (1–365 days), `last_used_at` tracking, revocation by the owner or any admin. Deleting a manager deletes their keys; deactivating them disables the keys.
@@ -314,16 +315,16 @@ Public:
 Auth:
 - `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` (also works with an API key and then returns `auth_method: "api_key"` and the key's scopes, handy to test a key)
 
-Manager only, via session cookie **or** API key (`Authorization: Bearer gic_…`) with the scope in brackets:
+Managers and admins ("editors"), via session cookie **or** API key (`Authorization: Bearer gic_…`) with the scope in brackets:
 - `POST/PUT/DELETE /admin/quizzes[/:id]`, `PATCH /admin/quizzes/:id/publish` (`quizzes:write`)
 - `POST/PUT/DELETE /admin/quizzes/:id/questions[/:qid]`, `PUT /admin/quizzes/:id/questions/reorder` (`quizzes:write`)
 - `POST /admin/quizzes/import`, which takes bulk JSON (schema in `AI-HOW-ADD-QUIZ.md`) and runs in a single DB transaction (`quizzes:write`)
 - `POST /admin/uploads/image` (multipart, optional `quiz_id`), which returns `{ key, url }` (`quizzes:write` or `reviews:write`)
 - `DELETE /admin/uploads/image/:key` (`quizzes:write` or `reviews:write`)
 - `GET /admin/reviews[?subject_id=]`, `GET /admin/reviews/:id`, `POST/PUT/DELETE /admin/reviews[/:id]` (multipart `.html` upload) (`reviews:write`)
-- All of the above only for content the manager owns or that was shared with them (`404` otherwise); `DELETE` of a quiz or review is owner-only (`403 owner_only`). List endpoints return `access` (`owner`/`shared`), `owner_id`, `owner_name`, `share_count`.
+- All of the above only for content the user owns or that was shared with them (`404` otherwise; admins reach all content); `DELETE` of a quiz or review is owner-only (`403 owner_only`; admins count as owner). List endpoints return `access` (`owner`/`shared`), `owner_id`, `owner_name`, `share_count`.
 
-Manager only, dashboard session only (never with an API key):
+Managers and admins, dashboard session only (never with an API key):
 - `GET /admin/quizzes/:id/shares`, `POST /admin/quizzes/:id/shares` (`{ email }`, owner only), `DELETE /admin/quizzes/:id/shares/:user_id` (owner, or yourself to leave); the same three under `/admin/reviews/:id/shares`
 - `GET /admin/api-keys/mine`, `POST /admin/api-keys` (`{ name, scopes, expires_in_days | null, replace_existing }` → `{ key, api_key }`, the key is shown only in this response), `DELETE /admin/api-keys/:id` (own key)
 
@@ -506,7 +507,7 @@ These refine the requirements above; they do not remove any of them.
 - **Subjects API** also returns `quiz_count` (published quizzes). Subject `color` is one of the 14 Catppuccin accent names.
 - **Publishing** a quiz is refused while it has no available mode.
 - **Deleting** a subject is refused (409) while it still has quizzes or reviews. Deleting a manager keeps their content (`created_by` becomes NULL, so `created_by` columns are nullable with `ON DELETE SET NULL`).
-- **Roles changed (2026-11-18):** admins no longer create or edit quizzes, reviews or images; that is manager-only. Admins manage manager accounts, managers' API keys, subjects and orphan cleanup.
+- **Roles (2026-11-18, revised):** admins first lost content permissions, then got them back: admins now have every manager permission on all content, plus account, API key, year and subject management.
 - **Uploads:** `DELETE /admin/uploads/image/:key` only deletes images no row references (409 otherwise). The question editor deletes images uploaded during an edit session that end up unused (cancel/close/replace). Orphan cleanup skips files younger than one hour.
 - **Bulk import:** unknown JSON fields are rejected; `*_url` images must be public http(s) URLs (no private IPs, no redirects); the admin import page has a "Load HCI sample" button (`docs/examples/hci-sample-quiz.json`, text-only, playable in QCM and Flashcard).
 - **Interactive reviews:** replacing the file overwrites the same R2 key; the API returns the URL with a `?v=<updated_at>` cache-buster. The viewer refuses to render a review URL on the site's own origin.

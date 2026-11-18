@@ -11,7 +11,6 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isStaff = computed(() => !!user.value)
   const isAdmin = computed(() => user.value?.role === 'admin')
-  const isManager = computed(() => user.value?.role === 'manager')
 
   /** Load the current session once (the cookie is httpOnly, so we must ask the API). */
   function fetchMe(force = false): Promise<void> {
@@ -46,5 +45,5 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  return { user, loaded, isStaff, isAdmin, isManager, fetchMe, login, logout }
+  return { user, loaded, isStaff, isAdmin, fetchMe, login, logout }
 })

@@ -164,7 +164,7 @@ async function confirmDelete() {
             <AppIcon name="users" :size="16" />
           </button>
           <button
-            v-if="q.access === 'owner'"
+            v-if="q.access === 'owner' || q.access === 'admin'"
             class="btn-ghost btn-sm text-ctp-red"
             aria-label="Delete"
             @click="deleting = q"

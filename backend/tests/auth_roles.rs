@@ -291,22 +291,28 @@ async fn db_manager_cannot_reach_admin_only_endpoints() {
     assert_eq!(r.status, StatusCode::OK);
     assert_eq!(r.json.as_array().unwrap().len(), 2);
 
-    // …but cannot create content or API keys.
-    for (method, uri, body) in [
-        ("GET", "/api/admin/quizzes", None),
-        ("POST", "/api/admin/quizzes", Some(json!({}))),
-        ("POST", "/api/admin/quizzes/import", Some(json!({}))),
-        ("POST", "/api/admin/reviews", None),
-        ("POST", "/api/admin/uploads/image", None),
-        (
-            "POST",
-            "/api/admin/api-keys",
-            Some(json!({ "name": "x", "scopes": ["quizzes:write"], "expires_in_days": null })),
-        ),
-    ] {
-        let r = send(&app, method, uri, Some(&admin), body).await;
-        assert_eq!(r.status, StatusCode::FORBIDDEN, "admin {method} {uri}");
-    }
+    // …and has every manager permission too: content and an own API key.
+    let r = send(&app, "GET", "/api/admin/quizzes", Some(&admin), None).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let r = send(&app, "POST", "/api/admin/quizzes", Some(&admin),
+        Some(json!({ "subject_id": 1, "title": "Admin's quiz", "description": null, "cover_image_key": null }))).await;
+    assert_eq!(r.status, StatusCode::CREATED);
+    assert_eq!(r.json["access"], "owner");
+    let r = send(
+        &app,
+        "POST",
+        "/api/admin/api-keys",
+        Some(&admin),
+        Some(json!({ "name": "admin key", "scopes": ["quizzes:write"], "expires_in_days": null })),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::CREATED);
+    let key = r.json["key"].as_str().unwrap().to_string();
+    let r = send_key(&app, "GET", "/api/admin/quizzes", &key, None).await;
+    assert_eq!(r.status, StatusCode::OK);
+    // The admin's key still can't reach admin-only endpoints.
+    let r = send_key(&app, "GET", "/api/admin/users", &key, None).await;
+    assert_eq!(r.json["error"]["code"], "api_key_not_allowed");
     tdb.cleanup().await;
 }
 
@@ -737,6 +743,32 @@ async fn db_content_is_private_until_shared_by_email() {
         send(&app, "DELETE", &rv, Some(&b), None).await.status,
         StatusCode::FORBIDDEN
     );
+
+    // An admin sees every manager's content with owner rights ("admin" access).
+    let admin = cookie_from(
+        &login(&app, "admin@example.com", "admin-password-123")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    let r = send(&app, "GET", &q, Some(&admin), None).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json["access"], "admin");
+    let r = send(&app, "GET", "/api/admin/reviews", Some(&admin), None).await;
+    assert_eq!(r.json[0]["access"], "admin");
+    let r = send(&app, "GET", &shares, Some(&admin), None).await;
+    assert_eq!(r.json["can_manage"], true);
+    assert_eq!(r.json["you_are_owner"], false);
+    // Admin can't "share" an item with its own owner.
+    let r = send(
+        &app,
+        "POST",
+        &shares,
+        Some(&admin),
+        Some(json!({ "email": "owner-a@example.com" })),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY);
 
     // Deleting the owner hands the content to the manager it was shared with.
     send(

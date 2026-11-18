@@ -34,8 +34,8 @@
 GIC Review is an exam-review website. Students pick a subject, then open its **Interactive Review**
 (a static HTML page in a sandboxed iframe) or practise with **Quizzes** in **QCM** or **Flashcard**
 mode, without logging in. **Managers** create the content in the dashboard or through the API with
-their personal **API key** (how AI assistants add quizzes and reviews). **Admins** only manage manager
-accounts, managers' API keys, subjects and image cleanup.
+their personal **API key** (how AI assistants add quizzes and reviews). **Admins** have every manager
+permission on all content, plus account, API key, year and subject management and image cleanup.
 
 Stack: Vue 3 + TypeScript + Vite + Tailwind CSS 4 + Pinia + Vue Router (**Bun**) in `frontend/`;
 Rust + Axum + Tokio + SQLx (MySQL 8) + Cloudflare R2 (`aws-sdk-s3`) in `backend/`.
@@ -90,7 +90,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 ### Staff / Admin
 - ✅ `/login` with email + password, no public sign-up
 - ✅ Role-based dashboard: managers get Quizzes, Bulk import, Interactive reviews, API key; admins get Managers, API keys, Subjects
-- ✅ Admins cannot create or edit content (backend returns 403; dashboard hides it)
+- ✅ Admins have every manager permission: create content, own API key, and owner rights on **all** quizzes/reviews (`access: "admin"`, "Owned by …" badge)
 - ✅ Content ownership: quizzes and reviews are private to the manager who created them (others get 404)
 - ✅ Sharing by email: owner shares a quiz/review with other managers (Share dialog), shared managers can edit and publish, only the owner deletes or manages access, shared managers can leave; badges "Shared by …" / "Shared with N"
 - ✅ Deleting a manager hands each of their items to the manager it was shared with first
@@ -175,8 +175,8 @@ Migrations: `20261118000001_init_schema.sql`, `20261118000002_seed_hci_subject.s
 
 ## API endpoints (current, prefix `/api`)
 
-Auth column: **public**, **M** = manager via session or API key (scope shown), **M-s** = manager
-session only, **A-s** = admin session only, **any** = any session or API key.
+Auth column: **public**, **M** = manager or admin via session or API key (scope shown), **M-s** = manager
+or admin session only, **A-s** = admin session only, **any** = any session or API key.
 
 | Method & path | Auth | Notes |
 |---|---|---|
@@ -235,6 +235,8 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-18: Admins get every manager permission back: content creation, own API key, and owner
+  rights on all content (`access: "admin"`). Extractors renamed `RequireEditor*` / `MaybeEditor`.
 - 2026-11-18: Years: students pick a year (I3, I4, custom names) before a subject. `years` table,
   `subjects.year_id`, default year "General", public `/years` endpoints, admin Years page, year in the
   subject form. Bad JSON bodies now return the standard JSON error.

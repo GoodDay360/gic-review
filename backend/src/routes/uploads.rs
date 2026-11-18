@@ -13,8 +13,8 @@ use serde::Serialize;
 use serde_json::json;
 
 use crate::{
-    access::{self, Content},
-    auth::{ContentManager, RequireAdmin, RequireManager},
+    access::{self, Actor, Content},
+    auth::{ContentManager, RequireAdmin, RequireEditor},
     config::Config,
     error::{AppError, AppResult},
     images,
@@ -85,7 +85,7 @@ pub async fn store_image(
 
 /// `multipart/form-data` with a `file` field and an optional `quiz_id` field.
 async fn upload_image(
-    RequireManager(user, _): ContentManager,
+    RequireEditor(user, _): ContentManager,
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> AppResult<(StatusCode, Json<UploadedImage>)> {
@@ -129,7 +129,7 @@ async fn upload_image(
 
     // Only use the quiz prefix for quizzes this manager can manage.
     if let Some(qid) = quiz_id
-        && access::require(&state.db, Content::Quiz, qid, user.id)
+        && access::require(&state.db, Content::Quiz, qid, Actor::of(&user))
             .await
             .is_err()
     {

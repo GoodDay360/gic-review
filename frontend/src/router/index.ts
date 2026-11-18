@@ -6,8 +6,8 @@ import HomeView from '@/views/HomeView.vue'
 declare module 'vue-router' {
   interface RouteMeta {
     requiresStaff?: boolean
-    /** Content pages: managers only (admins only manage accounts, keys and subjects). */
-    requiresManager?: boolean
+    /** Content pages: managers and admins (admins have every manager permission). */
+    requiresEditor?: boolean
     requiresAdmin?: boolean
     title?: string
   }
@@ -15,7 +15,7 @@ declare module 'vue-router' {
 
 /** Where the dashboard starts for the current role. */
 function dashboardHome() {
-  return useAuthStore().isAdmin ? '/admin/users' : '/admin/quizzes'
+  return '/admin/quizzes'
 }
 
 const router = createRouter({
@@ -70,32 +70,32 @@ const router = createRouter({
           path: 'quizzes',
           name: 'admin-quizzes',
           component: () => import('@/views/admin/AdminQuizzesView.vue'),
-          meta: { requiresManager: true, title: 'Quizzes' },
+          meta: { requiresEditor: true, title: 'Quizzes' },
         },
         {
           path: 'quizzes/:id',
           name: 'admin-quiz-edit',
           component: () => import('@/views/admin/AdminQuizEditView.vue'),
           props: true,
-          meta: { requiresManager: true, title: 'Edit quiz' },
+          meta: { requiresEditor: true, title: 'Edit quiz' },
         },
         {
           path: 'import',
           name: 'admin-import',
           component: () => import('@/views/admin/AdminImportView.vue'),
-          meta: { requiresManager: true, title: 'Bulk import' },
+          meta: { requiresEditor: true, title: 'Bulk import' },
         },
         {
           path: 'reviews',
           name: 'admin-reviews',
           component: () => import('@/views/admin/AdminReviewsView.vue'),
-          meta: { requiresManager: true, title: 'Interactive reviews' },
+          meta: { requiresEditor: true, title: 'Interactive reviews' },
         },
         {
           path: 'api-key',
           name: 'manager-api-key',
           component: () => import('@/views/admin/ManagerApiKeyView.vue'),
-          meta: { requiresManager: true, title: 'API key' },
+          meta: { requiresEditor: true, title: 'API key' },
         },
         {
           path: 'api-keys',
@@ -142,7 +142,7 @@ router.beforeEach(async (to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
   if (to.matched.some((r) => r.meta.requiresAdmin) && !auth.isAdmin) return dashboardHome()
-  if (to.matched.some((r) => r.meta.requiresManager) && !auth.isManager) return dashboardHome()
+  if (to.matched.some((r) => r.meta.requiresEditor) && !auth.isStaff) return { name: 'login' }
 })
 
 router.afterEach((to) => {

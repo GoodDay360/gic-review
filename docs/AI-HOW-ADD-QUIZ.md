@@ -15,7 +15,7 @@ You need two values from the human:
 | Value | Example | Notes |
 |---|---|---|
 | `BASE` (API base URL) | `https://api.example.com/api` | Every endpoint below is `BASE` + path. |
-| `KEY` (API key) | `gic_3f9a…` (68 chars) | Made by a manager in **Dashboard → API key**, permission **`quizzes:write`**. Secret: never show it. |
+| `KEY` (API key) | `gic_3f9a…` (68 chars) | Made by a manager or admin in **Dashboard → API key**, permission **`quizzes:write`**. Secret: never show it. |
 
 Every request that needs the key sends this header:
 
@@ -64,6 +64,11 @@ Don't call anything else under `/admin/…` (users, subjects, API keys, sharing)
 humans in the dashboard and refuse API keys (`403 api_key_not_allowed`). There is no endpoint to
 create subjects: if the subject you need is missing, ask the human.
 
+**What your key can reach:** it acts as the person who made it. You see and edit quizzes they own
+or that another manager shared with them; others return `404`. On a shared quiz you can edit and
+publish but not delete (`403 owner_only`). An **admin's** key reaches all quizzes with owner rights
+(`"access": "admin"`).
+
 ---
 
 ## 3. Recipe: create a quiz from a PDF
@@ -73,7 +78,7 @@ create subjects: if the subject you need is missing, ask the human.
 ```bash
 curl -H "Authorization: Bearer $KEY" $BASE/auth/me
 ```
-Expect `"role": "manager"` and `"quizzes:write"` in `"api_key_scopes"`.
+Expect `"role"` `"manager"` or `"admin"`, and `"quizzes:write"` in `"api_key_scopes"`.
 
 **Step 2. Find the subject** (#2)
 
@@ -135,7 +140,7 @@ curl -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
 ## 4. Endpoint details
 
 ### #1 `GET /auth/me`
-Response `200`: `{ "id", "email", "display_name", "role": "manager", "is_active", "auth_method": "api_key", "api_key_scopes": [...] }`.
+Response `200`: `{ "id", "email", "display_name", "role": "manager" | "admin", "is_active", "auth_method": "api_key", "api_key_scopes": [...] }`.
 
 ### #2 `GET /subjects` (no key)
 Optional query `?year={year_slug}` to get one year's subjects only. Response `200`: array of
@@ -145,7 +150,7 @@ ordered by year, then subject.
 ### #3 `GET /admin/quizzes?subject_id={n}`
 `subject_id` is optional. Response `200`: array of quiz summaries (no questions):
 `{ "id", "subject_id", "title", "description", "cover_image_key", "cover_image_url", "is_published", "question_count", "available_modes", "access", "owner_id", "owner_name", "share_count", "created_at", "updated_at" }`.
-Only quizzes your manager owns (`"access": "owner"`) or that were shared with them (`"access": "shared"`).
+Only quizzes the key's owner owns (`"access": "owner"`) or that were shared with them (`"access": "shared"`); an admin's key lists all quizzes (`"access": "admin"`).
 
 ### #4 `GET /admin/quizzes/{id}`
 Response `200`: the **quiz object** (section 4, at the end). `404` if it doesn't exist or isn't yours.
@@ -383,7 +388,6 @@ Errors look like `{ "error": { "code": "…", "message": "…" } }`. The `messag
 | 403 | `missing_scope` | Key lacks `quizzes:write` → ask for a key with that permission. |
 | 403 | `owner_only` | Only the quiz's owner can do that (e.g. delete a shared quiz). |
 | 403 | `api_key_not_allowed` | You called a dashboard-only endpoint; don't. |
-| 403 | `forbidden` | The key's account is not a manager. |
 | 404 | `not_found` | Wrong id, or not your quiz. |
 | 409 | `conflict` | Something is still in use / duplicate. |
 | 413 | `payload_too_large` | File or request too big. |

@@ -1,8 +1,8 @@
 //! Password hashing (Argon2id), JWT session cookies and the auth extractors
-//! `RequireManager<Scope>`, `RequireManagerSession`, `RequireAdmin`, `RequireAuth`, `MaybeManager`.
+//! `RequireEditor<Scope>`, `RequireEditorSession`, `RequireAdmin`, `RequireAuth`, `MaybeEditor`.
 //!
-//! Roles: managers create content (dashboard or API key); admins only manage manager
-//! accounts, their API keys, subjects and orphan cleanup (dashboard only).
+//! Roles: managers create content (dashboard or API key); admins can do everything managers
+//! can, plus manage accounts, API keys, years, subjects and orphan cleanup (dashboard only).
 //!
 //! Every authenticated request re-reads the user's role and `is_active` flag from the database,
 //! so deactivating a manager takes effect immediately even if their JWT is still valid.
@@ -255,13 +255,10 @@ async fn authenticate_api_key(state: &AppState, key: &str) -> AppResult<Option<A
     let Some(found) = found else {
         return Ok(None);
     };
-    // The owner must still be an active manager: deactivating them disables their keys.
+    // The key's owner must still be active: deactivating them disables their keys.
     let Some((row, role)) = load_active_user(state, found.user_id).await? else {
         return Ok(None);
     };
-    if role != Role::Manager {
-        return Ok(None);
-    }
     sqlx::query(
         "UPDATE api_keys SET last_used_at = NOW() \
          WHERE id = ? AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL 1 MINUTE)",
@@ -345,11 +342,11 @@ impl ScopeRequirement for ContentScope {
     const ANY_OF: &'static [ApiScope] = &[ApiScope::QuizzesWrite, ApiScope::ReviewsWrite];
 }
 
-/// An active **manager**, via session cookie or an API key holding scope `S`.
+/// An active **editor** (manager or admin), via session cookie or an API key holding scope `S`.
 /// Admins are rejected: they only manage accounts and subjects.
-pub struct RequireManager<S: ScopeRequirement>(pub AuthUser, pub PhantomData<S>);
+pub struct RequireEditor<S: ScopeRequirement>(pub AuthUser, pub PhantomData<S>);
 
-impl<S: ScopeRequirement> FromRequestParts<AppState> for RequireManager<S> {
+impl<S: ScopeRequirement> FromRequestParts<AppState> for RequireEditor<S> {
     type Rejection = AppError;
 
     async fn from_request_parts(
@@ -359,9 +356,6 @@ impl<S: ScopeRequirement> FromRequestParts<AppState> for RequireManager<S> {
         let user = authenticate(parts, state)
             .await?
             .ok_or(AppError::Unauthorized)?;
-        if user.role != Role::Manager {
-            return Err(AppError::Forbidden);
-        }
         if let AuthMethod::ApiKey { scopes, .. } = &user.method
             && !S::ANY_OF.iter().any(|s| scopes.contains(s))
         {
@@ -377,10 +371,10 @@ impl<S: ScopeRequirement> FromRequestParts<AppState> for RequireManager<S> {
     }
 }
 
-/// An active manager logged in through the dashboard (no API keys).
-pub struct RequireManagerSession(pub AuthUser);
+/// An active editor (manager or admin) logged in through the dashboard (no API keys).
+pub struct RequireEditorSession(pub AuthUser);
 
-impl FromRequestParts<AppState> for RequireManagerSession {
+impl FromRequestParts<AppState> for RequireEditorSession {
     type Rejection = AppError;
 
     async fn from_request_parts(
@@ -389,8 +383,7 @@ impl FromRequestParts<AppState> for RequireManagerSession {
     ) -> Result<Self, Self::Rejection> {
         reject_api_key(parts)?;
         match authenticate_session(parts, state).await? {
-            Some(user) if user.role == Role::Manager => Ok(Self(user)),
-            Some(_) => Err(AppError::Forbidden),
+            Some(user) => Ok(Self(user)),
             None => Err(AppError::Unauthorized),
         }
     }
@@ -432,11 +425,11 @@ impl FromRequestParts<AppState> for RequireAuth {
     }
 }
 
-/// A manager (session or any API key) if present, otherwise a guest. Never rejects.
-/// Used to let managers preview unpublished quizzes.
-pub struct MaybeManager(pub Option<AuthUser>);
+/// An editor (manager or admin; session or any API key) if present, otherwise a guest.
+/// Never rejects. Used to let editors preview unpublished quizzes they can manage.
+pub struct MaybeEditor(pub Option<AuthUser>);
 
-impl FromRequestParts<AppState> for MaybeManager {
+impl FromRequestParts<AppState> for MaybeEditor {
     type Rejection = AppError;
 
     async fn from_request_parts(
@@ -448,11 +441,7 @@ impl FromRequestParts<AppState> for MaybeManager {
         if jar.get(SESSION_COOKIE).is_none() && bearer(parts).is_none() {
             return Ok(Self(None));
         }
-        Ok(Self(
-            authenticate(parts, state)
-                .await?
-                .filter(|u| u.role == Role::Manager),
-        ))
+        Ok(Self(authenticate(parts, state).await?))
     }
 }
 
@@ -472,12 +461,12 @@ impl<S: Send + Sync> FromRequestParts<S> for ClientIp {
     }
 }
 
-/// Manager allowed to change quizzes (session, or API key with `quizzes:write`).
-pub type QuizManager = RequireManager<QuizzesScope>;
-/// Manager allowed to change interactive reviews (session, or API key with `reviews:write`).
-pub type ReviewManager = RequireManager<ReviewsScope>;
-/// Manager allowed to upload images (session, or API key with either write scope).
-pub type ContentManager = RequireManager<ContentScope>;
+/// Editor allowed to change quizzes (session, or API key with `quizzes:write`).
+pub type QuizManager = RequireEditor<QuizzesScope>;
+/// Editor allowed to change interactive reviews (session, or API key with `reviews:write`).
+pub type ReviewManager = RequireEditor<ReviewsScope>;
+/// Editor allowed to upload images (session, or API key with either write scope).
+pub type ContentManager = RequireEditor<ContentScope>;
 
 /// Any active user (admin or manager) logged in through the dashboard (no API keys).
 pub struct RequireSession(pub AuthUser);

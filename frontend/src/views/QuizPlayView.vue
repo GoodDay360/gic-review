@@ -84,7 +84,7 @@ function switchMode(id: string) {
           v-if="!quiz.is_published"
           class="mt-2 inline-block rounded-md bg-ctp-yellow/20 px-2 py-1 text-xs font-medium text-ctp-yellow"
         >
-          Draft: only managers can see this quiz
+          Draft: only its editors can see this quiz
         </p>
       </header>
       <component :is="mode!.component" v-if="modeOk" :key="mode!.id" :quiz="quiz" />

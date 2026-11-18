@@ -1,7 +1,7 @@
 //! API key management (dashboard session only; an API key can never manage keys).
 //!
 //! - Managers create, regenerate and revoke **their own** key (max 1 active key each).
-//! - Admins list and revoke **every** manager's keys (they cannot create keys).
+//! - Admins can also create their own key (same limit), and list and revoke **everyone's** keys.
 
 use axum::{
     Json, Router,
@@ -14,9 +14,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     api_keys::{
-        self, ApiScope, DISPLAY_PREFIX_LEN, MAX_ACTIVE_KEYS_PER_MANAGER, join_scopes, parse_scopes,
+        self, ApiScope, DISPLAY_PREFIX_LEN, MAX_ACTIVE_KEYS_PER_USER, join_scopes, parse_scopes,
     },
-    auth::{RequireAdmin, RequireManagerSession, RequireSession, Role},
+    auth::{RequireAdmin, RequireEditorSession, RequireSession, Role},
     error::{AppError, AppResult},
     extract::AppJson,
     state::AppState,
@@ -104,7 +104,7 @@ async fn load(state: &AppState, id: i64) -> AppResult<KeyRow> {
 
 /// Manager: their own keys (newest first, revoked/expired included for history).
 async fn list_mine(
-    RequireManagerSession(user): RequireManagerSession,
+    RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
 ) -> AppResult<Json<Vec<ApiKeyDto>>> {
     let rows: Vec<KeyRow> = sqlx::query_as(concat!(
@@ -160,7 +160,7 @@ struct CreatedKey {
 
 /// Manager: create (or regenerate) their API key. Max one active key per manager.
 async fn create_key(
-    RequireManagerSession(user): RequireManagerSession,
+    RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     AppJson(body): AppJson<CreateKey>,
 ) -> AppResult<(StatusCode, Json<CreatedKey>)> {
@@ -211,7 +211,7 @@ async fn create_key(
     .bind(user.id)
     .fetch_one(&mut *tx)
     .await?;
-    if active >= MAX_ACTIVE_KEYS_PER_MANAGER {
+    if active >= MAX_ACTIVE_KEYS_PER_USER {
         return Err(AppError::Conflict(
             "you already have an active API key; regenerate it or revoke it first".into(),
         ));

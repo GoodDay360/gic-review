@@ -18,7 +18,7 @@ You need two values from the human:
 | Value | Example | Notes |
 |---|---|---|
 | `BASE` (API base URL) | `https://api.example.com/api` | Every endpoint below is `BASE` + path. |
-| `KEY` (API key) | `gic_3f9a…` (68 chars) | Made by a manager in **Dashboard → API key**, permission **`reviews:write`**. Secret: never show it or put it in the HTML. |
+| `KEY` (API key) | `gic_3f9a…` (68 chars) | Made by a manager or admin in **Dashboard → API key**, permission **`reviews:write`**. Secret: never show it or put it in the HTML. |
 
 Every request that needs the key sends this header:
 
@@ -60,8 +60,9 @@ Don't call anything else under `/admin/…` (users, subjects, API keys, sharing)
 humans in the dashboard and refuse API keys (`403 api_key_not_allowed`). There is no endpoint to
 create subjects: if the subject you need is missing, ask the human.
 
-**What your key can reach:** it acts as the manager who made it. You see and edit reviews that
-manager owns or that another manager shared with them; others return `404`. On a shared review
+**What your key can reach:** it acts as the person who made it. You see and edit reviews they own
+or that another manager shared with them; others return `404`. An **admin's** key reaches all reviews
+with owner rights (`"access": "admin"`). On a shared review
 you can update it (#7) but not delete it (`403 owner_only`).
 
 ---
@@ -132,7 +133,7 @@ curl -H "Authorization: Bearer $KEY" -X PUT -F "is_published=true" $BASE/admin/r
 ## 4. Endpoint details
 
 ### #1 `GET /auth/me`
-Response `200`: `{ "id", "email", "display_name", "role": "manager", "auth_method": "api_key", "api_key_scopes": [...] }`.
+Response `200`: `{ "id", "email", "display_name", "role": "manager" | "admin", "auth_method": "api_key", "api_key_scopes": [...] }`.
 
 ### #2 `GET /subjects` (no key)
 Optional query `?year={year_slug}`. Response `200`: array of

@@ -10,7 +10,8 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
-    auth::{QuizManager, RequireManager},
+    access::Actor,
+    auth::{QuizManager, RequireEditor},
     error::{AppError, AppResult},
     extract::AppJson,
     images, repo,
@@ -189,7 +190,7 @@ async fn resolve(
 }
 
 async fn import_quiz(
-    RequireManager(user, _): QuizManager,
+    RequireEditor(user, _): QuizManager,
     State(state): State<AppState>,
     AppJson(body): AppJson<ImportQuiz>,
 ) -> AppResult<(StatusCode, Json<ManagedQuiz>)> {
@@ -273,7 +274,7 @@ async fn import_quiz(
     match result {
         Ok(quiz_id) => Ok((
             StatusCode::CREATED,
-            Json(load_quiz(&state, quiz_id, user.id).await?),
+            Json(load_quiz(&state, quiz_id, Actor::of(&user)).await?),
         )),
         Err(err) => {
             state.storage.delete_many_best_effort(&uploaded).await;

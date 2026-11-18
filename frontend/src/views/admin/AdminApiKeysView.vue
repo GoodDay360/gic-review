@@ -26,9 +26,7 @@ const {
   [],
 )
 onMounted(async () => {
-  managers.value = (await api.get<User[]>('/admin/users').catch(() => [])).filter(
-    (u) => u.role === 'manager',
-  )
+  managers.value = (await api.get<User[]>('/admin/users').catch(() => [])).filter(() => true)
   run()
 })
 
@@ -61,9 +59,9 @@ const statusClass = {
   <div class="space-y-5">
     <h1 class="text-2xl font-bold text-ctp-text">API keys</h1>
     <p class="max-w-2xl text-sm text-ctp-subtext0">
-      Each manager can create one API key from their dashboard to let scripts or AI assistants add
-      quizzes and interactive reviews. Revoke a key if it leaks or is no longer needed. Deactivating
-      or deleting a manager also disables their key.
+      Each manager (and admin) can create one API key from their dashboard to let scripts or AI
+      assistants add quizzes and interactive reviews. Revoke a key if it leaks or is no longer
+      needed. Deactivating or deleting a manager also disables their key.
     </p>
 
     <div class="flex flex-wrap items-center gap-3">

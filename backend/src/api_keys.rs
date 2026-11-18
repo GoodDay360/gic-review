@@ -9,10 +9,10 @@ use sha2::{Digest, Sha256};
 pub const KEY_PREFIX: &str = "gic_";
 /// Characters of the key kept in plain text so people can recognise it in the UI.
 pub const DISPLAY_PREFIX_LEN: usize = 12;
-/// A manager may hold at most this many active (not revoked, not expired) keys.
-pub const MAX_ACTIVE_KEYS_PER_MANAGER: i64 = 1;
+/// A user (manager or admin) may hold at most this many active (not revoked, not expired) keys.
+pub const MAX_ACTIVE_KEYS_PER_USER: i64 = 1;
 
-/// What an API key may do. Keys belong to managers and only reach content endpoints;
+/// What an API key may do. Keys belong to managers or admins and only reach content endpoints;
 /// user, key and subject management always require a logged-in browser session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ApiScope {

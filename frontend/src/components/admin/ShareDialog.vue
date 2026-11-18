@@ -97,7 +97,7 @@ const what = () => (props.kind === 'quizzes' ? 'quiz' : 'review')
       <SkeletonBlock v-for="i in 2" :key="i" class="h-12" />
     </div>
     <div v-else-if="shares" class="space-y-5">
-      <form v-if="shares.you_are_owner" class="flex gap-2" @submit.prevent="add">
+      <form v-if="shares.can_manage" class="flex gap-2" @submit.prevent="add">
         <label for="share-email" class="sr-only">Manager email</label>
         <input
           id="share-email"
@@ -139,7 +139,7 @@ const what = () => (props.kind === 'quizzes' ? 'quiz' : 'review')
           </div>
           <span class="text-xs text-ctp-subtext0">Can edit</span>
           <button
-            v-if="shares.you_are_owner"
+            v-if="shares.can_manage"
             class="btn-ghost btn-sm text-ctp-red"
             :disabled="busy"
             :aria-label="`Remove ${p.display_name}`"

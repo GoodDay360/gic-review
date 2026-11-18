@@ -16,6 +16,7 @@ use crate::{
     access::{self, AccessInfo, Content},
     auth::{QuizManager, RequireManager},
     error::{AppError, AppResult},
+    extract::AppJson,
     models::{QuizDetail, QuizSummary, question_image_keys},
     repo,
     state::AppState,
@@ -310,7 +311,7 @@ async fn get_quiz(
 async fn create_quiz(
     RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
-    Json(body): Json<QuizInput>,
+    AppJson(body): AppJson<QuizInput>,
 ) -> AppResult<(StatusCode, Json<ManagedQuiz>)> {
     let body = body.normalize()?;
     ensure_subject(&state, body.subject_id).await?;
@@ -337,7 +338,7 @@ async fn update_quiz(
     RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    Json(body): Json<QuizInput>,
+    AppJson(body): AppJson<QuizInput>,
 ) -> AppResult<Json<ManagedQuiz>> {
     let body = body.normalize()?;
     let existing = load_quiz(&state, id, user.id).await?;
@@ -393,7 +394,7 @@ async fn set_published(
     RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    Json(body): Json<PublishInput>,
+    AppJson(body): AppJson<PublishInput>,
 ) -> AppResult<Json<ManagedQuiz>> {
     let quiz = load_quiz(&state, id, user.id).await?;
     if body.is_published && quiz.summary.available_modes.is_empty() {
@@ -417,7 +418,7 @@ async fn create_question(
     RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    Json(body): Json<QuestionInput>,
+    AppJson(body): AppJson<QuestionInput>,
 ) -> AppResult<(StatusCode, Json<ManagedQuiz>)> {
     let body = body.normalize("question")?;
     let quiz = load_quiz(&state, id, user.id).await?;
@@ -441,7 +442,7 @@ async fn update_question(
     RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Path((id, qid)): Path<(i64, i64)>,
-    Json(body): Json<QuestionInput>,
+    AppJson(body): AppJson<QuestionInput>,
 ) -> AppResult<Json<ManagedQuiz>> {
     let body = body.normalize("question")?;
     let quiz = load_quiz(&state, id, user.id).await?;
@@ -518,7 +519,7 @@ async fn reorder_questions(
     RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    Json(body): Json<ReorderInput>,
+    AppJson(body): AppJson<ReorderInput>,
 ) -> AppResult<Json<ManagedQuiz>> {
     let quiz = load_quiz(&state, id, user.id).await?;
     let current: HashSet<i64> = quiz.questions.iter().map(|q| q.id).collect();

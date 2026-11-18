@@ -5,11 +5,41 @@ use serde::Serialize;
 
 use crate::{quiz_modes::QuizMode, storage::Storage};
 
+// ---------- Years ----------
+
+#[derive(Debug, Clone, sqlx::FromRow, Serialize)]
+pub struct YearRow {
+    pub id: i64,
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub sort_order: i32,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
+
+/// Column list for SELECTs (a macro so queries stay `&'static str` literals).
+macro_rules! year_columns {
+    () => {
+        "id, slug, name, description, sort_order, created_at, updated_at"
+    };
+}
+pub(crate) use year_columns;
+
+#[derive(Debug, Serialize)]
+pub struct YearDto {
+    #[serde(flatten)]
+    pub year: YearRow,
+    /// Number of subjects in this year.
+    pub subject_count: i64,
+}
+
 // ---------- Subjects ----------
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct SubjectRow {
     pub id: i64,
+    pub year_id: i64,
     pub slug: String,
     pub name: String,
     pub description: Option<String>,
@@ -22,7 +52,7 @@ pub struct SubjectRow {
 /// Column list for SELECTs (a macro so queries stay `&'static str` literals).
 macro_rules! subject_columns {
     () => {
-        "id, slug, name, description, color, sort_order, created_at, updated_at"
+        "id, year_id, slug, name, description, color, sort_order, created_at, updated_at"
     };
 }
 pub(crate) use subject_columns;
@@ -30,6 +60,9 @@ pub(crate) use subject_columns;
 #[derive(Debug, Serialize)]
 pub struct SubjectDto {
     pub id: i64,
+    pub year_id: i64,
+    pub year_slug: String,
+    pub year_name: String,
     pub slug: String,
     pub name: String,
     pub description: Option<String>,
@@ -42,9 +75,12 @@ pub struct SubjectDto {
 }
 
 impl SubjectDto {
-    pub fn from_row(r: SubjectRow, has_review: bool, quiz_count: i64) -> Self {
+    pub fn from_row(r: SubjectRow, year: &YearRow, has_review: bool, quiz_count: i64) -> Self {
         Self {
             id: r.id,
+            year_id: r.year_id,
+            year_slug: year.slug.clone(),
+            year_name: year.name.clone(),
             slug: r.slug,
             name: r.name,
             description: r.description,

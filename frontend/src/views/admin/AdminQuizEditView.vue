@@ -213,7 +213,9 @@ function onDrop(target: number) {
           <div>
             <label class="label" for="qe-subject">Subject</label>
             <select id="qe-subject" v-model="meta.subject_id" class="input">
-              <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
+              <option v-for="s in subjects" :key="s.id" :value="s.id">
+                {{ s.year_name }} · {{ s.name }}
+              </option>
             </select>
           </div>
           <div>

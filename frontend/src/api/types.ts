@@ -3,8 +3,27 @@
 export type QuizModeId = 'qcm' | 'flashcard'
 export type Role = 'admin' | 'manager'
 
+export interface Year {
+  id: number
+  slug: string
+  /** Free text, e.g. "I4" or "Very Cool Year". */
+  name: string
+  description: string | null
+  sort_order: number
+  subject_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface YearWithSubjects extends Year {
+  subjects: Subject[]
+}
+
 export interface Subject {
   id: number
+  year_id: number
+  year_slug: string
+  year_name: string
   slug: string
   name: string
   description: string | null
@@ -168,6 +187,7 @@ export interface QuestionInput {
 }
 
 export interface SubjectInput {
+  year_id: number
   name: string
   slug: string
   description: string | null

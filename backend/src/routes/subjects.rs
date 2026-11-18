@@ -11,8 +11,9 @@ use serde::Deserialize;
 use crate::{
     auth::RequireAdmin,
     error::{AppError, AppResult},
+    extract::AppJson,
     models::SubjectDto,
-    routes::public::all_subjects,
+    routes::{public::all_subjects, years::ensure_year},
     state::AppState,
     validation::{ACCENTS, check_len, clean, is_slug},
 };
@@ -28,6 +29,8 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Debug, Deserialize)]
 struct SubjectInput {
+    /// The year this subject belongs to (required).
+    year_id: i64,
     name: String,
     slug: String,
     description: Option<String>,
@@ -76,12 +79,14 @@ async fn find(state: &AppState, id: i64) -> AppResult<SubjectDto> {
 async fn create_subject(
     _admin: RequireAdmin,
     State(state): State<AppState>,
-    Json(body): Json<SubjectInput>,
+    AppJson(body): AppJson<SubjectInput>,
 ) -> AppResult<(StatusCode, Json<SubjectDto>)> {
     let body = body.normalize()?;
+    ensure_year(&state, body.year_id).await?;
     let res = sqlx::query(
-        "INSERT INTO subjects (slug, name, description, color, sort_order) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO subjects (year_id, slug, name, description, color, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
     )
+    .bind(body.year_id)
     .bind(&body.slug)
     .bind(&body.name)
     .bind(&body.description)
@@ -99,13 +104,15 @@ async fn update_subject(
     _admin: RequireAdmin,
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    Json(body): Json<SubjectInput>,
+    AppJson(body): AppJson<SubjectInput>,
 ) -> AppResult<Json<SubjectDto>> {
     let body = body.normalize()?;
     find(&state, id).await?;
+    ensure_year(&state, body.year_id).await?;
     sqlx::query(
-        "UPDATE subjects SET slug = ?, name = ?, description = ?, color = ?, sort_order = ? WHERE id = ?",
+        "UPDATE subjects SET year_id = ?, slug = ?, name = ?, description = ?, color = ?, sort_order = ? WHERE id = ?",
     )
+    .bind(body.year_id)
     .bind(&body.slug)
     .bind(&body.name)
     .bind(&body.description)

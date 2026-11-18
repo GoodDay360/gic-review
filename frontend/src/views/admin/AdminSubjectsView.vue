@@ -2,7 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 
 import { api, errorMessage } from '@/api/client'
-import type { Subject, SubjectInput } from '@/api/types'
+import type { Subject, SubjectInput, Year } from '@/api/types'
 import AppIcon from '@/components/AppIcon.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
@@ -12,10 +12,15 @@ import { useToastStore } from '@/stores/toast'
 
 const toast = useToastStore()
 const { data: subjects, loading, run } = useAsync(() => api.get<Subject[]>('/subjects'), [])
-onMounted(run)
+const years = ref<Year[]>([])
+onMounted(async () => {
+  years.value = await api.get<Year[]>('/years').catch(() => [])
+  run()
+})
 
 const editing = ref<Subject | 'new' | null>(null)
 const form = reactive<SubjectInput>({
+  year_id: 0,
   name: '',
   slug: '',
   description: '',
@@ -26,6 +31,7 @@ let slugTouched = false
 
 function openNew() {
   Object.assign(form, {
+    year_id: years.value[0]?.id ?? 0,
     name: '',
     slug: '',
     description: '',
@@ -37,6 +43,7 @@ function openNew() {
 }
 function openEdit(s: Subject) {
   Object.assign(form, {
+    year_id: s.year_id,
     name: s.name,
     slug: s.slug,
     description: s.description ?? '',
@@ -130,7 +137,8 @@ async function cleanupOrphans() {
         <div class="min-w-0 flex-1">
           <p class="font-medium text-ctp-text">{{ s.name }}</p>
           <p class="text-xs text-ctp-subtext0">
-            /{{ s.slug }} · order {{ s.sort_order }} · {{ s.quiz_count }} published quizzes
+            <span class="font-medium text-ctp-subtext1">{{ s.year_name }}</span> · /{{ s.slug }} ·
+            order {{ s.sort_order }} · {{ s.quiz_count }} published quizzes
           </p>
         </div>
         <button class="btn-ghost btn-sm" aria-label="Edit" @click="openEdit(s)">
@@ -148,6 +156,15 @@ async function cleanupOrphans() {
       @close="editing = null"
     >
       <form id="subject-form" class="space-y-4" @submit.prevent="save">
+        <div>
+          <label class="label" for="sj-year">Year</label>
+          <select id="sj-year" v-model="form.year_id" class="input" required>
+            <option v-for="y in years" :key="y.id" :value="y.id">{{ y.name }}</option>
+          </select>
+          <p v-if="!years.length" class="mt-1 text-xs text-ctp-yellow">
+            Create a year first (Dashboard → Years).
+          </p>
+        </div>
         <div>
           <label class="label" for="sj-name">Name</label>
           <input

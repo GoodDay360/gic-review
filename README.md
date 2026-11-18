@@ -2,11 +2,11 @@
 
 > **AI assistants:** read `prompt.md` (build brief) and `docs/AI-SPEC.md` (current status) first. When you add or change a feature, update the feature/requirement list in both.
 
-A study website for exam review. Students pick a subject, then read its **Interactive
+A study website for exam review. Students pick their year (e.g. I3, I4), then a subject, then read its **Interactive
 Review** or practise with **Quizzes** in **QCM** or **Flashcard** mode, with no account
 needed. **Managers** create quizzes and interactive reviews in the dashboard, or through the
 API with their personal **API key** (how AI assistants add content). **Admins** only manage
-manager accounts, managers' API keys and subjects.
+manager accounts, managers' API keys, years and subjects.
 
 | Part | Stack | Folder |
 |---|---|---|

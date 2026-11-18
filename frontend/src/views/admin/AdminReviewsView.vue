@@ -193,7 +193,9 @@ async function confirmDelete() {
         <div>
           <label class="label" for="rv-subject">Subject</label>
           <select id="rv-subject" v-model="form.subject_id" class="input">
-            <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
+            <option v-for="s in subjects" :key="s.id" :value="s.id">
+              {{ s.year_name }} · {{ s.name }}
+            </option>
           </select>
         </div>
         <div>

@@ -129,3 +129,18 @@ impl From<axum::extract::multipart::MultipartError> for AppError {
         }
     }
 }
+
+impl From<axum::extract::rejection::JsonRejection> for AppError {
+    fn from(rejection: axum::extract::rejection::JsonRejection) -> Self {
+        use axum::extract::rejection::JsonRejection as R;
+        match rejection {
+            // Valid JSON, wrong shape: missing/unknown field, wrong type, …
+            R::JsonDataError(e) => Self::Validation(e.body_text()),
+            R::JsonSyntaxError(e) => Self::BadRequest(format!("invalid JSON: {}", e.body_text())),
+            R::MissingJsonContentType(_) => {
+                Self::BadRequest("send the body as JSON with Content-Type: application/json".into())
+            }
+            other => Self::BadRequest(other.body_text()),
+        }
+    }
+}

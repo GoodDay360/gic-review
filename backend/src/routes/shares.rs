@@ -19,6 +19,7 @@ use crate::{
     access::{self, Content},
     auth::RequireManagerSession,
     error::{AppError, AppResult},
+    extract::AppJson,
     state::AppState,
 };
 
@@ -223,7 +224,7 @@ async fn add_quiz_share(
     RequireManagerSession(user): RequireManagerSession,
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    Json(body): Json<AddShare>,
+    AppJson(body): AppJson<AddShare>,
 ) -> AppResult<Json<Shares>> {
     Ok(Json(
         add(&state, Content::Quiz, id, user.id, &body.email).await?,
@@ -252,7 +253,7 @@ async fn add_review_share(
     RequireManagerSession(user): RequireManagerSession,
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    Json(body): Json<AddShare>,
+    AppJson(body): AppJson<AddShare>,
 ) -> AppResult<Json<Shares>> {
     Ok(Json(
         add(&state, Content::Review, id, user.id, &body.email).await?,

@@ -2,18 +2,22 @@
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::get,
 };
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::{
     access::{self, Content},
     auth::MaybeManager,
     error::{AppError, AppResult},
-    models::{ReviewDto, ReviewRow, SubjectDto, SubjectRow, review_columns, subject_columns},
+    models::{
+        ReviewDto, ReviewRow, SubjectDto, SubjectRow, YearRow, review_columns, subject_columns,
+        year_columns,
+    },
     repo,
     state::AppState,
 };
@@ -63,6 +67,17 @@ async fn subject_stats(state: &AppState) -> AppResult<Vec<SubjectStats>> {
     .await?)
 }
 
+pub async fn all_years(state: &AppState) -> AppResult<Vec<YearRow>> {
+    Ok(sqlx::query_as(concat!(
+        "SELECT ",
+        year_columns!(),
+        " FROM years ORDER BY sort_order, name"
+    ))
+    .fetch_all(&state.db)
+    .await?)
+}
+
+/// All subjects (ordered by year, then subject order), with their year and stats.
 pub async fn all_subjects(state: &AppState) -> AppResult<Vec<SubjectDto>> {
     let rows: Vec<SubjectRow> = sqlx::query_as(concat!(
         "SELECT ",
@@ -71,22 +86,46 @@ pub async fn all_subjects(state: &AppState) -> AppResult<Vec<SubjectDto>> {
     ))
     .fetch_all(&state.db)
     .await?;
+    let years = all_years(state).await?;
     let stats = subject_stats(state).await?;
-    Ok(rows
+    let mut subjects: Vec<(usize, SubjectDto)> = rows
         .into_iter()
-        .map(|r| {
+        .filter_map(|r| {
+            let (pos, year) = years.iter().enumerate().find(|(_, y)| y.id == r.year_id)?;
             let s = stats.iter().find(|s| s.id == r.id);
-            SubjectDto::from_row(
-                r,
-                s.is_some_and(|s| s.has_review > 0),
-                s.map_or(0, |s| s.quiz_count),
-            )
+            Some((
+                pos,
+                SubjectDto::from_row(
+                    r,
+                    year,
+                    s.is_some_and(|s| s.has_review > 0),
+                    s.map_or(0, |s| s.quiz_count),
+                ),
+            ))
         })
-        .collect())
+        .collect();
+    subjects.sort_by_key(|(pos, _)| *pos); // stable: keeps subject order inside a year
+    Ok(subjects.into_iter().map(|(_, s)| s).collect())
 }
 
-async fn list_subjects(State(state): State<AppState>) -> AppResult<Json<Vec<SubjectDto>>> {
-    Ok(Json(all_subjects(&state).await?))
+#[derive(Debug, Deserialize)]
+struct SubjectsQuery {
+    /// Only subjects of this year (year slug).
+    year: Option<String>,
+}
+
+async fn list_subjects(
+    State(state): State<AppState>,
+    Query(q): Query<SubjectsQuery>,
+) -> AppResult<Json<Vec<SubjectDto>>> {
+    let subjects = all_subjects(&state).await?;
+    Ok(Json(match q.year {
+        Some(year) => subjects
+            .into_iter()
+            .filter(|s| s.year_slug == year)
+            .collect(),
+        None => subjects,
+    }))
 }
 
 async fn get_subject(

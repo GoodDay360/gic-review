@@ -16,6 +16,7 @@ use crate::{
         create_token, dummy_hash, session_cookie, user_columns, verify_password,
     },
     error::{AppError, AppResult},
+    extract::AppJson,
     state::AppState,
 };
 
@@ -38,7 +39,7 @@ async fn login(
     State(state): State<AppState>,
     ClientIp(ip): ClientIp,
     jar: CookieJar,
-    Json(body): Json<LoginRequest>,
+    AppJson(body): AppJson<LoginRequest>,
 ) -> AppResult<(CookieJar, Json<UserDto>)> {
     // Rate limit first, before touching the database or validating input.
     if !state.login_limiter.check(&ip) {

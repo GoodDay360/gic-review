@@ -100,7 +100,9 @@ async function confirmDelete() {
       <label for="subject-filter" class="text-sm text-ctp-subtext1">Subject</label>
       <select id="subject-filter" v-model="subjectFilter" class="input max-w-xs" @change="run">
         <option value="">All subjects</option>
-        <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
+        <option v-for="s in subjects" :key="s.id" :value="s.id">
+          {{ s.year_name }} · {{ s.name }}
+        </option>
       </select>
     </div>
 
@@ -186,7 +188,9 @@ async function confirmDelete() {
         <div>
           <label class="label" for="nq-subject">Subject</label>
           <select id="nq-subject" v-model="newQuiz.subject_id" class="input" required>
-            <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
+            <option v-for="s in subjects" :key="s.id" :value="s.id">
+              {{ s.year_name }} · {{ s.name }}
+            </option>
           </select>
         </div>
         <div>

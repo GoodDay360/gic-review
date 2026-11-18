@@ -37,6 +37,9 @@ const STAFF_ENDPOINTS: &[(&str, &str)] = &[
     ("DELETE", "/api/admin/users/2"),
     ("POST", "/api/admin/subjects"),
     ("PUT", "/api/admin/subjects/1"),
+    ("POST", "/api/admin/years"),
+    ("PUT", "/api/admin/years/1"),
+    ("DELETE", "/api/admin/years/1"),
     ("DELETE", "/api/admin/subjects/1"),
     ("GET", "/api/auth/me"),
     ("GET", "/api/admin/api-keys"),
@@ -114,6 +117,28 @@ async fn malformed_api_keys_are_unauthorized() {
         let res = send_key(&app, "GET", "/api/admin/quizzes", key, None).await;
         assert_eq!(res.status, StatusCode::UNAUTHORIZED, "{key}");
     }
+}
+
+#[tokio::test]
+async fn bad_json_bodies_get_json_errors() {
+    let app = app_without_db();
+    // Missing field: our JSON error format, not Axum's plain text.
+    let res = send(
+        &app,
+        "POST",
+        "/api/auth/login",
+        None,
+        Some(json!({ "email": "a@b.c" })),
+    )
+    .await;
+    assert_eq!(res.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(res.json["error"]["code"], "validation_error");
+    assert!(
+        res.json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("password")
+    );
 }
 
 #[tokio::test]
@@ -747,5 +772,108 @@ async fn db_content_is_private_until_shared_by_email() {
         send(&app, "GET", &rv, Some(&b), None).await.json["access"],
         "owner"
     );
+    tdb.cleanup().await;
+}
+
+#[tokio::test]
+async fn db_years_group_subjects() {
+    let Some(tdb) = common::test_db().await else {
+        return;
+    };
+    let db = tdb.pool.clone();
+    bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
+    insert_manager(&db, "m-years@example.com", "manager-pass-y", true).await;
+    let app = app_with_pool(db);
+
+    // The migration put the seeded HCI subject into a default "General" year.
+    let years = send(&app, "GET", "/api/years", None, None).await;
+    assert_eq!(years.status, StatusCode::OK);
+    assert_eq!(years.json[0]["slug"], "general");
+    assert_eq!(years.json[0]["subject_count"], 1);
+    let general = send(&app, "GET", "/api/years/general", None, None).await;
+    assert_eq!(general.json["subjects"][0]["slug"], "hci");
+    assert_eq!(general.json["subjects"][0]["year_name"], "General");
+
+    // Admin creates a custom-named year and a subject in it.
+    let admin = cookie_from(
+        &login(&app, "admin@example.com", "admin-password-123")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    let y = send(
+        &app,
+        "POST",
+        "/api/admin/years",
+        Some(&admin),
+        Some(json!({ "name": "Very Cool Year", "sort_order": 1 })),
+    )
+    .await;
+    assert_eq!(y.status, StatusCode::CREATED);
+    assert_eq!(y.json["slug"], "very-cool-year");
+    let year_id = y.json["id"].as_i64().unwrap();
+    let subj = send(&app, "POST", "/api/admin/subjects", Some(&admin),
+        Some(json!({ "year_id": year_id, "name": "Internet Programming", "slug": "ip", "color": "blue" }))).await;
+    assert_eq!(subj.status, StatusCode::CREATED);
+    assert_eq!(subj.json["year_slug"], "very-cool-year");
+
+    let mine = send(&app, "GET", "/api/years/very-cool-year", None, None).await;
+    assert_eq!(mine.json["subject_count"], 1);
+    assert_eq!(mine.json["subjects"][0]["slug"], "ip");
+    let filtered = send(&app, "GET", "/api/subjects?year=very-cool-year", None, None).await;
+    assert_eq!(filtered.json.as_array().unwrap().len(), 1);
+
+    // A subject needs a year; a year with subjects can't be deleted.
+    let r = send(
+        &app,
+        "POST",
+        "/api/admin/subjects",
+        Some(&admin),
+        Some(json!({ "name": "No year", "slug": "no-year" })),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(r.json["error"]["code"], "validation_error");
+    let r = send(
+        &app,
+        "DELETE",
+        &format!("/api/admin/years/{year_id}"),
+        Some(&admin),
+        None,
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::CONFLICT);
+
+    // Rename keeps working (e.g. "General" -> "I4").
+    let r = send(
+        &app,
+        "PUT",
+        "/api/admin/years/1",
+        Some(&admin),
+        Some(json!({ "name": "I4", "slug": "i4", "sort_order": 0 })),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(
+        send(&app, "GET", "/api/years/i4", None, None).await.json["subjects"][0]["slug"],
+        "hci"
+    );
+
+    // Managers can't manage years.
+    let m = cookie_from(
+        &login(&app, "m-years@example.com", "manager-pass-y")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    let r = send(
+        &app,
+        "POST",
+        "/api/admin/years",
+        Some(&m),
+        Some(json!({ "name": "X" })),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
     tdb.cleanup().await;
 }

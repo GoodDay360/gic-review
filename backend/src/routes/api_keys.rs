@@ -18,6 +18,7 @@ use crate::{
     },
     auth::{RequireAdmin, RequireManagerSession, RequireSession, Role},
     error::{AppError, AppResult},
+    extract::AppJson,
     state::AppState,
 };
 
@@ -161,7 +162,7 @@ struct CreatedKey {
 async fn create_key(
     RequireManagerSession(user): RequireManagerSession,
     State(state): State<AppState>,
-    Json(body): Json<CreateKey>,
+    AppJson(body): AppJson<CreateKey>,
 ) -> AppResult<(StatusCode, Json<CreatedKey>)> {
     let name = body.name.trim().to_string();
     if name.is_empty() || name.chars().count() > 100 {

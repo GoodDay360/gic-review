@@ -24,6 +24,13 @@ const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: HomeView },
     {
+      path: '/years/:yearSlug',
+      name: 'year',
+      component: () => import('@/views/YearView.vue'),
+      props: true,
+      meta: { title: 'Subjects' },
+    },
+    {
       path: '/subjects/:subjectSlug/review',
       name: 'review',
       component: () => import('@/views/ReviewView.vue'),
@@ -101,6 +108,12 @@ const router = createRouter({
           name: 'admin-users',
           component: () => import('@/views/admin/AdminUsersView.vue'),
           meta: { requiresAdmin: true, title: 'Managers' },
+        },
+        {
+          path: 'years',
+          name: 'admin-years',
+          component: () => import('@/views/admin/AdminYearsView.vue'),
+          meta: { requiresAdmin: true, title: 'Years' },
         },
         {
           path: 'subjects',

@@ -12,6 +12,7 @@ use serde::Deserialize;
 use crate::{
     auth::{QuizManager, RequireManager},
     error::{AppError, AppResult},
+    extract::AppJson,
     images, repo,
     routes::{
         admin_quizzes::{ManagedQuiz, OptionInput, QuestionInput, insert_question, load_quiz},
@@ -190,7 +191,7 @@ async fn resolve(
 async fn import_quiz(
     RequireManager(user, _): QuizManager,
     State(state): State<AppState>,
-    Json(body): Json<ImportQuiz>,
+    AppJson(body): AppJson<ImportQuiz>,
 ) -> AppResult<(StatusCode, Json<ManagedQuiz>)> {
     // ---- Validate everything up front ----
     let subject_id = match (&body.subject_id, clean(body.subject_slug.clone())) {

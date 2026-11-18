@@ -42,7 +42,7 @@ Full URL = `BASE` + path. `{id}` = a quiz id, `{qid}` = a question id.
 | # | Method | Path | Key? | Use it to… |
 |---|---|---|---|---|
 | 1 | `GET` | `/auth/me` | yes | check the key works and has `quizzes:write` |
-| 2 | `GET` | `/subjects` | no | list subjects → get the `slug` / `id` of the subject |
+| 2 | `GET` | `/subjects` or `/subjects?year={year_slug}` | no | list subjects (each with its year) → get the subject's `slug` / `id` |
 | 3 | `GET` | `/admin/quizzes?subject_id={n}` | yes | list quizzes you can manage (to avoid duplicates, find ids) |
 | 4 | `GET` | `/admin/quizzes/{id}` | yes | read one quiz with all its questions and options |
 | 5 | `POST` | `/admin/uploads/image` | yes | upload an image file → get a `key` to use in the quiz |
@@ -56,6 +56,7 @@ Full URL = `BASE` + path. `{id}` = a quiz id, `{qid}` = a question id.
 | 13 | `DELETE` | `/admin/quizzes/{id}` | yes | delete a whole quiz (owner only; **ask the human first**) |
 | 14 | `DELETE` | `/admin/uploads/image/{key}` | yes | delete an uploaded image you didn't end up using |
 | 15 | `GET` | `/subjects/{slug}/quizzes` | no | see what students see (published quizzes only) |
+| 16 | `GET` | `/years` | no | list the years (`I3`, `I4`, …) with their `slug` |
 
 **Most jobs only need #1, #2, #3, #5 (if there are images) and #6.**
 
@@ -78,9 +79,16 @@ Expect `"role": "manager"` and `"quizzes:write"` in `"api_key_scopes"`.
 
 ```bash
 curl $BASE/subjects
-# [ { "id": 1, "slug": "hci", "name": "Human Computer Interaction", … } ]
+# [ { "id": 1, "slug": "hci", "name": "Human Computer Interaction",
+#     "year_id": 1, "year_slug": "i4", "year_name": "I4", … } ]
 ```
-Use the `slug` (`"hci"`). Not there? Stop and ask the human.
+Use the `slug` (`"hci"`) of the subject **in the right year**. Not there? Stop and ask the human.
+
+**Years:** subjects are grouped by **year** (e.g. `I3`, `I4`, or custom names like "Very Cool Year").
+Every subject has `year_name` and `year_slug`. When the human says e.g. *"I4 HCI"*, pick the subject
+whose `year_name` is `I4` and whose name matches. `GET /years` lists the years and
+`GET /subjects?year=<year_slug>` lists one year's subjects. Two years can have similarly named subjects,
+so always check the year. Subject `slug`s are unique across all years.
 
 **Step 3. Check what already exists** (#3)
 
@@ -130,7 +138,9 @@ curl -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
 Response `200`: `{ "id", "email", "display_name", "role": "manager", "is_active", "auth_method": "api_key", "api_key_scopes": [...] }`.
 
 ### #2 `GET /subjects` (no key)
-Response `200`: array of `{ "id", "slug", "name", "description", "color", "sort_order", "has_review", "quiz_count" }`.
+Optional query `?year={year_slug}` to get one year's subjects only. Response `200`: array of
+`{ "id", "year_id", "year_slug", "year_name", "slug", "name", "description", "color", "sort_order", "has_review", "quiz_count" }`,
+ordered by year, then subject.
 
 ### #3 `GET /admin/quizzes?subject_id={n}`
 `subject_id` is optional. Response `200`: array of quiz summaries (no questions):
@@ -185,6 +195,10 @@ shared quizzes). Never do this without the human's explicit request.
 
 ### #15 `GET /subjects/{slug}/quizzes` (no key)
 What students see: published quizzes of the subject.
+
+### #16 `GET /years` (no key)
+Response `200`: array of `{ "id", "slug", "name", "description", "sort_order", "subject_count" }`.
+`GET /years/{year_slug}` returns one year plus its `subjects` array.
 
 ### The quiz object (returned by #4, #6–#12)
 

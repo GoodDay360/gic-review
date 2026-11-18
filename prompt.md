@@ -8,7 +8,7 @@ Work in the phases listed at the bottom. At the end of every phase the project m
 
 ## 1. Product overview
 
-**GIC Review** is a study website where students choose a subject and then either:
+**GIC Review** is a study website where students first choose their **year** (e.g. `I3`, `I4`, or any custom name like "Very Cool Year"), then a **subject** of that year, and then either:
 - open an **Interactive Review**: a static HTML review page made for that subject, or
 - take a **Quiz**: pick a quiz made by an admin/manager, then choose how to study it (**QCM** or **Flashcard**).
 
@@ -130,11 +130,15 @@ Before the first commit, run `git status` and confirm that no `.env`, `node_modu
 
 ## 3. User flow and pages
 
-### 3.1 Home page `/`
+### 3.1 Home page `/`: select a year
 - Header shows the site name **"GIC Review"** (logo text) and a small "Staff login" link.
 - Footer (every page) shows the credit **"Made by: @GoodDay360"**, linking to https://github.com/GoodDay360 (opens in a new tab).
-- Shows a grid/list of **subject cards** loaded from the API (`GET /api/subjects`).
-- **Seed only ONE subject:** `Human Computer Interaction` (slug `hci`). Do NOT create other subjects (Internet Programming, etc.); they will be added later through the admin panel.
+- Shows a grid of **year cards** loaded from `GET /api/years` (name, optional description, number of subjects), ordered by the admin's sort order. A year's name is free text: `I3`, `I4`, `Very Cool Year`, …
+- Clicking a year navigates to `/years/:yearSlug`. The last year this browser opened is highlighted ("Last opened", stored in `localStorage`).
+- **Seed only ONE subject:** `Human Computer Interaction` (slug `hci`). Do NOT create other subjects (Internet Programming, etc.); they will be added later through the admin panel. The years migration creates one default year, **"General"** (slug `general`), and puts existing subjects in it; admins rename it (e.g. to `I4`) or add more years.
+
+### 3.1b Year page `/years/:yearSlug`: select a subject
+- Shows the year's name/description, an "All years" back link, and a grid of that year's **subject cards** (`GET /api/years/:slug` returns the year with its subjects).
 - Clicking a subject opens a **modal popup** (no navigation) titled with the subject name, with two choices:
   1. **Interactive Review**: navigates to `/subjects/:subjectSlug/review`
   2. **Quiz**: navigates to `/subjects/:subjectSlug/quizzes`
@@ -178,7 +182,7 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 
 ### 3.5 Staff area
 - `/login`: email + password login for admin/manager only. There is no public sign-up.
-- `/admin` is the dashboard. Its menu depends on the role (managers: Quizzes, Bulk import, Interactive reviews, API key; admins: Managers, API keys, Subjects).
+- `/admin` is the dashboard. Its menu depends on the role (managers: Quizzes, Bulk import, Interactive reviews, API key; admins: Managers, API keys, Years, Subjects).
 - Manager dashboard (**manager only**; admins cannot create or edit content):
   - **Quizzes**: create, edit, delete, publish/unpublish quizzes; add, edit and reorder questions and options.
   - **Image inputs**: every image field (quiz cover, question, each option, flashcard back, explanation) uses a reusable `ImageUploader` component. It supports click-to-browse, **drag & drop**, and **paste from clipboard (Ctrl+V)**, which is handy for screenshots. It shows an upload progress bar, a preview thumbnail, an alt-text field, and Replace/Remove buttons.
@@ -189,7 +193,8 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
   - **API key** (`/admin/api-key`): a manager can create **one** personal API key (shown once, with a copy button and curl examples), choose its permissions (`quizzes:write`, `reviews:write`) and expiry (30/90/365 days or never), see when it was last used, **regenerate** it (the old key stops working immediately) or revoke it. Scripts and AI assistants send it as `Authorization: Bearer gic_…` to add quizzes and interactive reviews through the API.
 - `/admin/users` (**admin only**): create manager accounts, reset a manager's password, deactivate or delete managers.
 - `/admin/api-keys` (**admin only**): see every manager's API keys (owner, name, prefix, permissions, created/last used/expiry, status), filter by manager or status, and revoke any key. Admins cannot create API keys.
-- `/admin/subjects` (**admin only**): create and edit subjects (name, slug, description, icon/color, order), plus the "clean up orphaned images" maintenance action.
+- `/admin/years` (**admin only**): create, rename, reorder and delete years (name, link name/slug, description, order); a year can only be deleted when it has no subjects.
+- `/admin/subjects` (**admin only**): create and edit subjects (**year**, name, slug, description, icon/color, order), plus the "clean up orphaned images" maintenance action.
 - Route guards hide staff pages from users without the role, AND the backend enforces the same rules (never trust the frontend).
 
 ---
@@ -206,7 +211,7 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 | Preview unpublished quizzes they can manage | ❌ | ✅ | ❌ |
 | Create/regenerate/revoke **own** API key (max 1 active) | ❌ | ✅ | ❌ |
 | See and revoke **any manager's** API keys | ❌ | ❌ | ✅ |
-| Create/edit subjects, clean up orphaned images | ❌ | ❌ | ✅ |
+| Create/edit years and subjects, clean up orphaned images | ❌ | ❌ | ✅ |
 | Create/manage manager accounts | ❌ | ❌ | ✅ |
 
 - **Content ownership and sharing:** the owner of a quiz or interactive review is the manager who created it (`created_by`). Content is private to its owner in the manager area (others get `404`). The owner shares it with other active managers **by email**; shared managers can view, edit (questions, images, file) and publish it, in the dashboard or with their API key, but only the owner can delete it or add/remove people; a shared manager can remove themselves. Sharing is dashboard-only (API keys get `403`). When an owner account is deleted, each of their items goes to the manager it was shared with first; never-shared items stay online (if published) without an owner. Students are unaffected: published content is public.
@@ -237,7 +242,9 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 ```
 users              (id, email UNIQUE, password_hash, display_name, role ENUM('admin','manager'),
                     is_active BOOL, created_by NULL FK users, created_at, updated_at)
-subjects           (id, slug UNIQUE, name, description, color, sort_order, created_at, updated_at)
+years              (id, slug UNIQUE, name, description NULL, sort_order, created_at, updated_at)
+subjects           (id, year_id FK years ON DELETE RESTRICT, slug UNIQUE, name, description, color, sort_order,
+                    created_at, updated_at)
 interactive_reviews(id, subject_id FK, title, slug, r2_key, sort_order, is_published,
                     created_by FK users, created_at, updated_at)
 quizzes            (id, subject_id FK, title, description,
@@ -296,7 +303,8 @@ Seed migration: insert only the subject `Human Computer Interaction` (slug `hci`
 ## 5. API (REST, JSON, prefix `/api`)
 
 Public:
-- `GET  /subjects`
+- `GET  /years` (with `subject_count`), `GET /years/:slug` (the year plus its `subjects`)
+- `GET  /subjects[?year=<year slug>]`: every subject includes `year_id`, `year_slug`, `year_name`
 - `GET  /subjects/:slug`, which includes a `has_review` flag
 - `GET  /subjects/:slug/reviews`, which returns published reviews with their `url` (public R2 URL)
 - `GET  /subjects/:slug/quizzes`, which returns published quizzes with `question_count` and `available_modes`
@@ -322,7 +330,8 @@ Manager only, dashboard session only (never with an API key):
 Admin only, dashboard session only:
 - `GET/POST /admin/users`, `PATCH /admin/users/:id` (active flag, display name), `POST /admin/users/:id/reset-password`, `DELETE /admin/users/:id`
 - `GET /admin/api-keys[?user_id=]` (all managers' keys), `DELETE /admin/api-keys/:id` (revoke any key)
-- `POST/PUT/DELETE /admin/subjects[/:id]`
+- `POST/PUT/DELETE /admin/subjects[/:id]` (subjects require `year_id`)
+- `POST/PUT/DELETE /admin/years[/:id]` (`{ name, slug?, description?, sort_order }`; slug derived from the name when empty; a year with subjects can't be deleted → 409)
 - `POST /admin/uploads/cleanup-orphans`
 
 ---
@@ -504,4 +513,6 @@ These refine the requirements above; they do not remove any of them.
 - **Theme:** text on accent buttons uses `base`, or `text` where that gives better contrast (e.g. Latte yellow), computed at build time from `@catppuccin/palette`.
 - **No `DATABASE_URL` (2026-11-18):** replaced by `cargo run -- migrate` and `DB_*`-based test databases; the `.env` template no longer has it.
 - **Docker deployment:** `backend/Dockerfile` (multi-stage build, slim non-root runtime, migrations embedded) and `backend/.dockerignore` (never ship `.env` or `target/`) so the API can be deployed to Render, Railway or any Docker host. The server listens on `PORT` when the platform sets it (else `BACKEND_PORT`), and the image sets `BACKEND_HOST=0.0.0.0`, `APP_ENV=production`.
+- **JSON errors for bad request bodies:** a body that isn't valid JSON or misses/mistypes a field returns the standard `{ "error": { "code": "validation_error" | "bad_request", "message" } }` (never Axum's plain-text rejection).
+- **Dashboard subject pickers** show `Year · Subject`, since two years can have subjects with similar names. Back links on subject pages lead to the subject's year page.
 - **SQL:** queries are parameterized `&'static str` SQL (sqlx 0.9 rejects dynamic SQL strings). Compile-time `query!` macros and a committed `.sqlx/` directory are planned once a development database is available.

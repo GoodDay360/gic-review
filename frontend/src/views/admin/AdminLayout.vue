@@ -12,6 +12,7 @@ const links = computed(() =>
     ? [
         { to: '/admin/users', label: 'Managers', icon: 'users' },
         { to: '/admin/api-keys', label: 'API keys', icon: 'key' },
+        { to: '/admin/years', label: 'Years', icon: 'calendar' },
         { to: '/admin/subjects', label: 'Subjects', icon: 'folder' },
       ]
     : [

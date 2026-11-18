@@ -13,6 +13,7 @@ use validator::Validate;
 use crate::{
     auth::{RequireAdmin, UserDto, UserRow, hash_password, user_columns},
     error::{AppError, AppResult},
+    extract::AppJson,
     state::AppState,
 };
 
@@ -91,7 +92,7 @@ async fn list_users(
 async fn create_user(
     RequireAdmin(admin): RequireAdmin,
     State(state): State<AppState>,
-    Json(body): Json<CreateUser>,
+    AppJson(body): AppJson<CreateUser>,
 ) -> AppResult<(StatusCode, Json<UserDto>)> {
     body.validate()?;
     let password_hash = hash(body.password).await?;
@@ -114,7 +115,7 @@ async fn update_user(
     _admin: RequireAdmin,
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    Json(body): Json<UpdateUser>,
+    AppJson(body): AppJson<UpdateUser>,
 ) -> AppResult<Json<UserDto>> {
     body.validate()?;
     let user = load_manager(&state, id).await?;
@@ -135,7 +136,7 @@ async fn reset_password(
     _admin: RequireAdmin,
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    Json(body): Json<ResetPassword>,
+    AppJson(body): AppJson<ResetPassword>,
 ) -> AppResult<StatusCode> {
     body.validate()?;
     load_manager(&state, id).await?;

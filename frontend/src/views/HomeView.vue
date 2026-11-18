@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+/** Step 1: pick a year (e.g. I3, I4, or a custom name). Step 2 is YearView (its subjects). */
+import { onMounted } from 'vue'
 
 import { api } from '@/api/client'
-import type { Subject } from '@/api/types'
-import ActivityModal from '@/components/ActivityModal.vue'
+import type { Year } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
-import SubjectCard from '@/components/SubjectCard.vue'
+import YearCard from '@/components/YearCard.vue'
 import { useAsync } from '@/composables/useAsync'
+import { lastYearSlug } from '@/composables/lastYear'
 
-const { data: subjects, loading, error, run } = useAsync(() => api.get<Subject[]>('/subjects'), [])
-const selected = ref<Subject | null>(null)
+const { data: years, loading, error, run } = useAsync(() => api.get<Year[]>('/years'), [])
+const last = lastYearSlug()
 
 onMounted(run)
 </script>
@@ -22,26 +23,27 @@ onMounted(run)
         Study smarter for your exams
       </h1>
       <p class="mt-2 max-w-2xl text-ctp-subtext0">
-        Pick a subject, then read its interactive review or practice with quizzes. No account
-        needed.
+        Choose your year, then a subject: read its interactive review or practice with quizzes. No
+        account needed.
       </p>
     </section>
 
-    <div v-if="loading" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <SkeletonBlock v-for="i in 3" :key="i" class="h-48" />
+    <h2 class="mb-3 text-sm font-semibold tracking-wide text-ctp-subtext1 uppercase">
+      Select your year
+    </h2>
+    <div v-if="loading" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <SkeletonBlock v-for="i in 4" :key="i" class="h-32" />
     </div>
-    <EmptyState v-else-if="error" title="Couldn't load subjects" :message="error" icon="warning">
+    <EmptyState v-else-if="error" title="Couldn't load years" :message="error" icon="warning">
       <button class="btn-secondary" @click="run">Try again</button>
     </EmptyState>
     <EmptyState
-      v-else-if="subjects.length === 0"
-      title="No subjects yet"
-      message="Subjects will appear here once they are added."
+      v-else-if="years.length === 0"
+      title="No years yet"
+      message="Years will appear here once they are added."
     />
-    <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <SubjectCard v-for="s in subjects" :key="s.id" :subject="s" @select="selected = $event" />
+    <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <YearCard v-for="y in years" :key="y.id" :year="y" :last-visited="y.slug === last" />
     </div>
-
-    <ActivityModal :subject="selected" @close="selected = null" />
   </div>
 </template>

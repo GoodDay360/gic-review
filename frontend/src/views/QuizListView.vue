@@ -28,8 +28,11 @@ onMounted(run)
 
 <template>
   <div class="mx-auto max-w-6xl px-4 py-8">
-    <RouterLink to="/" class="btn-ghost -ml-3 mb-4"
-      ><AppIcon name="arrow-left" :size="16" /> All subjects</RouterLink
+    <RouterLink
+      :to="data.subject ? `/years/${data.subject.year_slug}` : '/'"
+      class="btn-ghost -ml-3 mb-4"
+      ><AppIcon name="arrow-left" :size="16" />
+      {{ data.subject ? `${data.subject.year_name} subjects` : 'Home' }}</RouterLink
     >
     <h1 class="text-2xl font-bold text-ctp-text sm:text-3xl">
       {{ data.subject?.name ?? 'Quizzes' }}

@@ -70,7 +70,9 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Header with the "GIC Review" name and a small "Staff login" link (Dashboard + logout when logged in)
 - ✅ Footer credit "Made by: @GoodDay360" linking to https://github.com/GoodDay360 (new tab)
 - ✅ Home page: subject cards from `GET /api/subjects`, loading skeletons, empty and error states
-- ✅ Only one seeded subject: Human Computer Interaction (`hci`)
+- ✅ Year picker first: Home shows year cards (`I3`, `I4`, any custom name) from `GET /api/years`, last opened year highlighted
+- ✅ Year page `/years/:yearSlug` lists that year's subjects; subject pages link back to their year
+- ✅ Only one seeded subject: Human Computer Interaction (`hci`), in the default year "General" (renamable)
 - ✅ Activity modal per subject (Interactive Review / Quiz); review shown disabled with "Coming soon" when there is none
 - ✅ Interactive review page: list when there are several, sandboxed iframe (`sandbox="allow-scripts"`, no `allow-same-origin`) loaded from the R2 domain, back button
 - ✅ Review theme sync via `postMessage({ type: 'gic-theme', flavor, accent })`
@@ -103,7 +105,8 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Manager API key page: create one key (shown once with copy button and curl examples), choose permissions and expiry, last-used time, regenerate, revoke
 - ✅ Managers (admin only): create, reset password, activate/deactivate, delete
 - ✅ API keys overview (admin only): every manager's keys with owner, prefix, scopes, dates and status; filter; revoke
-- ✅ Subjects (admin only): create, edit (name, slug, description, color, order), delete when empty
+- ✅ Years (admin only): create, rename, reorder, delete when empty (`/admin/years`)
+- ✅ Subjects (admin only): create, edit (year, name, slug, description, color, order), delete when empty; dashboard subject pickers show `Year · Subject`
 - ✅ "Clean up orphaned images" (admin only, on the Subjects page)
 - ✅ Frontend route guards per role, mirrored by the backend
 
@@ -118,7 +121,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Input validation and parameterized SQL only
 - ✅ Uploads: MIME + extension + magic-number checks, size limits from `.env`, random UUID keys, re-encoding strips EXIF
 - ✅ CORS limited to `FRONTEND_URL` (credentials + `Authorization` header)
-- ✅ JSON errors `{ "error": { "code", "message" } }` without stack traces or SQL
+- ✅ JSON errors `{ "error": { "code", "message" } }` without stack traces or SQL, including malformed/incomplete JSON bodies (`AppJson` extractor)
 - ✅ First admin bootstrapped from `.env`; no API path creates admins; created users are always managers
 
 ### Infrastructure
@@ -145,7 +148,8 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 ```
 users               id, email UNIQUE, password_hash, display_name, role ENUM('admin','manager'),
                     is_active, created_by NULL → users (SET NULL), created_at, updated_at
-subjects            id, slug UNIQUE, name, description NULL, color (accent name), sort_order,
+years               id, slug UNIQUE, name, description NULL, sort_order, created_at, updated_at
+subjects            id, year_id → years (RESTRICT), slug UNIQUE, name, description NULL, color (accent name), sort_order,
                     created_at, updated_at
 interactive_reviews id, subject_id → subjects (RESTRICT), title, slug (UNIQUE per subject), r2_key,
                     sort_order, is_published, created_by NULL → users (SET NULL), created_at, updated_at
@@ -166,7 +170,7 @@ api_keys            id, user_id → users (CASCADE), name, key_prefix, key_hash 
 ```
 
 Migrations: `20261118000001_init_schema.sql`, `20261118000002_seed_hci_subject.sql`,
-`20261118000003_api_keys.sql`, `20261118000004_content_shares.sql`. R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
+`20261118000003_api_keys.sql`, `20261118000004_content_shares.sql`, `20261118000005_years.sql` (creates the default year "General"). R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
 `reviews/{subject_id}/{uuid}.html`.
 
 ## API endpoints (current, prefix `/api`)
@@ -177,7 +181,8 @@ session only, **A-s** = admin session only, **any** = any session or API key.
 | Method & path | Auth | Notes |
 |---|---|---|
 | `GET /health` | public | 503 when the DB is down |
-| `GET /subjects`, `GET /subjects/:slug` | public | `has_review`, `quiz_count` |
+| `GET /years`, `GET /years/:slug` | public | years with `subject_count`; one year with its `subjects` |
+| `GET /subjects[?year=slug]`, `GET /subjects/:slug` | public | `year_id`, `year_slug`, `year_name`, `has_review`, `quiz_count` |
 | `GET /subjects/:slug/reviews` | public | published reviews with `url` (`?v=` cache-buster) |
 | `GET /subjects/:slug/quizzes` | public | published, with `question_count`, `available_modes` |
 | `GET /quizzes/:id` | public / M | unpublished only for managers |
@@ -195,7 +200,8 @@ session only, **A-s** = admin session only, **any** = any session or API key.
 | `DELETE /admin/api-keys/:id` (also `POST …/:id/revoke`) | M-s own / A-s any | |
 | `GET /admin/api-keys[?user_id=]` | A-s | all managers' keys |
 | `GET/POST /admin/users`, `PATCH/DELETE /admin/users/:id`, `POST …/:id/reset-password` | A-s | managers only |
-| `POST /admin/subjects`, `PUT/DELETE /admin/subjects/:id` | A-s | |
+| `POST /admin/subjects`, `PUT/DELETE /admin/subjects/:id` | A-s | `year_id` required |
+| `POST /admin/years`, `PUT/DELETE /admin/years/:id` | A-s | delete refused (409) while the year has subjects |
 | `POST /admin/uploads/cleanup-orphans` | A-s | |
 
 All manager content endpoints only reach items the manager owns or that were shared with them
@@ -229,6 +235,9 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-18: Years: students pick a year (I3, I4, custom names) before a subject. `years` table,
+  `subjects.year_id`, default year "General", public `/years` endpoints, admin Years page, year in the
+  subject form. Bad JSON bodies now return the standard JSON error.
 - 2026-11-18: MySQL TLS switched from rustls to OpenSSL (native-tls): the cloud MySQL's X.509 v1
   certificate failed with `UnsupportedCertVersion`. Dockerfile installs libssl. All tests pass on the cloud DB.
 - 2026-11-18: External AI guides restructured around a numbered endpoint list and a step-by-step recipe;

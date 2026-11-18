@@ -78,8 +78,12 @@ function open(r: Review) {
       >
         <AppIcon name="arrow-left" :size="16" /> All reviews
       </RouterLink>
-      <RouterLink v-else to="/" class="btn-ghost -ml-3"
-        ><AppIcon name="arrow-left" :size="16" /> Home</RouterLink
+      <RouterLink
+        v-else
+        :to="data.subject ? `/years/${data.subject.year_slug}` : '/'"
+        class="btn-ghost -ml-3"
+        ><AppIcon name="arrow-left" :size="16" />
+        {{ data.subject ? `${data.subject.year_name} subjects` : 'Home' }}</RouterLink
       >
       <h1 class="text-xl font-bold text-ctp-text">
         {{ data.subject?.name

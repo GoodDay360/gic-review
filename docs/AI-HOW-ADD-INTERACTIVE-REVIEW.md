@@ -44,7 +44,7 @@ Full URL = `BASE` + path. `{id}` = a review id.
 | # | Method | Path | Key? | Use it to… |
 |---|---|---|---|---|
 | 1 | `GET` | `/auth/me` | yes | check the key works and has `reviews:write` |
-| 2 | `GET` | `/subjects` | no | list subjects → get the subject's numeric `id` |
+| 2 | `GET` | `/subjects` or `/subjects?year={year_slug}` | no | list subjects (each with its year) → get the subject's numeric `id` |
 | 3 | `GET` | `/admin/reviews?subject_id={n}` | yes | list reviews you can manage (avoid duplicates, find ids) |
 | 4 | `GET` | `/admin/reviews/{id}` | yes | read one review (its public `url`, title, status) |
 | 5 | `POST` | `/admin/uploads/image` | yes | upload an image for the page → use the returned `url` in `<img>` |
@@ -52,6 +52,7 @@ Full URL = `BASE` + path. `{id}` = a review id.
 | 7 | `PUT` | `/admin/reviews/{id}` | yes | replace the HTML and/or change title, slug, order, published |
 | 8 | `DELETE` | `/admin/reviews/{id}` | yes | delete a review (owner only; **ask the human first**) |
 | 9 | `GET` | `/subjects/{slug}/reviews` | no | see what students see (published reviews only) |
+| 10 | `GET` | `/years` | no | list the years (`I3`, `I4`, …) with their `slug` |
 
 **Most jobs only need #1, #2, #3, #5 (if there are images) and #6.**
 
@@ -73,8 +74,15 @@ you can update it (#7) but not delete it (`403 owner_only`).
 
 ```bash
 curl $BASE/subjects
-# [ { "id": 1, "slug": "hci", "name": "Human Computer Interaction", "has_review": false, … } ]
+# [ { "id": 1, "slug": "hci", "name": "Human Computer Interaction",
+#     "year_slug": "i4", "year_name": "I4", "has_review": false, … } ]
 ```
+
+**Years:** subjects are grouped by **year** (e.g. `I3`, `I4`, or custom names like "Very Cool Year").
+Every subject has `year_name` and `year_slug`. When the human says e.g. *"I4 HCI"*, pick the subject
+whose `year_name` is `I4` and whose name matches. `GET /years` lists the years and
+`GET /subjects?year=<year_slug>` lists one year's subjects. Two years can have similarly named subjects,
+so always check the year. Subject `slug`s are unique across all years.
 
 **Step 3. Check for an existing review** (#3)
 
@@ -127,7 +135,8 @@ curl -H "Authorization: Bearer $KEY" -X PUT -F "is_published=true" $BASE/admin/r
 Response `200`: `{ "id", "email", "display_name", "role": "manager", "auth_method": "api_key", "api_key_scopes": [...] }`.
 
 ### #2 `GET /subjects` (no key)
-Response `200`: array of `{ "id", "slug", "name", "description", "has_review", "quiz_count", … }`.
+Optional query `?year={year_slug}`. Response `200`: array of
+`{ "id", "year_id", "year_slug", "year_name", "slug", "name", "description", "has_review", "quiz_count", … }`.
 
 ### #3 `GET /admin/reviews?subject_id={n}`
 `subject_id` optional. Response `200`: array of **review objects** (below), unpublished included.
@@ -172,6 +181,10 @@ human's explicit request.
 ### #9 `GET /subjects/{slug}/reviews` (no key)
 Published reviews of the subject, as students see them.
 
+### #10 `GET /years` (no key)
+Response `200`: array of `{ "id", "slug", "name", "description", "sort_order", "subject_count" }`.
+`GET /years/{year_slug}` returns one year plus its `subjects`.
+
 ### The review object (returned by #3, #4, #6, #7)
 
 ```jsonc
@@ -188,8 +201,8 @@ Published reviews of the subject, as students see them.
 }
 ```
 
-On the website, students find it at `/subjects/<subject-slug>/review` (with `?r=<slug>` when the
-subject has several reviews).
+On the website, students pick the year, then the subject, then "Interactive Review"
+(direct link: `/subjects/<subject-slug>/review` ; with `?r=<slug>` when the subject has several reviews).
 
 ---
 

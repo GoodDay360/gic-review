@@ -1,7 +1,7 @@
 //! Database rows and API response types.
 
 use chrono::NaiveDateTime;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{quiz_modes::QuizMode, storage::Storage};
 
@@ -35,6 +35,38 @@ pub struct YearDto {
     pub year: YearRow,
     /// Number of subjects in this year.
     pub subject_count: i64,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct PageQuery {
+    pub search: Option<String>,
+    pub slug: Option<String>,
+    pub offset: Option<i64>,
+    pub limit: Option<i64>,
+}
+
+impl PageQuery {
+    pub fn search(&self) -> Option<String> {
+        self.search
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+    }
+
+    pub fn offset(&self) -> i64 {
+        self.offset.unwrap_or(0).max(0)
+    }
+
+    pub fn limit(&self) -> i64 {
+        self.limit.unwrap_or(20).clamp(1, 20)
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct Page<T> {
+    pub items: Vec<T>,
+    pub has_more: bool,
 }
 
 // ---------- Subjects ----------

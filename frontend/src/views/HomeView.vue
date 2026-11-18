@@ -1,19 +1,29 @@
 <script setup lang="ts">
 /** Step 1: pick a year (e.g. I3, I4, or a custom name). Step 2 is YearView (its subjects). */
-import { onMounted } from 'vue'
-
 import { api } from '@/api/client'
-import type { Year } from '@/api/types'
+import type { Page, Year } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
+import InfiniteScrollSentinel from '@/components/InfiniteScrollSentinel.vue'
+import SearchBar from '@/components/SearchBar.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
 import YearCard from '@/components/YearCard.vue'
-import { useAsync } from '@/composables/useAsync'
+import { useInfiniteSearch } from '@/composables/useInfiniteSearch'
 import { lastYearSlug } from '@/composables/lastYear'
 
-const { data: years, loading, error, run } = useAsync(() => api.get<Year[]>('/years'), [])
+const {
+  search,
+  items: years,
+  loading,
+  loadingMore,
+  hasMore,
+  error,
+  loadMore,
+  retry,
+} = useInfiniteSearch<Year>((search, offset, limit) => {
+  const query = new URLSearchParams({ search, offset: String(offset), limit: String(limit) })
+  return api.get<Page<Year>>(`/years?${query}`)
+})
 const last = lastYearSlug()
-
-onMounted(run)
 </script>
 
 <template>
@@ -31,19 +41,33 @@ onMounted(run)
     <h2 class="mb-3 text-sm font-semibold tracking-wide text-ctp-subtext1 uppercase">
       Select your year
     </h2>
-    <div v-if="loading" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <SearchBar v-model="search" class="mb-5" label="Search years" placeholder="Search years…" />
+    <div v-if="loading && years.length === 0" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <SkeletonBlock v-for="i in 4" :key="i" class="h-32" />
     </div>
-    <EmptyState v-else-if="error" title="Couldn't load years" :message="error" icon="warning">
-      <button class="btn-secondary" @click="run">Try again</button>
+    <EmptyState
+      v-else-if="error && years.length === 0"
+      title="Couldn't load years"
+      :message="error"
+      icon="warning"
+    >
+      <button class="btn-secondary" @click="retry">Try again</button>
     </EmptyState>
     <EmptyState
       v-else-if="years.length === 0"
-      title="No years yet"
-      message="Years will appear here once they are added."
+      :title="search ? 'No matching years' : 'No years yet'"
+      :message="search ? 'Try another search.' : 'Years will appear here once they are added.'"
     />
-    <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <YearCard v-for="y in years" :key="y.id" :year="y" :last-visited="y.slug === last" />
-    </div>
+    <template v-else>
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <YearCard v-for="y in years" :key="y.id" :year="y" :last-visited="y.slug === last" />
+      </div>
+      <InfiniteScrollSentinel
+        :has-more="hasMore"
+        :loading="loadingMore"
+        :error="error"
+        @load-more="error ? retry() : loadMore()"
+      />
+    </template>
   </div>
 </template>

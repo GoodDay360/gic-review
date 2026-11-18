@@ -1048,9 +1048,38 @@ async fn db_years_group_subjects() {
     assert_eq!(years.status, StatusCode::OK);
     assert_eq!(years.json[0]["slug"], "general");
     assert_eq!(years.json[0]["subject_count"], 1);
+    let year_page = send(
+        &app,
+        "GET",
+        "/api/years?search=General&limit=20&offset=0",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(year_page.json["items"][0]["slug"], "general");
+    assert_eq!(year_page.json["has_more"], false);
     let general = send(&app, "GET", "/api/years/general", None, None).await;
     assert_eq!(general.json["subjects"][0]["slug"], "hci");
     assert_eq!(general.json["subjects"][0]["year_name"], "General");
+    let subject_page = send(
+        &app,
+        "GET",
+        "/api/years/general?search=Human&limit=20&offset=0",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(subject_page.json["subjects"][0]["slug"], "hci");
+    assert_eq!(subject_page.json["subjects_has_more"], false);
+    let review_page = send(
+        &app,
+        "GET",
+        "/api/subjects/hci/reviews?slug=missing&limit=1&offset=0",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(review_page.json["items"].as_array().unwrap().len(), 0);
 
     // Admin creates a custom-named year and a subject in it.
     let admin = cookie_from(
@@ -1570,6 +1599,17 @@ async fn db_cache_serves_students_but_never_outlives_an_update() {
         Some(json!({ "is_published": true })),
     )
     .await;
+    let quiz_page = send(
+        &app,
+        "GET",
+        "/api/subjects/subject-cache/quizzes?search=Cached&limit=20&offset=0",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(quiz_page.json["items"][0]["title"], "Cached quiz");
+    assert_eq!(quiz_page.json["items"][0]["question_count"], 1);
+    assert_eq!(quiz_page.json["has_more"], false);
     let public = format!("/api/quizzes/{qid}");
 
     // Students: first request computes, second is served from the cache.

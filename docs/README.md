@@ -26,7 +26,7 @@ The AI must be able to read the two guides. Either:
 
 ## Prompt template
 
-Attach your PDFs (and the two guides), then send:
+Attach your lesson files (and the two guides), then send:
 
 ```text
 API base URL: https://gic-review.onrender.com/api
@@ -36,14 +36,14 @@ Subject: <subject-slug>  (e.g. hci)
 New Interactive Review Title: <new-title>
 New Quiz Title: <new-title>
 
-Read the attached PDF files and use them to create a quiz and an interactive review in
+Read the attached files and use them to create a quiz and an interactive review in
 GIC Review. 
 
 Follow the instructions from:
 https://github.com/GoodDay360/gic-review/blob/main/docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md
 https://github.com/GoodDay360/gic-review/blob/main/docs/AI-HOW-ADD-QUIZ.md
 
-- Keep everything unpublished (draft). I will review it and publish it myself.
+- Keep everything unpublished (draft). I will review it and publish it myself (if it already public, no need to change it to draft).
 - When you are done, tell me the quiz and review IDs and titles.
 ```
 

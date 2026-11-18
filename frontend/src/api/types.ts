@@ -17,6 +17,12 @@ export interface Year {
 
 export interface YearWithSubjects extends Year {
   subjects: Subject[]
+  subjects_has_more: boolean
+}
+
+export interface Page<T> {
+  items: T[]
+  has_more: boolean
 }
 
 export interface Subject {

@@ -10,6 +10,7 @@ use axum::{
     Json, Router,
     extract::{Path, State},
     http::StatusCode,
+    response::IntoResponse,
     routing::{get, put},
 };
 use serde::{Deserialize, Serialize};
@@ -19,7 +20,7 @@ use crate::{
     auth::{ContentManager, RequireEditor, RequireEditorSession},
     error::{AppError, AppResult},
     extract::AppJson,
-    models::{SubjectDto, YearDto, YearRow, year_columns},
+    models::{Page, PageQuery, SubjectDto, YearDto, YearRow, year_columns},
     routes::public::{all_subjects, all_years},
     state::AppState,
     validation::{check_len, clean, is_slug, slugify},
@@ -54,8 +55,63 @@ async fn years_with_counts(state: &AppState) -> AppResult<Vec<YearDto>> {
         .collect())
 }
 
-async fn list_years(State(state): State<AppState>) -> AppResult<Json<Vec<YearDto>>> {
-    Ok(Json(years_with_counts(&state).await?))
+#[derive(sqlx::FromRow)]
+struct YearListRow {
+    id: i64,
+    slug: String,
+    name: String,
+    description: Option<String>,
+    sort_order: i32,
+    created_by: Option<i64>,
+    created_at: chrono::NaiveDateTime,
+    updated_at: chrono::NaiveDateTime,
+    subject_count: i64,
+}
+
+async fn list_years(
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<PageQuery>,
+) -> AppResult<axum::response::Response> {
+    if q.search.is_none() && q.offset.is_none() && q.limit.is_none() {
+        return Ok(Json(years_with_counts(&state).await?).into_response());
+    }
+    let search = q.search();
+    let pattern = search.as_ref().map(|s| format!("%{s}%"));
+    let limit = q.limit();
+    let rows: Vec<YearListRow> = sqlx::query_as(
+        "SELECT y.id, y.slug, y.name, y.description, y.sort_order, y.created_by, \
+         y.created_at, y.updated_at, \
+         (SELECT COUNT(*) FROM subjects s WHERE s.year_id = y.id) AS subject_count \
+         FROM years y \
+         WHERE (? IS NULL OR y.name LIKE ? OR COALESCE(y.description, '') LIKE ?) \
+         ORDER BY y.sort_order, y.name LIMIT ? OFFSET ?",
+    )
+    .bind(pattern.as_deref())
+    .bind(pattern.as_deref())
+    .bind(pattern.as_deref())
+    .bind(limit + 1)
+    .bind(q.offset())
+    .fetch_all(&state.db)
+    .await?;
+    let has_more = rows.len() > limit as usize;
+    let items = rows
+        .into_iter()
+        .take(limit as usize)
+        .map(|r| YearDto {
+            year: YearRow {
+                id: r.id,
+                slug: r.slug,
+                name: r.name,
+                description: r.description,
+                sort_order: r.sort_order,
+                created_by: r.created_by,
+                created_at: r.created_at,
+                updated_at: r.updated_at,
+            },
+            subject_count: r.subject_count,
+        })
+        .collect();
+    Ok(Json(Page { items, has_more }).into_response())
 }
 
 #[derive(Debug, Serialize)]
@@ -63,23 +119,33 @@ struct YearWithSubjects {
     #[serde(flatten)]
     year: YearDto,
     subjects: Vec<SubjectDto>,
+    subjects_has_more: bool,
 }
 
 async fn get_year(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    axum::extract::Query(q): axum::extract::Query<PageQuery>,
 ) -> AppResult<Json<YearWithSubjects>> {
     let year = years_with_counts(&state)
         .await?
         .into_iter()
         .find(|y| y.year.slug == slug)
         .ok_or(AppError::NotFound("year"))?;
-    let subjects = all_subjects(&state)
-        .await?
-        .into_iter()
-        .filter(|s| s.year_id == year.year.id)
-        .collect();
-    Ok(Json(YearWithSubjects { year, subjects }))
+    let paged = q.limit.is_some() || q.offset.is_some() || q.search.is_some();
+    let (subjects, subjects_has_more) = crate::routes::public::subjects_for_year(
+        &state,
+        &slug,
+        q.search(),
+        paged.then(|| q.limit()),
+        q.offset(),
+    )
+    .await?;
+    Ok(Json(YearWithSubjects {
+        year,
+        subjects,
+        subjects_has_more,
+    }))
 }
 
 /// A subject as seen in the dashboard and by API clients.

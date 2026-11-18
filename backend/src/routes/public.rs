@@ -9,14 +9,15 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
+use sqlx::QueryBuilder;
 
 use crate::{
     access::{self, Actor, Content},
     auth::MaybeEditor,
     error::{AppError, AppResult},
     models::{
-        ReviewDto, ReviewRow, SubjectDto, SubjectRow, YearRow, review_columns, subject_columns,
-        year_columns,
+        Page, PageQuery, ReviewDto, ReviewRow, SubjectDto, SubjectRow, YearRow, review_columns,
+        subject_columns, year_columns,
     },
     repo,
     state::AppState,
@@ -86,6 +87,10 @@ pub async fn all_subjects(state: &AppState) -> AppResult<Vec<SubjectDto>> {
     ))
     .fetch_all(&state.db)
     .await?;
+    subjects_from_rows(state, rows).await
+}
+
+async fn subjects_from_rows(state: &AppState, rows: Vec<SubjectRow>) -> AppResult<Vec<SubjectDto>> {
     let years = all_years(state).await?;
     let stats = subject_stats(state).await?;
     let mut subjects: Vec<(usize, SubjectDto)> = rows
@@ -106,6 +111,46 @@ pub async fn all_subjects(state: &AppState) -> AppResult<Vec<SubjectDto>> {
         .collect();
     subjects.sort_by_key(|(pos, _)| *pos); // stable: keeps subject order inside a year
     Ok(subjects.into_iter().map(|(_, s)| s).collect())
+}
+
+pub async fn subjects_for_year(
+    state: &AppState,
+    year_slug: &str,
+    search: Option<String>,
+    limit: Option<i64>,
+    offset: i64,
+) -> AppResult<(Vec<SubjectDto>, bool)> {
+    let mut query = QueryBuilder::<sqlx::MySql>::new(concat!(
+        "SELECT s.id, s.year_id, s.slug, s.name, s.description, s.color, s.sort_order, \
+         s.created_at, s.updated_at FROM subjects s JOIN years y ON y.id = s.year_id \
+         WHERE y.slug = "
+    ));
+    query.push_bind(year_slug);
+    if let Some(search) = search {
+        let pattern = format!("%{search}%");
+        query
+            .push(" AND (s.name LIKE ")
+            .push_bind(pattern.clone())
+            .push(" OR COALESCE(s.description, '') LIKE ")
+            .push_bind(pattern)
+            .push(")");
+    }
+    query.push(" ORDER BY y.sort_order, y.name, s.sort_order, s.name");
+    if let Some(limit) = limit {
+        query
+            .push(" LIMIT ")
+            .push_bind(limit + 1)
+            .push(" OFFSET ")
+            .push_bind(offset);
+    }
+    let rows: Vec<SubjectRow> = query.build_query_as().fetch_all(&state.db).await?;
+    let has_more = limit.is_some_and(|limit| rows.len() > limit as usize);
+    let rows = if let Some(limit) = limit {
+        rows.into_iter().take(limit as usize).collect()
+    } else {
+        rows
+    };
+    Ok((subjects_from_rows(state, rows).await?, has_more))
 }
 
 #[derive(Debug, Deserialize)]
@@ -143,35 +188,81 @@ async fn get_subject(
 async fn list_reviews(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-) -> AppResult<Json<Vec<ReviewDto>>> {
+    Query(q): Query<PageQuery>,
+) -> AppResult<axum::response::Response> {
     let subject = repo::subject_by_slug(&state.db, &slug)
         .await?
         .ok_or(AppError::NotFound("subject"))?;
-    let rows: Vec<ReviewRow> = sqlx::query_as(concat!(
+    if q.search.is_none() && q.slug.is_none() && q.offset.is_none() && q.limit.is_none() {
+        let rows: Vec<ReviewRow> = sqlx::query_as(concat!(
+            "SELECT ",
+            review_columns!(),
+            " FROM interactive_reviews \
+             WHERE subject_id = ? AND is_published = TRUE ORDER BY sort_order, title"
+        ))
+        .bind(subject.id)
+        .fetch_all(&state.db)
+        .await?;
+        let items = rows
+            .into_iter()
+            .map(|r| ReviewDto::from_row(r, &state.storage))
+            .collect::<Vec<_>>();
+        return Ok(Json(items).into_response());
+    }
+    let search = q.search();
+    let pattern = search.as_ref().map(|s| format!("%{s}%"));
+    let limit = q.limit();
+    let mut rows: Vec<ReviewRow> = sqlx::query_as(concat!(
         "SELECT ",
         review_columns!(),
         " FROM interactive_reviews \
-         WHERE subject_id = ? AND is_published = TRUE ORDER BY sort_order, title"
+         WHERE subject_id = ? AND is_published = TRUE \
+        AND (? IS NULL OR slug = ?) \
+         AND (? IS NULL OR title LIKE ? OR slug LIKE ?) \
+         ORDER BY sort_order, title LIMIT ? OFFSET ?"
     ))
     .bind(subject.id)
+    .bind(q.slug.as_deref())
+    .bind(q.slug.as_deref())
+    .bind(pattern.as_deref())
+    .bind(pattern.as_deref())
+    .bind(pattern.as_deref())
+    .bind(limit + 1)
+    .bind(q.offset())
     .fetch_all(&state.db)
     .await?;
-    Ok(Json(
-        rows.into_iter()
-            .map(|r| ReviewDto::from_row(r, &state.storage))
-            .collect(),
-    ))
+    let has_more = rows.len() > limit as usize;
+    rows.truncate(limit as usize);
+    let items = rows
+        .into_iter()
+        .map(|r| ReviewDto::from_row(r, &state.storage))
+        .collect();
+    Ok(Json(Page { items, has_more }).into_response())
 }
 
 async fn list_quizzes(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-) -> AppResult<impl IntoResponse> {
+    Query(q): Query<PageQuery>,
+) -> AppResult<axum::response::Response> {
     let subject = repo::subject_by_slug(&state.db, &slug)
         .await?
         .ok_or(AppError::NotFound("subject"))?;
-    let quizzes = repo::quiz_summaries(&state.db, &state.storage, Some(subject.id), true).await?;
-    Ok(Json(quizzes))
+    if q.search.is_none() && q.offset.is_none() && q.limit.is_none() {
+        let quizzes =
+            repo::quiz_summaries(&state.db, &state.storage, Some(subject.id), true).await?;
+        return Ok(Json(quizzes).into_response());
+    }
+    let quizzes = repo::quiz_summaries_page(
+        &state.db,
+        &state.storage,
+        subject.id,
+        q.search(),
+        q.offset(),
+        q.limit(),
+    )
+    .await?;
+    Ok(Json(quizzes).into_response())
 }
 
 async fn get_quiz(

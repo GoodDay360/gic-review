@@ -57,7 +57,7 @@ bun run dev                        # http://localhost:5173
 ```
 
 Checks: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`
-(DB tests use `DB_*` from `backend/.env` and a temporary database; skipped when empty), `bun run lint`, `bun run format:check`,
+(DB tests use `DB_*` from `backend/.env` with the `gic_review_test` database; skipped when empty), `bun run lint`, `bun run format:check`,
 `bun run build`.
 
 ---
@@ -124,7 +124,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ SQLx migrations for all tables (`users`, `subjects`, `interactive_reviews`, `quizzes`, `questions`, `question_options`, `api_keys`)
 - ✅ R2 storage stores keys only; URLs built from `R2_PUBLIC_BASE_URL`; images deleted from R2 when replaced or when their row is deleted
 - ✅ Backend fails fast at startup with a clear list of missing/invalid variables
-- ✅ Integration tests for auth, roles and API keys (database tests use a temporary DB from `DB_*`, skipped when empty)
+- ✅ Integration tests for auth, roles and API keys (database tests use one test database `<DB_NAME>_test`, wiped before each test, run one at a time; skipped when `DB_*` is empty)
 - ✅ No `DATABASE_URL`: the server, `cargo run -- migrate` and the tests build the connection from `DB_*`
 - ✅ `DB_SSL_REQUIRED=true|false` (default `true`) to require an SSL connection to MySQL (validated at startup)
 - 🚧 Compile-time checked queries (`sqlx::query!`) and committed `.sqlx/`: not used yet, needs a dev database
@@ -194,8 +194,8 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role),
 
 - Queries are parameterized `&'static str` SQL, not `query!` macros; no `.sqlx/` yet (no DB was
   available while building). Next: convert hot queries and run `cargo sqlx prepare`.
-- The database integration tests need `DB_*` filled in (and CREATE/DROP rights); until then they
-  are skipped, so they have not actually run yet.
+- The database integration tests need `DB_*` filled in and an existing `<DB_NAME>_test` database
+  (`gic_review_test`) the user has all privileges on; without `DB_*` they are skipped.
 - Login rate limiting is in memory (per process); behind a proxy the client IP is the proxy's.
 - Cookie auth needs frontend and API on the same site (`SameSite=Strict`). API keys work from anywhere.
 - API key timestamps use the MySQL server clock (`NOW()`); the dashboard shows them in the browser's
@@ -218,6 +218,8 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role),
 - 2026-11-18: Roles changed: admins now only manage manager accounts, API keys, subjects and orphan
   cleanup; quizzes, reviews and uploads are manager-only.
 - 2026-11-18: Frontend switched to Bun (`bun.lock`, `packageManager`), per the updated build brief.
+- 2026-11-18: Database tests use a single `gic_review_test` database (wiped per test, run serially)
+  instead of creating `gic_test_*` databases; only one extra grant is needed.
 - 2026-11-18: Added `DB_SSL_REQUIRED` (true/false, default true) to require SSL for the MySQL connection.
 - 2026-11-18: Removed `DATABASE_URL`; added `cargo run -- migrate`; database tests create their own
   temporary database from `DB_*` instead of using `#[sqlx::test]`.

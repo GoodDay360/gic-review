@@ -37,8 +37,10 @@ Log in and change that password. The server refuses to start, with a list of wha
 wrong, if a required variable is missing.
 
 Checks: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`.
-The database tests use the same `DB_*` values: each creates a temporary `gic_test_*` database
-and drops it afterwards (so `DB_USER` needs CREATE/DROP rights). With `DB_*` empty they are skipped.
+The database tests use the same `DB_*` values but a separate database, `<DB_NAME>_test`
+(`gic_review_test`), which they wipe before each test; your real database is never touched.
+Create it once: `CREATE DATABASE gic_review_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`
+`GRANT ALL PRIVILEGES ON gic_review_test.* TO 'gicreview'@'%';`. With `DB_*` empty they are skipped.
 
 ## Frontend
 

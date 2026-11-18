@@ -465,7 +465,7 @@ Two parts:
 
 General quality bar:
 - Rust passes `cargo fmt` and `cargo clippy` with no warnings. The frontend passes `bun run build` and ESLint/Prettier (`bun run lint`).
-- Add a few backend integration tests (auth and role checks at minimum). Database tests create a temporary `gic_test_*` database from the `DB_*` values in `backend/.env`, drop it afterwards, and are skipped with a message when `DB_*` is empty.
+- Add a few backend integration tests (auth and role checks at minimum). Database tests use one separate database, `<DB_NAME>_test` (e.g. `gic_review_test`), with the same `DB_*` connection values; it is wiped and re-migrated before each test, tests run one at a time, the real `DB_NAME` database is never touched, and the tests are skipped with a message when `DB_*` is empty.
 - Do not commit `.env` or any real credentials.
 - When done, print a short summary of what was built, how to run it, and which values I still need to fill in for `frontend/.env` and `backend/.env`.
 

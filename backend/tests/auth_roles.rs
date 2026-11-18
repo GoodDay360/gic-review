@@ -1,10 +1,11 @@
 //! Auth and role checks.
 //!
 //! The first group runs without a database (requests are rejected before any query).
-//! The `db_*` tests use the MySQL server from `DB_*` in `backend/.env` (no DATABASE_URL).
-//! Each one creates a temporary `gic_test_*` database, runs the migrations and drops it at
-//! the end, so `DB_USER` needs CREATE/DROP privileges. When `DB_*` is not filled in, they
-//! are skipped with a message and plain `cargo test` still passes.
+//! The `db_*` tests use ONE test database, `<DB_NAME>_test` (e.g. `gic_review_test`), on the
+//! MySQL server from `DB_*` in `backend/.env` (no DATABASE_URL). Create it once and grant
+//! `DB_USER` all privileges on it. Each test wipes it and re-runs the migrations; the tests
+//! run one at a time, and the real database is never touched. When `DB_*` is not filled in,
+//! they are skipped with a message and plain `cargo test` still passes.
 
 mod common;
 

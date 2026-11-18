@@ -132,16 +132,19 @@ pub async fn send_auth(
     }
 }
 
-/// A throwaway database for one test, created from the `DB_*` values in `backend/.env`
-/// (no `DATABASE_URL` needed). Migrations are applied; call `cleanup()` at the end.
+/// Database tests share ONE database: `<DB_NAME>_test` (e.g. `gic_review_test`), built from the
+/// `DB_*` values in `backend/.env` (no `DATABASE_URL`). It must already exist and `DB_USER`
+/// needs all privileges on it. Each test takes a lock (so they run one at a time), wipes the
+/// tables, and re-applies the migrations. The real `DB_NAME` database is never touched.
 pub struct TestDb {
     pub pool: MySqlPool,
-    server: MySqlPool,
-    name: String,
+    _lock: tokio::sync::MutexGuard<'static, ()>,
 }
 
+static TEST_DB_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// `None` (test skipped) when `DB_*` is not filled in. Panics with a clear message when it
-/// is filled in but the database cannot be used, so real problems are not hidden.
+/// is filled in but the test database cannot be used, so real problems are not hidden.
 pub async fn test_db() -> Option<TestDb> {
     let _ = dotenvy::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/.env"));
     let options = match gic_review_api::config::db_options_from_env() {
@@ -151,46 +154,71 @@ pub async fn test_db() -> Option<TestDb> {
             return None;
         }
     };
-    let server = MySqlPoolOptions::new()
-        .max_connections(2)
-        .connect_with(options.clone())
-        .await
-        .expect("cannot connect to MySQL with DB_* from backend/.env");
-
-    // Generated name (hex only), so building the statement with format! is safe.
-    let name = format!(
-        "gic_test_{}",
-        &uuid::Uuid::new_v4().simple().to_string()[..16]
+    let real_name = options.get_database().expect("DB_NAME is set").to_string();
+    let test_name = format!("{real_name}_test");
+    assert_ne!(
+        test_name, real_name,
+        "the test database must not be DB_NAME"
     );
-    sqlx::query(sqlx::AssertSqlSafe(format!(
-        "CREATE DATABASE `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
-    )))
-    .execute(&server)
+
+    let lock = TEST_DB_LOCK.lock().await;
+
+    // One connection, so FOREIGN_KEY_CHECKS=0 applies to every DROP below.
+    let pool = MySqlPoolOptions::new()
+        .max_connections(1)
+        .connect_with(options.clone().database(&test_name))
+        .await
+        .unwrap_or_else(|e| {
+            panic!(
+                "cannot use the test database `{test_name}`. Create it and grant access:\n  \
+                 CREATE DATABASE {test_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\n  \
+                 GRANT ALL PRIVILEGES ON {test_name}.* TO '<DB_USER>'@'%';\n({e})"
+            )
+        });
+
+    // Wipe every table (including sqlx's migration history) so each test starts empty.
+    let tables: Vec<(String,)> = sqlx::query_as(
+        "SELECT CAST(table_name AS CHAR) FROM information_schema.tables \
+         WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'",
+    )
+    .fetch_all(&pool)
     .await
-    .expect("DB_USER needs the CREATE privilege to make a temporary test database");
+    .expect("cannot list tables in the test database");
+    sqlx::query("SET FOREIGN_KEY_CHECKS = 0")
+        .execute(&pool)
+        .await
+        .unwrap();
+    for (table,) in tables {
+        // Table names come from information_schema of the test database itself.
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DROP TABLE IF EXISTS `{}`",
+            table.replace('`', "``")
+        )))
+        .execute(&pool)
+        .await
+        .expect("cannot drop a table in the test database");
+    }
+    sqlx::query("SET FOREIGN_KEY_CHECKS = 1")
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
 
     let pool = MySqlPoolOptions::new()
         .max_connections(5)
-        .connect_with(options.database(&name))
+        .connect_with(options.database(&test_name))
         .await
-        .expect("cannot connect to the temporary test database");
+        .expect("cannot reconnect to the test database");
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await
         .expect("migrations failed on the test database");
-    Some(TestDb { pool, server, name })
+    Some(TestDb { pool, _lock: lock })
 }
 
 impl TestDb {
-    /// Drop the temporary database. (If a test panics first, a `gic_test_*` database is
-    /// left behind; it is safe to drop by hand.)
+    /// Release the connections (the data stays until the next test wipes it).
     pub async fn cleanup(self) {
         self.pool.close().await;
-        let _ = sqlx::query(sqlx::AssertSqlSafe(format!(
-            "DROP DATABASE IF EXISTS `{}`",
-            self.name
-        )))
-        .execute(&self.server)
-        .await;
     }
 }

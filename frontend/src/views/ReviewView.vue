@@ -89,7 +89,7 @@ watch(
   { immediate: true },
 )
 
-function handleReviewMessage(event: MessageEvent<unknown>) {
+async function handleReviewMessage(event: MessageEvent<unknown>) {
   const review = selected.value
   if (
     !review ||
@@ -98,7 +98,7 @@ function handleReviewMessage(event: MessageEvent<unknown>) {
   ) {
     return
   }
-  saveReviewScrollPosition(review.id, event.data.scrollY)
+  await saveReviewScrollPosition(review.id, event.data.scrollY)
 }
 
 onMounted(() => {
@@ -118,17 +118,16 @@ const safeUrl = computed(() => {
   }
 })
 
-function sendTheme() {
+async function sendTheme() {
   // The sandboxed frame has an opaque ("null") origin, so '*' is the only usable target.
   // The message contains nothing sensitive.
   const review = selected.value
   const target = frame.value?.contentWindow
   if (!review || !target) return
+  const scrollY = await getReviewScrollPosition(review.id)
+  if (selected.value?.id !== review.id || frame.value?.contentWindow !== target) return
   target.postMessage({ type: 'gic-theme', flavor: theme.flavor, accent: theme.accent }, '*')
-  target.postMessage(
-    { type: 'gic-review-restore', scrollY: getReviewScrollPosition(review.id) },
-    '*',
-  )
+  target.postMessage({ type: 'gic-review-restore', scrollY }, '*')
 }
 watch(() => [theme.flavor, theme.accent], sendTheme)
 

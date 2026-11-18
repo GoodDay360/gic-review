@@ -37,7 +37,7 @@ Subject: <subject-slug>  (e.g. hci)
 Read the attached PDF files and use them to create a quiz and an interactive review in
 GIC Review. 
 
-Follow the attached instructions from:
+Follow the instructions from:
 https://github.com/GoodDay360/gic-review/blob/main/docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md
 https://github.com/GoodDay360/gic-review/blob/main/docs/AI-HOW-ADD-QUIZ.md
 

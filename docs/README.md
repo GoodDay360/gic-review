@@ -33,6 +33,8 @@ API base URL: https://gic-review.onrender.com/api
 API key: <your-api-key>
 Year: <year-slug>        (e.g. i4)
 Subject: <subject-slug>  (e.g. hci)
+New Interactive Review Title: <new-title>
+New Quiz Title: <new-title>
 
 Read the attached PDF files and use them to create a quiz and an interactive review in
 GIC Review. 

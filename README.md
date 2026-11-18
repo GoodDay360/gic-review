@@ -124,6 +124,7 @@ for user, key or subject management. Details: `docs/AI-HOW-ADD-QUIZ.md`.
 
 - `prompt.md`: build brief (requirements and how to build the project)
 - `docs/AI-SPEC.md`: status sheet (features checklist, schema, endpoints, limitations, changelog)
+- `docs/README.md`: **start here to let an AI create content**: what you need, a ready-to-use prompt, and keeping your API key safe
 - `docs/AI-HOW-ADD-QUIZ.md`: **give this to an AI** (with an API key) to create quizzes through the API, e.g. from a PDF; self-contained, no code access needed
 - `docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md`: **give this to an AI** to build and upload interactive review pages; includes the HTML template
 - `docs/DEV-ADD-QUIZ-MODE.md`: developer guide for adding a new quiz mode

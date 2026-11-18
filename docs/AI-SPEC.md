@@ -68,6 +68,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 
 ### Public site
 - ✅ Header with the "GIC Review" name and a small "Staff login" link (Dashboard + logout when logged in)
+- ✅ Link previews: meta description, Open Graph + Twitter card tags with a 1200×630 preview image, absolute URLs from `VITE_SITE_URL`; favicon.ico/PNG/Apple/Android icons and web manifest
 - ✅ Footer credit "Made by: @GoodDay360" linking to https://github.com/GoodDay360 (new tab)
 - ✅ Home page: subject cards from `GET /api/subjects`, loading skeletons, empty and error states
 - ✅ Year picker first: Home shows year cards (`I3`, `I4`, any custom name) from `GET /api/years`, last opened year highlighted
@@ -240,6 +241,8 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-18: Link previews (Open Graph/Twitter tags, `og-image.png`), full icon set (`favicon.ico`, PNGs,
+  `apple-touch-icon.png`, `site.webmanifest`) and `VITE_SITE_URL`; fixed Vite's native-config-loader warning.
 - 2026-11-18: AI quiz guide: "How to create a new quiz" box; `POST /admin/quizzes` (create an empty quiz)
   added to the endpoint list as #17 (it was missing). Both creation paths verified with an API key.
 - 2026-11-18: Sharing moved to years and subjects (`year_shares`, `subject_shares`, Share buttons on the

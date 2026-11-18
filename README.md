@@ -56,7 +56,9 @@ bun run lint && bun run format:check
 ## Configuration
 
 `frontend/.env` holds only public `VITE_*` values (they end up in the JS bundle):
-`VITE_APP_NAME`, `VITE_API_BASE_URL`.
+`VITE_APP_NAME`, `VITE_API_BASE_URL`, and `VITE_SITE_URL` (the site's public address, e.g.
+`https://gic.example.com`: link previews in Telegram/Discord/WhatsApp need absolute URLs, so set it
+before building for production).
 
 `backend/.env` holds all secrets: `DB_*` (the only database settings; SSL is required by default, set
 `DB_SSL_REQUIRED=false` for a local MySQL without SSL), `JWT_SECRET`

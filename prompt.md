@@ -133,6 +133,7 @@ Before the first commit, run `git status` and confirm that no `.env`, `node_modu
 ### 3.1 Home page `/`: select a year
 - Header shows the site name **"GIC Review"** (logo text) and a small "Staff login" link.
 - Footer (every page) shows the credit **"Made by: @GoodDay360"**, linking to https://github.com/GoodDay360 (opens in a new tab).
+- **Link previews and icons:** `index.html` has a meta description, `theme-color`, canonical URL, Open Graph tags (`og:title`, `og:description`, `og:url`, `og:image` 1200×630 with alt text) and Twitter `summary_large_image` tags, so links shared in Telegram, Discord, WhatsApp, Facebook or X show a title, description and image. Absolute URLs come from **`VITE_SITE_URL`** in `frontend/.env` (the site's public address). Icons: `favicon.ico`, `favicon.svg`, 32px PNG, `apple-touch-icon.png` (180px), 192/512px PNGs and `site.webmanifest`. The preview image (`public/og-image.png`) is a Catppuccin Mocha card. All pages share the same preview (no server-side rendering).
 - Shows a grid of **year cards** loaded from `GET /api/years` (name, optional description, number of subjects), ordered by the admin's sort order. A year's name is free text: `I3`, `I4`, `Very Cool Year`, …
 - Clicking a year navigates to `/years/:yearSlug`. The last year this browser opened is highlighted ("Last opened", stored in `localStorage`).
 - **Seed only ONE subject:** `Human Computer Interaction` (slug `hci`). Do NOT create other subjects (Internet Programming, etc.); they will be added later through the admin panel. The years migration creates one default year, **"General"** (slug `general`), and puts existing subjects in it; admins rename it (e.g. to `I4`) or add more years.
@@ -394,6 +395,7 @@ Vite only exposes `VITE_`-prefixed values to the browser. Never put secrets here
 ```dotenv
 VITE_APP_NAME=GIC Review
 VITE_API_BASE_URL=http://localhost:8080/api
+VITE_SITE_URL=http://localhost:5173   # public address of the website, for link previews
 ```
 
 ### `backend/.env.example`

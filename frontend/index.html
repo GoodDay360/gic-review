@@ -2,9 +2,51 @@
 <html lang="en" data-flavor="latte" data-accent="mauve">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GIC Review</title>
+    <title>%VITE_APP_NAME% · Study smarter for your exams</title>
+    <meta
+      name="description"
+      content="Pick your year and subject, then study with interactive reviews, QCM quizzes and flashcards. Free, no account needed."
+    />
+    <meta name="theme-color" content="#eff1f5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1e1e2e" media="(prefers-color-scheme: dark)" />
+    <link rel="canonical" href="%VITE_SITE_URL%/" />
+
+    <!-- Icons (ico + png for apps that ignore SVG favicons, e.g. chat link previews) -->
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32x32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Link previews (Telegram, Discord, WhatsApp, Facebook, LinkedIn…): absolute URLs required,
+         built from VITE_SITE_URL in frontend/.env -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="%VITE_APP_NAME%" />
+    <meta property="og:title" content="%VITE_APP_NAME% · Study smarter for your exams" />
+    <meta
+      property="og:description"
+      content="Interactive reviews, QCM quizzes and flashcards. Pick your year, pick a subject, start revising. No account needed."
+    />
+    <meta property="og:url" content="%VITE_SITE_URL%/" />
+    <meta property="og:image" content="%VITE_SITE_URL%/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="GIC Review: study smarter for your exams with interactive reviews, QCM quizzes and flashcards"
+    />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- X / Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="%VITE_APP_NAME% · Study smarter for your exams" />
+    <meta
+      name="twitter:description"
+      content="Interactive reviews, QCM quizzes and flashcards. Pick your year, pick a subject, start revising."
+    />
+    <meta name="twitter:image" content="%VITE_SITE_URL%/og-image.png" />
     <script>
       // Apply the saved Catppuccin flavor/accent before Vue mounts (no theme flash).
       // Keep in sync with src/stores/theme.ts.

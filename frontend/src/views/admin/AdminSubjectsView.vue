@@ -7,7 +7,8 @@ import { computed, onMounted, reactive, ref } from 'vue'
 
 import { api, errorMessage } from '@/api/client'
 import type { Subject, SubjectInput } from '@/api/types'
-import { loadManagedYears, type ManagedYear } from '@/api/years'
+import { loadManagedYears, type ManagedSubject, type ManagedYear } from '@/api/years'
+import ShareDialog from '@/components/admin/ShareDialog.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
@@ -20,10 +21,11 @@ const toast = useToastStore()
 const auth = useAuthStore()
 const { data: years, loading, run } = useAsync(loadManagedYears, [] as ManagedYear[])
 onMounted(run)
-const subjects = computed<Subject[]>(() => years.value.flatMap((y) => y.subjects))
+const subjects = computed<ManagedSubject[]>(() => years.value.flatMap((y) => y.subjects))
 /** Years you can add subjects to. */
 const myYears = computed(() => years.value.filter((y) => y.can_manage))
 const canManage = (s: Subject) => years.value.some((y) => y.id === s.year_id && y.can_manage)
+const sharing = ref<ManagedSubject | null>(null)
 
 const editing = ref<Subject | 'new' | null>(null)
 const form = reactive<SubjectInput>({
@@ -154,7 +156,26 @@ async function cleanupOrphans() {
             order {{ s.sort_order }} · {{ s.quiz_count }} published quizzes
           </p>
         </div>
-        <span v-if="!canManage(s)" class="text-xs text-ctp-overlay1">Not your year</span>
+        <span
+          v-if="s.shared_with_you"
+          class="rounded-full bg-ctp-blue/15 px-2 py-0.5 text-[11px] font-medium text-ctp-blue"
+          >Shared with you</span
+        >
+        <span v-else-if="s.can_add_content && !canManage(s)" class="text-xs text-ctp-subtext0"
+          >Year shared with you</span
+        >
+        <span v-else-if="!canManage(s)" class="text-xs text-ctp-overlay1">Not your year</span>
+        <button
+          v-if="canManage(s) || s.shared_with_you"
+          class="btn-ghost btn-sm"
+          :aria-label="canManage(s) ? 'Share subject' : 'Who has access'"
+          :title="
+            canManage(s) ? 'Share this subject with other managers' : 'Who has access / leave'
+          "
+          @click="sharing = s"
+        >
+          <AppIcon name="users" :size="16" />
+        </button>
         <button v-if="canManage(s)" class="btn-ghost btn-sm" aria-label="Edit" @click="openEdit(s)">
           <AppIcon name="pencil" :size="16" />
         </button>
@@ -168,6 +189,14 @@ async function cleanupOrphans() {
         </button>
       </li>
     </ul>
+
+    <ShareDialog
+      kind="subjects"
+      :item="sharing ? { id: sharing.id, title: `${sharing.year_name} · ${sharing.name}` } : null"
+      @close="sharing = null"
+      @changed="run"
+      @left="run"
+    />
 
     <BaseModal
       :open="!!editing"

@@ -8,6 +8,7 @@ import { onMounted, reactive, ref } from 'vue'
 
 import { api, errorMessage } from '@/api/client'
 import { loadManagedYears, type ManagedYear } from '@/api/years'
+import ShareDialog from '@/components/admin/ShareDialog.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -70,6 +71,7 @@ async function save() {
 }
 
 const deleting = ref<ManagedYear | null>(null)
+const sharing = ref<ManagedYear | null>(null)
 async function confirmDelete() {
   if (!deleting.value) return
   try {
@@ -92,11 +94,11 @@ async function confirmDelete() {
       </button>
     </div>
     <p class="max-w-2xl text-sm text-ctp-subtext0">
-      Students choose a year first (e.g. <strong>I3</strong>, <strong>I4</strong> or any name you
-      like), then a subject of that year. A year belongs to whoever created it: only you (and
-      admins) can change your years, add subjects to them, and add quizzes or reviews to their
-      subjects, in the dashboard or with your API key. Years can only be created here, never through
-      the API.
+      Students choose a year first (e.g. <strong>I3</strong>, <strong>I4</strong> or any name), then
+      a subject of that year. A year belongs to whoever created it: only its owner (and admins) can
+      change it, add subjects, and decide who else may use it. Share a year (people icon) to let
+      other managers add and edit content in all its subjects, or share a single subject on the
+      Subjects page. Years can only be created here, never through the API.
     </p>
 
     <div v-if="loading" class="space-y-2">
@@ -129,6 +131,11 @@ async function confirmDelete() {
             >
               {{ y.owner_name ? `Owned by ${y.owner_name}` : 'No owner (admins only)' }}
             </span>
+            <span
+              v-if="y.shared_with_you"
+              class="rounded-full bg-ctp-blue/15 px-2 py-0.5 text-[11px] font-medium text-ctp-blue"
+              >Shared with you</span
+            >
           </p>
           <p class="text-xs text-ctp-subtext0">
             /years/{{ y.slug }} · order {{ y.sort_order }} · {{ y.subject_count }} subject{{
@@ -136,6 +143,15 @@ async function confirmDelete() {
             }}
           </p>
         </div>
+        <button
+          v-if="y.can_manage || y.shared_with_you"
+          class="btn-ghost btn-sm"
+          :aria-label="y.can_manage ? 'Share year' : 'Who has access'"
+          :title="y.can_manage ? 'Share this year with other managers' : 'Who has access / leave'"
+          @click="sharing = y"
+        >
+          <AppIcon name="users" :size="16" />
+        </button>
         <button v-if="y.can_manage" class="btn-ghost btn-sm" aria-label="Edit" @click="openEdit(y)">
           <AppIcon name="pencil" :size="16" />
         </button>
@@ -151,6 +167,14 @@ async function confirmDelete() {
         </button>
       </li>
     </ul>
+
+    <ShareDialog
+      kind="years"
+      :item="sharing ? { id: sharing.id, title: sharing.name } : null"
+      @close="sharing = null"
+      @changed="run"
+      @left="run"
+    />
 
     <BaseModal
       :open="!!editing"

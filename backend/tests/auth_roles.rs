@@ -581,7 +581,7 @@ async fn db_deactivating_a_manager_disables_their_api_key() {
 }
 
 #[tokio::test]
-async fn db_content_is_private_until_shared_by_email() {
+async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
     let Some(tdb) = common::test_db().await else {
         return;
     };
@@ -602,16 +602,56 @@ async fn db_content_is_private_until_shared_by_email() {
             .set_cookie
             .unwrap(),
     );
+    let admin = cookie_from(
+        &login(&app, "admin@example.com", "admin-password-123")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    let quiz = |sid: i64, title: &str| json!({ "subject_id": sid, "title": title, "description": null, "cover_image_key": null });
 
-    // A creates a quiz (in A's own year); B can't see or touch it (404, not even its existence).
-    let a_sid = own_subject(&app, &a, "a").await;
-    let quiz = send(&app, "POST", "/api/admin/quizzes", Some(&a),
-        Some(json!({ "subject_id": a_sid, "title": "A's quiz", "description": null, "cover_image_key": null }))).await;
-    assert_eq!(quiz.status, StatusCode::CREATED);
-    assert_eq!(quiz.json["access"], "owner");
-    let qid = quiz.json["id"].as_i64().unwrap();
-    let q = format!("/api/admin/quizzes/{qid}");
-    let update = json!({ "subject_id": a_sid, "title": "Edited by B", "description": null, "cover_image_key": null });
+    // A owns year "Year a" with subjects s1 and s2, and a quiz in each.
+    let s1 = own_subject(&app, &a, "a").await;
+    let year: i64 = send(&app, "GET", "/api/subjects/subject-a", None, None)
+        .await
+        .json["year_id"]
+        .as_i64()
+        .unwrap();
+    let s2 = send(
+        &app,
+        "POST",
+        "/api/admin/subjects",
+        Some(&a),
+        Some(json!({ "year_id": year, "name": "Second", "slug": "second-a" })),
+    )
+    .await
+    .json["id"]
+        .as_i64()
+        .unwrap();
+    let q1 = send(
+        &app,
+        "POST",
+        "/api/admin/quizzes",
+        Some(&a),
+        Some(quiz(s1, "A in s1")),
+    )
+    .await
+    .json["id"]
+        .as_i64()
+        .unwrap();
+    let q2 = send(
+        &app,
+        "POST",
+        "/api/admin/quizzes",
+        Some(&a),
+        Some(quiz(s2, "A in s2")),
+    )
+    .await
+    .json["id"]
+        .as_i64()
+        .unwrap();
+
+    // Not shared: B sees nothing and can't add.
     assert_eq!(
         send(&app, "GET", "/api/admin/quizzes", Some(&b), None)
             .await
@@ -622,28 +662,33 @@ async fn db_content_is_private_until_shared_by_email() {
         0
     );
     assert_eq!(
-        send(&app, "GET", &q, Some(&b), None).await.status,
+        send(
+            &app,
+            "GET",
+            &format!("/api/admin/quizzes/{q1}"),
+            Some(&b),
+            None
+        )
+        .await
+        .status,
         StatusCode::NOT_FOUND
     );
-    assert_eq!(
-        send(&app, "PUT", &q, Some(&b), Some(update.clone()))
-            .await
-            .status,
-        StatusCode::NOT_FOUND
-    );
-    assert_eq!(
-        send(&app, "GET", &format!("/api/quizzes/{qid}"), Some(&b), None)
-            .await
-            .status,
-        StatusCode::NOT_FOUND
-    );
-
-    // A shares with B by email.
-    let shares = format!("{q}/shares");
     let r = send(
         &app,
         "POST",
-        &shares,
+        "/api/admin/quizzes",
+        Some(&b),
+        Some(quiz(s1, "B in s1")),
+    )
+    .await;
+    assert_eq!(r.json["error"]["code"], "not_your_year");
+
+    // A shares subject s1 with B (by email).
+    let s1_shares = format!("/api/admin/subjects/{s1}/shares");
+    let r = send(
+        &app,
+        "POST",
+        &s1_shares,
         Some(&a),
         Some(json!({ "email": "Editor-B@example.com" })),
     )
@@ -654,7 +699,7 @@ async fn db_content_is_private_until_shared_by_email() {
         send(
             &app,
             "POST",
-            &shares,
+            &s1_shares,
             Some(&a),
             Some(json!({ "email": "editor-b@example.com" }))
         )
@@ -666,7 +711,7 @@ async fn db_content_is_private_until_shared_by_email() {
         send(
             &app,
             "POST",
-            &shares,
+            &s1_shares,
             Some(&a),
             Some(json!({ "email": "nobody@example.com" }))
         )
@@ -675,21 +720,77 @@ async fn db_content_is_private_until_shared_by_email() {
         StatusCode::UNPROCESSABLE_ENTITY
     );
 
-    // B can now edit, but not delete or manage sharing.
+    // B now sees and edits ALL content in s1 (no per-item sharing), but nothing in s2.
     let list = send(&app, "GET", "/api/admin/quizzes", Some(&b), None).await;
+    let ids: Vec<i64> = list
+        .json
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|q| q["id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(ids, vec![q1]);
     assert_eq!(list.json[0]["access"], "shared");
     assert_eq!(list.json[0]["owner_id"], a_id);
-    let r = send(&app, "PUT", &q, Some(&b), Some(update)).await;
+    let r = send(
+        &app,
+        "PUT",
+        &format!("/api/admin/quizzes/{q1}"),
+        Some(&b),
+        Some(quiz(s1, "Edited by B")),
+    )
+    .await;
     assert_eq!(r.status, StatusCode::OK);
-    assert_eq!(r.json["title"], "Edited by B");
-    let r = send(&app, "DELETE", &q, Some(&b), None).await;
-    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    let r = send(
+        &app,
+        "POST",
+        "/api/admin/quizzes",
+        Some(&b),
+        Some(quiz(s1, "B in s1")),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::CREATED);
+    let b_quiz = r.json["id"].as_i64().unwrap();
+    assert_eq!(
+        send(
+            &app,
+            "POST",
+            "/api/admin/quizzes",
+            Some(&b),
+            Some(quiz(s2, "B in s2"))
+        )
+        .await
+        .json["error"]["code"],
+        "not_your_year"
+    );
+    assert_eq!(
+        send(
+            &app,
+            "GET",
+            &format!("/api/admin/quizzes/{q2}"),
+            Some(&b),
+            None
+        )
+        .await
+        .status,
+        StatusCode::NOT_FOUND
+    );
+
+    // Shared users can't delete others' content, manage the year/subjects, or re-share.
+    let r = send(
+        &app,
+        "DELETE",
+        &format!("/api/admin/quizzes/{q1}"),
+        Some(&b),
+        None,
+    )
+    .await;
     assert_eq!(r.json["error"]["code"], "owner_only");
     assert_eq!(
         send(
             &app,
             "POST",
-            &shares,
+            &s1_shares,
             Some(&b),
             Some(json!({ "email": "owner-a@example.com" }))
         )
@@ -698,116 +799,184 @@ async fn db_content_is_private_until_shared_by_email() {
         StatusCode::FORBIDDEN
     );
     assert_eq!(
-        send(&app, "DELETE", &format!("{shares}/{a_id}"), Some(&b), None)
-            .await
-            .status,
-        StatusCode::FORBIDDEN
+        send(
+            &app,
+            "PUT",
+            &format!("/api/admin/subjects/{s1}"),
+            Some(&b),
+            Some(json!({ "year_id": year, "name": "x", "slug": "x" }))
+        )
+        .await
+        .json["error"]["code"],
+        "owner_only"
     );
-
-    // A unshares: B loses access again.
-    assert_eq!(
-        send(&app, "DELETE", &format!("{shares}/{b_id}"), Some(&a), None)
-            .await
-            .status,
-        StatusCode::OK
-    );
-    assert_eq!(
-        send(&app, "GET", &q, Some(&b), None).await.status,
-        StatusCode::NOT_FOUND
-    );
-
-    // Shared again, then B leaves by themselves.
-    send(
-        &app,
-        "POST",
-        &shares,
-        Some(&a),
-        Some(json!({ "email": "editor-b@example.com" })),
-    )
-    .await;
-    assert_eq!(
-        send(&app, "DELETE", &format!("{shares}/{b_id}"), Some(&b), None)
-            .await
-            .status,
-        StatusCode::OK
-    );
-    assert_eq!(
-        send(&app, "GET", &q, Some(&b), None).await.status,
-        StatusCode::NOT_FOUND
-    );
-
-    // Reviews follow the same rules.
-    let rid = sqlx::query(
-        "INSERT INTO interactive_reviews (subject_id, title, slug, r2_key, created_by) \
-         VALUES (1, 'A review', 'a-review', 'reviews/1/x.html', ?)",
-    )
-    .bind(a_id)
-    .execute(&db)
-    .await
-    .unwrap()
-    .last_insert_id();
-    let rv = format!("/api/admin/reviews/{rid}");
-    assert_eq!(
-        send(&app, "GET", &rv, Some(&b), None).await.status,
-        StatusCode::NOT_FOUND
-    );
-    send(
-        &app,
-        "POST",
-        &format!("{rv}/shares"),
-        Some(&a),
-        Some(json!({ "email": "editor-b@example.com" })),
-    )
-    .await;
-    let r = send(&app, "GET", &rv, Some(&b), None).await;
-    assert_eq!(r.status, StatusCode::OK);
-    assert_eq!(r.json["access"], "shared");
-    assert_eq!(
-        send(&app, "DELETE", &rv, Some(&b), None).await.status,
-        StatusCode::FORBIDDEN
-    );
-
-    // An admin sees every manager's content with owner rights ("admin" access).
-    let admin = cookie_from(
-        &login(&app, "admin@example.com", "admin-password-123")
-            .await
-            .set_cookie
-            .unwrap(),
-    );
-    let r = send(&app, "GET", &q, Some(&admin), None).await;
-    assert_eq!(r.status, StatusCode::OK);
-    assert_eq!(r.json["access"], "admin");
-    let r = send(&app, "GET", "/api/admin/reviews", Some(&admin), None).await;
-    assert_eq!(r.json[0]["access"], "admin");
-    let r = send(&app, "GET", &shares, Some(&admin), None).await;
-    assert_eq!(r.json["can_manage"], true);
-    assert_eq!(r.json["you_are_owner"], false);
-    // Admin can't "share" an item with its own owner.
+    // The year's owner has full rights on content others add to their year.
     let r = send(
         &app,
-        "POST",
-        &shares,
-        Some(&admin),
-        Some(json!({ "email": "owner-a@example.com" })),
+        "GET",
+        &format!("/api/admin/quizzes/{b_quiz}"),
+        Some(&a),
+        None,
     )
     .await;
-    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(r.json["access"], "year_owner");
 
-    // Deleting the owner hands the content to the manager it was shared with.
+    // GET /admin/years tells B where they can add content.
+    let years = send(&app, "GET", "/api/admin/years", Some(&b), None).await;
+    let y = years
+        .json
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|y| y["id"] == year)
+        .unwrap();
+    assert_eq!(y["can_manage"], false);
+    assert_eq!(y["shared_with_you"], false);
+    let subj = |id: i64| {
+        y["subjects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["id"] == id)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(subj(s1)["can_add_content"], true);
+    assert_eq!(subj(s1)["shared_with_you"], true);
+    assert_eq!(subj(s2)["can_add_content"], false);
+
+    // Sharing the whole year opens every subject.
+    let year_shares = format!("/api/admin/years/{year}/shares");
+    assert_eq!(
+        send(
+            &app,
+            "POST",
+            &year_shares,
+            Some(&a),
+            Some(json!({ "email": "editor-b@example.com" }))
+        )
+        .await
+        .status,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(
+            &app,
+            "GET",
+            &format!("/api/admin/quizzes/{q2}"),
+            Some(&b),
+            None
+        )
+        .await
+        .status,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(
+            &app,
+            "POST",
+            "/api/admin/quizzes",
+            Some(&b),
+            Some(quiz(s2, "B in s2"))
+        )
+        .await
+        .status,
+        StatusCode::CREATED
+    );
+
+    // B leaves the year and the subject: access is gone.
+    assert_eq!(
+        send(
+            &app,
+            "DELETE",
+            &format!("{year_shares}/{b_id}"),
+            Some(&b),
+            None
+        )
+        .await
+        .status,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(
+            &app,
+            "GET",
+            &format!("/api/admin/quizzes/{q2}"),
+            Some(&b),
+            None
+        )
+        .await
+        .status,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        send(
+            &app,
+            "DELETE",
+            &format!("{s1_shares}/{b_id}"),
+            Some(&b),
+            None
+        )
+        .await
+        .status,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(
+            &app,
+            "GET",
+            &format!("/api/admin/quizzes/{q1}"),
+            Some(&b),
+            None
+        )
+        .await
+        .status,
+        StatusCode::NOT_FOUND
+    );
+
+    // Admins see everything and can manage any year's sharing; an API key can't share.
+    let r = send(
+        &app,
+        "GET",
+        &format!("/api/admin/quizzes/{q1}"),
+        Some(&admin),
+        None,
+    )
+    .await;
+    assert_eq!(r.json["access"], "admin");
+    let r = send(&app, "GET", &year_shares, Some(&admin), None).await;
+    assert_eq!(r.json["can_manage"], true);
+    let key = send(
+        &app,
+        "POST",
+        "/api/admin/api-keys",
+        Some(&a),
+        Some(json!({ "name": "k", "scopes": ["quizzes:write"], "expires_in_days": 1 })),
+    )
+    .await
+    .json["key"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let r = send_key(
+        &app,
+        "POST",
+        &year_shares,
+        &key,
+        Some(json!({ "email": "editor-b@example.com" })),
+    )
+    .await;
+    assert_eq!(r.json["error"]["code"], "api_key_not_allowed");
+
+    // Deleting A hands A's year to the person it was first shared with.
     send(
         &app,
         "POST",
-        &shares,
+        &year_shares,
         Some(&a),
         Some(json!({ "email": "editor-b@example.com" })),
     )
     .await;
-    let admin = cookie_from(
-        &login(&app, "admin@example.com", "admin-password-123")
-            .await
-            .set_cookie
-            .unwrap(),
-    );
     assert_eq!(
         send(
             &app,
@@ -820,13 +989,16 @@ async fn db_content_is_private_until_shared_by_email() {
         .status,
         StatusCode::NO_CONTENT
     );
-    let r = send(&app, "GET", &q, Some(&b), None).await;
-    assert_eq!(r.json["access"], "owner");
-    assert_eq!(r.json["share_count"], 0);
-    assert_eq!(
-        send(&app, "GET", &rv, Some(&b), None).await.json["access"],
-        "owner"
-    );
+    let years = send(&app, "GET", "/api/admin/years", Some(&b), None).await;
+    let y = years
+        .json
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|y| y["id"] == year)
+        .unwrap();
+    assert_eq!(y["owner_id"], b_id);
+    assert_eq!(y["can_manage"], true);
     tdb.cleanup().await;
 }
 

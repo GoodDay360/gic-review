@@ -6,7 +6,6 @@ import { api, errorMessage } from '@/api/client'
 import { addableSubjects, loadManagedYears, type ManagedYear } from '@/api/years'
 import type { QuizDetail, QuizSummary, Subject } from '@/api/types'
 import OwnershipBadge from '@/components/admin/OwnershipBadge.vue'
-import ShareDialog from '@/components/admin/ShareDialog.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -75,7 +74,6 @@ async function togglePublish(q: QuizSummary) {
   }
 }
 
-const sharing = ref<QuizSummary | null>(null)
 const deleting = ref<QuizSummary | null>(null)
 async function confirmDelete() {
   if (!deleting.value) return
@@ -166,15 +164,7 @@ async function confirmDelete() {
             ><AppIcon name="pencil" :size="16"
           /></RouterLink>
           <button
-            class="btn-ghost btn-sm"
-            aria-label="Share"
-            title="Share with managers"
-            @click="sharing = q"
-          >
-            <AppIcon name="users" :size="16" />
-          </button>
-          <button
-            v-if="q.access === 'owner' || q.access === 'admin'"
+            v-if="q.access !== 'shared'"
             class="btn-ghost btn-sm text-ctp-red"
             aria-label="Delete"
             @click="deleting = q"
@@ -184,14 +174,6 @@ async function confirmDelete() {
         </div>
       </li>
     </ul>
-
-    <ShareDialog
-      kind="quizzes"
-      :item="sharing"
-      @close="sharing = null"
-      @changed="run"
-      @left="run"
-    />
 
     <BaseModal :open="creating" title="New quiz" @close="creating = false">
       <form id="create-quiz" class="space-y-4" @submit.prevent="create">

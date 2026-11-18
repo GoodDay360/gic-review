@@ -189,14 +189,14 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
   - **Preview**: a "Preview" button shows the question exactly as students will see it in QCM and Flashcard mode, images included.
   - **Interactive Reviews**: upload an `.html` file for a subject, set title and order, replace or delete it.
   - **Bulk import**: paste or upload JSON in the format defined in `docs/AI-HOW-ADD-QUIZ.md` to create a whole quiz at once.
-  - **Sharing**: every quiz and interactive review has a **Share** button. The owner types another manager's email to give them access, sees who has access, and can remove people; a manager something was shared with sees "Shared by <owner>", can edit and publish it, and can **leave**. Lists show "Shared by …" / "Shared with N" badges, and the delete button only appears for the owner.
+  - **Sharing (years and subjects only)**: the Years page has a **Share** button per year and the Subjects page per subject. The year's owner (or an admin) types another manager's/admin's email to give them access, sees who has access, and can remove people; a recipient sees "Shared with you", can open the list and **leave**. There is **no per-item sharing**: access to a year or subject covers every quiz and review in it. Content lists show "Shared · by <creator>" / "By <creator>" badges, and the delete button only appears for users with full rights.
   - **API key** (`/admin/api-key`): a manager can create **one** personal API key (shown once, with a copy button and curl examples), choose its permissions (`quizzes:write`, `reviews:write`) and expiry (30/90/365 days or never), see when it was last used, **regenerate** it (the old key stops working immediately) or revoke it. Scripts and AI assistants send it as `Authorization: Bearer gic_…` to add quizzes and interactive reviews through the API.
 - `/admin/users` (**admin only**): create manager accounts, reset a manager's password, deactivate or delete managers.
 - `/admin/api-keys` (**admin only**): see every manager's API keys (owner, name, prefix, permissions, created/last used/expiry, status), filter by manager or status, and revoke any key. Admins cannot create API keys.
 - `/admin/years` (**managers and admins**): every editor can create years and **owns** the years they create ("Yours" badge; others show "Owned by …"). Only the owner (or an admin) can rename, reorder or delete a year (name, link name/slug, description, order); a year can only be deleted when it has no subjects. The seeded "General" year has no owner, so only admins manage it.
 - `/admin/subjects` (**managers and admins**): create and edit subjects (**year**, name, slug, description, icon/color, order) **in years you own** (admins: any year); other subjects are listed as "Not your year". The "clean up orphaned images" maintenance action is admin only.
 - **Years and subjects are created only in the dashboard**, by a human. There is no API path for API keys to create, edit or delete them (`403 api_key_not_allowed`), so an AI must ask the human to create a missing year or subject.
-- **New content only in your own years:** a manager (in the dashboard or with their API key) can only create quizzes/reviews in, or move them into, subjects of **years they own** (`403 not_your_year`, the message lists the caller's own years). Editing existing content shared with you is allowed regardless of whose year it is. Admins can use every year. Dashboard subject pickers for new content only offer subjects of your own years.
+- **New content only where you have access:** a manager (in the dashboard or with their API key) can only create quizzes/reviews in, or move them into, subjects of **years they own**, **years shared with them**, or **subjects shared with them** (`403 not_your_year`; the message lists where they can add content). Admins can use every year. Dashboard subject pickers for new content only offer those subjects.
 - Route guards hide staff pages from users without the role, AND the backend enforces the same rules (never trust the frontend).
 
 ---
@@ -207,10 +207,11 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 |---|---|---|---|
 | View subjects, reviews, quizzes; play quizzes | ✅ | ✅ | ✅ |
 | Create quizzes and interactive reviews (dashboard or API key) | ❌ | ✅ | ✅ |
-| Edit/publish **own** content and content **shared with them** | ❌ | ✅ | ✅ |
-| Edit/publish/delete **anyone's** content and manage its sharing | ❌ | ❌ | ✅ |
-| Delete content and manage who it is shared with | ❌ | owner only | ✅ (all) |
-| See other managers' unshared content | ❌ | ❌ | ✅ |
+| Edit/publish **own** content and all content in **their years** or in years/subjects **shared with them** | ❌ | ✅ | ✅ |
+| Edit/publish/delete **anyone's** content | ❌ | ❌ | ✅ |
+| Delete content (own, or anything in their own years) | ❌ | ✅ | ✅ (all) |
+| Share a year or a subject (by email) and manage who has access | ❌ | own years | ✅ (all) |
+| See content outside their years and shares | ❌ | ❌ | ✅ |
 | Preview unpublished quizzes they can manage | ❌ | ✅ | ✅ |
 | Create/regenerate/revoke **own** API key (max 1 active) | ❌ | ✅ | ✅ |
 | See and revoke **anyone's** API keys | ❌ | ❌ | ✅ |
@@ -219,7 +220,7 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 | Clean up orphaned images | ❌ | ❌ | ✅ |
 | Create/manage manager accounts | ❌ | ❌ | ✅ |
 
-- **Content ownership and sharing:** the owner of a quiz or interactive review is the manager who created it (`created_by`). Content is private to its owner in the manager area (others get `404`). The owner shares it with other active managers **by email**; shared managers can view, edit (questions, images, file) and publish it, in the dashboard or with their API key, but only the owner can delete it or add/remove people; a shared manager can remove themselves. Sharing is dashboard-only (API keys get `403`). When an owner account is deleted, each of their items goes to the manager it was shared with first; never-shared items stay online (if published) without an owner. Students are unaffected: published content is public.
+- **Content access and sharing (years and subjects):** a quiz/review's creator is `created_by`. A manager reaches an item when they created it (`access: "owner"`), it is in a year they own (`"year_owner"`), or its **year or subject is shared with them** (`"shared"`); admins reach everything (`"admin"`). Others get `404`. `owner`, `year_owner` and `admin` have full rights (edit, publish, delete); `shared` can view, edit and publish, and add new content there, but not delete. The year's owner (or an admin) shares a whole year or a single subject with other active managers/admins **by email** and can remove them; recipients can leave. Sharing is dashboard-only (API keys get `403 api_key_not_allowed`). **There is no per-item sharing** (removed 2026-11-18). When a manager is deleted, each of their years goes to the person it was first shared with (never-shared years keep no owner: admins only); content they created stays in place. Students are unaffected: published content is public.
 - **Admins have every manager permission**, on **all** content: they see every quiz and review (`access: "admin"`, with owner rights: edit, publish, delete, manage sharing), create content (owned by them), and can create their own API key (max 1 active; like every key it never reaches session-only endpoints). Items show "Owned by …" so admins know whose content they're editing.
 
 - **Initial admin bootstrap:** when the backend starts, if no admin exists, create one from `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `backend/.env`. Log a warning telling the operator to change the password. Never log the password itself.
@@ -265,10 +266,10 @@ questions          (id, quiz_id FK ON DELETE CASCADE, position,
                     explanation_image_key VARCHAR NULL,  -- e.g. a diagram shown after answering
                     multi_select BOOL DEFAULT false,
                     created_at, updated_at)
-quiz_shares        (quiz_id FK ON DELETE CASCADE, user_id FK users ON DELETE CASCADE, granted_by NULL FK users,
-                    created_at, PRIMARY KEY (quiz_id, user_id))
-review_shares      (review_id FK ON DELETE CASCADE, user_id FK users ON DELETE CASCADE, granted_by NULL FK users,
-                    created_at, PRIMARY KEY (review_id, user_id))
+year_shares        (year_id FK ON DELETE CASCADE, user_id FK users ON DELETE CASCADE, granted_by NULL FK users,
+                    created_at, PRIMARY KEY (year_id, user_id))
+subject_shares     (subject_id FK ON DELETE CASCADE, user_id FK users ON DELETE CASCADE, granted_by NULL FK users,
+                    created_at, PRIMARY KEY (subject_id, user_id))
 api_keys           (id, user_id FK users ON DELETE CASCADE, name, key_prefix, key_hash UNIQUE (sha-256 hex),
                     scopes, expires_at NULL, last_used_at NULL, revoked_at NULL, created_at)
 question_options   (id, question_id FK ON DELETE CASCADE, position,
@@ -327,12 +328,12 @@ Managers and admins ("editors"), via session cookie **or** API key (`Authorizati
 - `POST /admin/uploads/image` (multipart, optional `quiz_id`), which returns `{ key, url }` (`quizzes:write` or `reviews:write`)
 - `DELETE /admin/uploads/image/:key` (`quizzes:write` or `reviews:write`)
 - `GET /admin/reviews[?subject_id=]`, `GET /admin/reviews/:id`, `POST/PUT/DELETE /admin/reviews[/:id]` (multipart `.html` upload) (`reviews:write`)
-- `GET /admin/years` (any scope): every year with `owner_id`, `owner_name`, `can_manage` (true = you may add content to its subjects) and its `subjects`, so API clients know where they may add content
-- Creating content, or moving it to another subject, requires owning that subject's year (`403 not_your_year`; admins: any year)
-- All of the above only for content the user owns or that was shared with them (`404` otherwise; admins reach all content); `DELETE` of a quiz or review is owner-only (`403 owner_only`; admins count as owner). List endpoints return `access` (`owner`/`shared`), `owner_id`, `owner_name`, `share_count`.
+- `GET /admin/years` (any scope): every year with `owner_id`, `owner_name`, `can_manage` (year owner/admin), `shared_with_you`, `can_add_content`, and its `subjects` (each with `can_add_content`, `shared_with_you`), so API clients know where they may add content
+- Creating content, or moving it to another subject, requires owning that subject's year or having the year/subject shared with you (`403 not_your_year`; admins: any year)
+- All of the above only for content the user can reach (created it, in their year, or in a year/subject shared with them; `404` otherwise; admins reach all content); `DELETE` of a quiz or review needs full rights (`403 owner_only` for `shared`). List endpoints return `access` (`owner`/`admin`/`year_owner`/`shared`), `owner_id`, `owner_name` (the creator).
 
 Managers and admins, dashboard session only (never with an API key):
-- `GET /admin/quizzes/:id/shares`, `POST /admin/quizzes/:id/shares` (`{ email }`, owner only), `DELETE /admin/quizzes/:id/shares/:user_id` (owner, or yourself to leave); the same three under `/admin/reviews/:id/shares`
+- `GET /admin/years/:id/shares`, `POST /admin/years/:id/shares` (`{ email }`, year owner or admin), `DELETE /admin/years/:id/shares/:user_id` (year owner or admin, or yourself to leave); the same three under `/admin/subjects/:id/shares` (managed by the subject's year owner or an admin)
 - `POST /admin/years` (creator = owner), `PUT/DELETE /admin/years/:id` (owner or admin; `{ name, slug?, description?, sort_order }`; slug derived from the name when empty; a year with subjects can't be deleted → 409)
 - `POST/PUT/DELETE /admin/subjects[/:id]` (subjects require `year_id`; owner of the year, or admin)
 - `GET /admin/api-keys/mine`, `POST /admin/api-keys` (`{ name, scopes, expires_in_days | null, replace_existing }` → `{ key, api_key }`, the key is shown only in this response), `DELETE /admin/api-keys/:id` (own key)
@@ -446,7 +447,7 @@ Two audiences:
 
 ### `docs/AI-HOW-ADD-QUIZ.md` (external API guide)
 - What the client needs (base URL, a manager's API key with `quizzes:write`), `Authorization: Bearer` usage, keeping the key secret.
-- What the key can and cannot do: acts as its manager; only quizzes that manager owns or that were shared with them; shared ones can be edited and published but not deleted; sharing/users/subjects/keys are dashboard-only; ask the human when a subject is missing.
+- What the key can and cannot do: acts as its owner; only quizzes in that person's years or in years/subjects shared with them (and items they created); with `shared` access they can edit and publish but not delete; years, subjects, sharing, users and keys are dashboard-only; ask the human when a year or subject is missing or not accessible.
 - A recommended workflow from source material (e.g. a PDF): check the key → pick the subject → plan questions → upload images → one import call → check `available_modes` → report back and publish only when asked → fix with question endpoints, avoid duplicates.
 - Question-writing guidance (facts only from the source, same language, one concept per question, plausible distractors, explanations, `answer_text`, sensible quiz size) and the format rules (`is_correct`, `multi_select`, what makes QCM and Flashcard available, limits, image types/sizes, alt text).
 - The full import JSON schema plus a text-only example and an example using every image field (cover, question image, image options, flashcard answer image, explanation image), with both ways to supply images (upload and use the returned `key`, or a public `*_url`).

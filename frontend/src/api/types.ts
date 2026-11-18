@@ -37,12 +37,13 @@ export interface Subject {
 
 /** Present on items returned by the manager API (`/admin/...`). */
 export interface ManagedFields {
-  /** `owner` (you created it), `admin` (you're an admin: owner rights on someone else's item) or `shared` (shared with you). */
-  access?: 'owner' | 'admin' | 'shared'
+  /**
+   * How you can reach this item: `owner` (you created it), `admin`, `year_owner` (it's in your
+   * year) or `shared` (its year or subject is shared with you: edit, but not delete).
+   */
+  access?: 'owner' | 'admin' | 'year_owner' | 'shared'
   owner_id?: number | null
   owner_name?: string | null
-  /** Number of other managers it is shared with. */
-  share_count?: number
 }
 
 export interface SharePerson {
@@ -55,7 +56,7 @@ export interface Shares {
   owner: SharePerson | null
   shared_with: (SharePerson & { shared_at: string })[]
   you_are_owner: boolean
-  /** Owner or admin: may add/remove people. */
+  /** Year owner or admin: may add/remove people. */
   can_manage: boolean
 }
 

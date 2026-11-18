@@ -1,10 +1,13 @@
-//! Sharing quizzes and interactive reviews with other managers (dashboard session only).
+//! Sharing a year, or one subject of a year, with other users (dashboard session only).
 //!
-//! - `GET    /admin/{quizzes|reviews}/{id}/shares`            owner + shared managers can view
-//! - `POST   /admin/{quizzes|reviews}/{id}/shares` `{email}`  owner only
-//! - `DELETE /admin/{quizzes|reviews}/{id}/shares/{user_id}`  owner, or a manager removing
-//!   themselves ("leave")
+//! - `GET    /admin/{years|subjects}/{id}/shares`            year owner, admins, and the people it
+//!   is shared with can view
+//! - `POST   /admin/{years|subjects}/{id}/shares` `{email}`  year owner or admin
+//! - `DELETE /admin/{years|subjects}/{id}/shares/{user_id}`  year owner or admin, or a recipient
+//!   removing themselves ("leave")
 //!
+//! A shared year gives access to every subject in it; a shared subject to that subject only.
+//! Either way the recipient can add content there and view, edit and publish all content in it.
 //! API keys cannot change sharing, so a leaked key can't grant anyone access.
 
 use axum::{
@@ -16,7 +19,7 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    access::{self, Actor, Content},
+    access::{self, Actor},
     auth::RequireEditorSession,
     error::{AppError, AppResult},
     extract::AppJson,
@@ -26,21 +29,27 @@ use crate::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route(
-            "/admin/quizzes/{id}/shares",
-            get(list_quiz_shares).post(add_quiz_share),
+            "/admin/years/{id}/shares",
+            get(list_year_shares).post(add_year_share),
         )
         .route(
-            "/admin/quizzes/{id}/shares/{user_id}",
-            delete(remove_quiz_share),
+            "/admin/years/{id}/shares/{user_id}",
+            delete(remove_year_share),
         )
         .route(
-            "/admin/reviews/{id}/shares",
-            get(list_review_shares).post(add_review_share),
+            "/admin/subjects/{id}/shares",
+            get(list_subject_shares).post(add_subject_share),
         )
         .route(
-            "/admin/reviews/{id}/shares/{user_id}",
-            delete(remove_review_share),
+            "/admin/subjects/{id}/shares/{user_id}",
+            delete(remove_subject_share),
         )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Target {
+    Year,
+    Subject,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -60,11 +69,12 @@ pub struct SharedWith {
 
 #[derive(Debug, Serialize)]
 pub struct Shares {
+    /// The year's owner (for a subject: the owner of its year).
     owner: Option<Person>,
     shared_with: Vec<SharedWith>,
-    /// Whether the caller is the owner.
+    /// Whether the caller owns the year.
     you_are_owner: bool,
-    /// Whether the caller may add/remove people (owner or admin).
+    /// Whether the caller may add/remove people (year owner or admin).
     can_manage: bool,
 }
 
@@ -73,9 +83,46 @@ struct AddShare {
     email: String,
 }
 
-async fn list(state: &AppState, kind: Content, id: i64, actor: Actor) -> AppResult<Shares> {
-    let access = access::require(&state.db, kind, id, actor).await?;
-    let owner: Option<Person> = match access.owner_id {
+/// (year id, year owner) of the target; `404` if it doesn't exist.
+async fn year_of(state: &AppState, target: Target, id: i64) -> AppResult<(i64, Option<i64>)> {
+    let row: Option<(i64, Option<i64>)> = match target {
+        Target::Year => {
+            sqlx::query_as("SELECT id, created_by FROM years WHERE id = ?")
+                .bind(id)
+                .fetch_optional(&state.db)
+                .await?
+        }
+        Target::Subject => {
+            sqlx::query_as(
+                "SELECT y.id, y.created_by FROM subjects s JOIN years y ON y.id = s.year_id WHERE s.id = ?",
+            )
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await?
+        }
+    };
+    row.ok_or(AppError::NotFound(match target {
+        Target::Year => "year",
+        Target::Subject => "subject",
+    }))
+}
+
+async fn list(state: &AppState, target: Target, id: i64, actor: Actor) -> AppResult<Shares> {
+    let (year_id, owner_id) = year_of(state, target, id).await?;
+    let can_manage = access::can_manage_year(actor, owner_id);
+    if !can_manage {
+        // Recipients may see who else has access (a subject's list is visible to people the
+        // subject or its whole year is shared with).
+        let mine = access::shared_with(&state.db, actor.id).await?;
+        let allowed = match target {
+            Target::Year => mine.years.contains(&id),
+            Target::Subject => mine.subjects.contains(&id) || mine.years.contains(&year_id),
+        };
+        if !allowed {
+            return Err(AppError::OwnerOnly("see who this is shared with".into()));
+        }
+    }
+    let owner: Option<Person> = match owner_id {
         Some(owner_id) => {
             sqlx::query_as("SELECT id AS user_id, email, display_name FROM users WHERE id = ?")
                 .bind(owner_id)
@@ -84,22 +131,22 @@ async fn list(state: &AppState, kind: Content, id: i64, actor: Actor) -> AppResu
         }
         None => None,
     };
-    let shared_with: Vec<SharedWith> = match kind {
-        Content::Quiz => {
+    let shared_with: Vec<SharedWith> = match target {
+        Target::Year => {
             sqlx::query_as(
                 "SELECT u.id AS user_id, u.email, u.display_name, s.created_at AS shared_at \
-                 FROM quiz_shares s JOIN users u ON u.id = s.user_id \
-                 WHERE s.quiz_id = ? ORDER BY s.created_at, u.display_name",
+                 FROM year_shares s JOIN users u ON u.id = s.user_id \
+                 WHERE s.year_id = ? ORDER BY s.created_at, u.display_name",
             )
             .bind(id)
             .fetch_all(&state.db)
             .await?
         }
-        Content::Review => {
+        Target::Subject => {
             sqlx::query_as(
                 "SELECT u.id AS user_id, u.email, u.display_name, s.created_at AS shared_at \
-                 FROM review_shares s JOIN users u ON u.id = s.user_id \
-                 WHERE s.review_id = ? ORDER BY s.created_at, u.display_name",
+                 FROM subject_shares s JOIN users u ON u.id = s.user_id \
+                 WHERE s.subject_id = ? ORDER BY s.created_at, u.display_name",
             )
             .bind(id)
             .fetch_all(&state.db)
@@ -109,110 +156,105 @@ async fn list(state: &AppState, kind: Content, id: i64, actor: Actor) -> AppResu
     Ok(Shares {
         owner,
         shared_with,
-        you_are_owner: access.is_owner(),
-        can_manage: access.can_manage(),
+        you_are_owner: owner_id == Some(actor.id),
+        can_manage,
     })
 }
 
 async fn add(
     state: &AppState,
-    kind: Content,
+    target: Target,
     id: i64,
     actor: Actor,
     email: &str,
 ) -> AppResult<Shares> {
-    let user_id = actor.id;
-    let access = access::require(&state.db, kind, id, actor).await?;
-    access.require_owner("share this")?;
+    let (_, owner_id) = year_of(state, target, id).await?;
+    if !access::can_manage_year(actor, owner_id) {
+        return Err(AppError::OwnerOnly("share this".into()));
+    }
     let email = email.trim().to_lowercase();
     if email.is_empty() {
         return Err(AppError::Validation("email: is required".into()));
     }
-    // Only active staff accounts (managers or admins) can receive content.
-    let target: Option<(i64,)> =
+    // Only active staff accounts (managers or admins) can receive access.
+    let found: Option<(i64,)> =
         sqlx::query_as("SELECT id FROM users WHERE email = ? AND is_active = TRUE")
             .bind(&email)
             .fetch_optional(&state.db)
             .await?;
-    let (target_id,) = target.ok_or_else(|| {
+    let (target_id,) = found.ok_or_else(|| {
         AppError::Validation(format!(
             "no active manager or admin account uses the email {email}"
         ))
     })?;
-    if Some(target_id) == access.owner_id {
+    if Some(target_id) == owner_id {
         return Err(AppError::Validation(
-            "that account already owns this".into(),
+            "that account already owns this year".into(),
         ));
     }
-    if target_id == user_id {
+    if target_id == actor.id {
         return Err(AppError::Validation(
-            "you already own this; share it with someone else".into(),
+            "share it with someone else, not yourself".into(),
         ));
     }
-    let res = match kind {
-        Content::Quiz => {
+    let res = match target {
+        Target::Year => {
             sqlx::query(
-                "INSERT IGNORE INTO quiz_shares (quiz_id, user_id, granted_by) VALUES (?, ?, ?)",
+                "INSERT IGNORE INTO year_shares (year_id, user_id, granted_by) VALUES (?, ?, ?)",
             )
             .bind(id)
             .bind(target_id)
-            .bind(user_id)
+            .bind(actor.id)
             .execute(&state.db)
             .await?
         }
-        Content::Review => sqlx::query(
-            "INSERT IGNORE INTO review_shares (review_id, user_id, granted_by) VALUES (?, ?, ?)",
+        Target::Subject => sqlx::query(
+            "INSERT IGNORE INTO subject_shares (subject_id, user_id, granted_by) VALUES (?, ?, ?)",
         )
         .bind(id)
         .bind(target_id)
-        .bind(user_id)
+        .bind(actor.id)
         .execute(&state.db)
         .await?,
     };
     if res.rows_affected() == 0 {
         return Err(AppError::Conflict(format!("already shared with {email}")));
     }
-    tracing::info!(
-        kind = kind.label(),
-        id,
-        by = user_id,
-        to = target_id,
-        "content shared"
-    );
-    list(state, kind, id, actor).await
+    tracing::info!(?target, id, by = actor.id, to = target_id, "access shared");
+    list(state, target, id, actor).await
 }
 
 async fn remove(
     state: &AppState,
-    kind: Content,
+    target: Target,
     id: i64,
     actor: Actor,
     target_id: i64,
 ) -> AppResult<Shares> {
-    let user_id = actor.id;
-    let access = access::require(&state.db, kind, id, actor).await?;
-    let leaving = target_id == user_id;
-    if !leaving {
-        access.require_owner("remove other people")?;
+    let (_, owner_id) = year_of(state, target, id).await?;
+    let can_manage = access::can_manage_year(actor, owner_id);
+    let leaving = target_id == actor.id;
+    if !leaving && !can_manage {
+        return Err(AppError::OwnerOnly("remove other people".into()));
     }
-    match kind {
-        Content::Quiz => {
-            sqlx::query("DELETE FROM quiz_shares WHERE quiz_id = ? AND user_id = ?")
+    match target {
+        Target::Year => {
+            sqlx::query("DELETE FROM year_shares WHERE year_id = ? AND user_id = ?")
                 .bind(id)
                 .bind(target_id)
                 .execute(&state.db)
                 .await?
         }
-        Content::Review => {
-            sqlx::query("DELETE FROM review_shares WHERE review_id = ? AND user_id = ?")
+        Target::Subject => {
+            sqlx::query("DELETE FROM subject_shares WHERE subject_id = ? AND user_id = ?")
                 .bind(id)
                 .bind(target_id)
                 .execute(&state.db)
                 .await?
         }
     };
-    if leaving && !access.can_manage() {
-        // The caller just lost access; there is nothing more they may see.
+    if leaving && !can_manage {
+        // The caller just gave up their access; nothing more to show them.
         return Ok(Shares {
             owner: None,
             shared_with: Vec::new(),
@@ -220,67 +262,67 @@ async fn remove(
             can_manage: false,
         });
     }
-    list(state, kind, id, actor).await
+    list(state, target, id, actor).await
 }
 
-async fn list_quiz_shares(
+async fn list_year_shares(
     RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<Json<Shares>> {
     Ok(Json(
-        list(&state, Content::Quiz, id, Actor::of(&user)).await?,
+        list(&state, Target::Year, id, Actor::of(&user)).await?,
     ))
 }
 
-async fn add_quiz_share(
-    RequireEditorSession(user): RequireEditorSession,
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-    AppJson(body): AppJson<AddShare>,
-) -> AppResult<Json<Shares>> {
-    Ok(Json(
-        add(&state, Content::Quiz, id, Actor::of(&user), &body.email).await?,
-    ))
-}
-
-async fn remove_quiz_share(
-    RequireEditorSession(user): RequireEditorSession,
-    State(state): State<AppState>,
-    Path((id, target)): Path<(i64, i64)>,
-) -> AppResult<Json<Shares>> {
-    Ok(Json(
-        remove(&state, Content::Quiz, id, Actor::of(&user), target).await?,
-    ))
-}
-
-async fn list_review_shares(
-    RequireEditorSession(user): RequireEditorSession,
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-) -> AppResult<Json<Shares>> {
-    Ok(Json(
-        list(&state, Content::Review, id, Actor::of(&user)).await?,
-    ))
-}
-
-async fn add_review_share(
+async fn add_year_share(
     RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     AppJson(body): AppJson<AddShare>,
 ) -> AppResult<Json<Shares>> {
     Ok(Json(
-        add(&state, Content::Review, id, Actor::of(&user), &body.email).await?,
+        add(&state, Target::Year, id, Actor::of(&user), &body.email).await?,
     ))
 }
 
-async fn remove_review_share(
+async fn remove_year_share(
     RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     Path((id, target)): Path<(i64, i64)>,
 ) -> AppResult<Json<Shares>> {
     Ok(Json(
-        remove(&state, Content::Review, id, Actor::of(&user), target).await?,
+        remove(&state, Target::Year, id, Actor::of(&user), target).await?,
+    ))
+}
+
+async fn list_subject_shares(
+    RequireEditorSession(user): RequireEditorSession,
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> AppResult<Json<Shares>> {
+    Ok(Json(
+        list(&state, Target::Subject, id, Actor::of(&user)).await?,
+    ))
+}
+
+async fn add_subject_share(
+    RequireEditorSession(user): RequireEditorSession,
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    AppJson(body): AppJson<AddShare>,
+) -> AppResult<Json<Shares>> {
+    Ok(Json(
+        add(&state, Target::Subject, id, Actor::of(&user), &body.email).await?,
+    ))
+}
+
+async fn remove_subject_share(
+    RequireEditorSession(user): RequireEditorSession,
+    State(state): State<AppState>,
+    Path((id, target)): Path<(i64, i64)>,
+) -> AppResult<Json<Shares>> {
+    Ok(Json(
+        remove(&state, Target::Subject, id, Actor::of(&user), target).await?,
     ))
 }

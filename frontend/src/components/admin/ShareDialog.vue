@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * Share a quiz or interactive review with other managers by email.
- * Owner: add / remove people. Shared manager: see who has access, or leave.
+ * Share a whole year, or one subject of a year, with other people by email.
+ * Year owner / admin: add and remove people. Someone it is shared with: see who has access, or leave.
  */
 import { ref, watch } from 'vue'
 
@@ -14,9 +14,9 @@ import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 
 const props = defineProps<{
-  /** API collection: `quizzes` or `reviews`. */
-  kind: 'quizzes' | 'reviews'
-  /** Item to share; `null` closes the dialog. */
+  /** What is shared: a whole `years` entry or one `subjects` entry. */
+  kind: 'years' | 'subjects'
+  /** The year/subject to share; `null` closes the dialog. */
   item: { id: number; title: string } | null
 }>()
 const emit = defineEmits<{ close: []; changed: []; left: [] }>()
@@ -29,6 +29,11 @@ const email = ref('')
 const busy = ref(false)
 
 const base = () => `/admin/${props.kind}/${props.item!.id}/shares`
+
+const description = () =>
+  props.kind === 'years'
+    ? 'People you add can add quizzes and reviews to every subject of this year, and edit and publish all content in it. Only the year owner (or an admin) can change the year, its subjects and who has access.'
+    : "People you add can add quizzes and reviews to this subject, and edit and publish all content in it. Only the year's owner (or an admin) can change it and who has access."
 
 watch(
   () => props.item,
@@ -68,7 +73,7 @@ async function remove(userId: number) {
   busy.value = true
   try {
     shares.value = await api.delete<Shares>(`${base()}/${userId}`)
-    if (leaving) {
+    if (leaving && !shares.value?.can_manage) {
       toast.success('You no longer have access to it')
       emit('left')
       emit('close')
@@ -82,15 +87,13 @@ async function remove(userId: number) {
     busy.value = false
   }
 }
-
-const what = () => (props.kind === 'quizzes' ? 'quiz' : 'review')
 </script>
 
 <template>
   <BaseModal
     :open="!!item"
     :title="`Share “${item?.title ?? ''}”`"
-    :description="`Managers you add can edit and publish this ${what()}. Only you (the owner) can delete it or change who has access.`"
+    :description="description()"
     @close="emit('close')"
   >
     <div v-if="loading" class="space-y-2">
@@ -98,14 +101,14 @@ const what = () => (props.kind === 'quizzes' ? 'quiz' : 'review')
     </div>
     <div v-else-if="shares" class="space-y-5">
       <form v-if="shares.can_manage" class="flex gap-2" @submit.prevent="add">
-        <label for="share-email" class="sr-only">Manager email</label>
+        <label for="share-email" class="sr-only">Email</label>
         <input
           id="share-email"
           v-model="email"
           type="email"
           required
           class="input flex-1"
-          placeholder="Manager's email, e.g. dara@school.edu"
+          placeholder="Email of a manager or admin, e.g. dara@school.edu"
           autocomplete="off"
         />
         <button class="btn-primary" type="submit" :disabled="busy || !email.trim()">
@@ -126,8 +129,9 @@ const what = () => (props.kind === 'quizzes' ? 'quiz' : 'review')
           </div>
           <span
             class="rounded-full bg-ctp-accent/15 px-2.5 py-1 text-xs font-medium text-ctp-accent"
-            >Owner</span
           >
+            Year owner
+          </span>
         </li>
         <li v-for="p in shares.shared_with" :key="p.user_id" class="flex items-center gap-3 p-3">
           <div class="min-w-0 flex-1">
@@ -137,7 +141,7 @@ const what = () => (props.kind === 'quizzes' ? 'quiz' : 'review')
             </p>
             <p class="text-xs text-ctp-subtext0">{{ p.email }}</p>
           </div>
-          <span class="text-xs text-ctp-subtext0">Can edit</span>
+          <span class="text-xs text-ctp-subtext0">Has access</span>
           <button
             v-if="shares.can_manage"
             class="btn-ghost btn-sm text-ctp-red"

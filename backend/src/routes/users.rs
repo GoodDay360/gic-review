@@ -155,36 +155,22 @@ async fn delete_user(
     Path(id): Path<i64>,
 ) -> AppResult<StatusCode> {
     load_manager(&state, id).await?;
-    // Their content is handed to the manager it was shared with first. Content that was
-    // never shared keeps existing (and stays public if published) with no owner.
+    // Their years go to the person each year was first shared with; years never shared keep
+    // existing with no owner (admins manage them). Quizzes/reviews they created stay where
+    // they are (created_by becomes NULL) and remain managed by the year's owner and admins.
     let mut tx = state.db.begin().await?;
     sqlx::query(
-        "UPDATE quizzes z SET z.created_by = \
-           (SELECT s.user_id FROM quiz_shares s WHERE s.quiz_id = z.id \
+        "UPDATE years y SET y.created_by = \
+           (SELECT s.user_id FROM year_shares s WHERE s.year_id = y.id \
             ORDER BY s.created_at, s.user_id LIMIT 1) \
-         WHERE z.created_by = ?",
+         WHERE y.created_by = ?",
     )
     .bind(id)
     .execute(&mut *tx)
     .await?;
+    // New owners no longer need a share entry for their own year.
     sqlx::query(
-        "UPDATE interactive_reviews r SET r.created_by = \
-           (SELECT s.user_id FROM review_shares s WHERE s.review_id = r.id \
-            ORDER BY s.created_at, s.user_id LIMIT 1) \
-         WHERE r.created_by = ?",
-    )
-    .bind(id)
-    .execute(&mut *tx)
-    .await?;
-    // New owners no longer need a share entry for their own content.
-    sqlx::query(
-        "DELETE s FROM quiz_shares s JOIN quizzes z ON z.id = s.quiz_id WHERE s.user_id = z.created_by",
-    )
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query(
-        "DELETE s FROM review_shares s JOIN interactive_reviews r ON r.id = s.review_id \
-         WHERE s.user_id = r.created_by",
+        "DELETE s FROM year_shares s JOIN years y ON y.id = s.year_id WHERE s.user_id = y.created_by",
     )
     .execute(&mut *tx)
     .await?;

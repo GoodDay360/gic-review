@@ -1,17 +1,25 @@
 //! Who may manage which content.
 //!
-//! - The **owner** of a quiz or interactive review is the user who created it (`created_by`).
-//! - The owner can **share** it with other managers by email. Shared users can view, edit
-//!   and publish it (in the dashboard or with their API key).
-//! - Only the owner may delete it or change who it is shared with.
-//! - **Admins** have the owner's rights on every item (`access: "admin"`).
-//! - Managers without access get `404` (they don't learn that the item exists).
-//! - **Years** belong to their creator. A manager may only *add* content to (or move content
-//!   into) subjects of years they own (`403 not_your_year`); admins may use every year.
+//! **Years** belong to their creator. The year owner (or an admin) manages the year, its
+//! subjects, and who it is shared with. A year, or one subject of a year, can be **shared** with
+//! other users by email (dashboard only). There is no per-item sharing: access to a year or
+//! subject covers every quiz and interactive review inside it.
+//!
+//! Access to a quiz/review, from strongest to weakest:
+//! - `owner`: you created the item;
+//! - `admin`: you are an admin (every item);
+//! - `year_owner`: the item is in a year you own;
+//! - `shared`: its year, or its subject, is shared with you.
+//!
+//! The first three have full rights (edit, publish, delete). `shared` can view, edit and publish
+//! but not delete. Without any of them the item is invisible (`404`).
+//!
+//! **Adding content** (or moving it into a subject) requires owning the subject's year, having
+//! the year or that subject shared with you, or being an admin (`403 not_your_year` otherwise).
 //!
 //! Students are unaffected: published content is public.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 use sqlx::MySqlPool;
@@ -53,38 +61,34 @@ impl Actor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum Access {
     /// You created it.
     Owner,
-    /// You are an admin: owner rights on someone else's item.
+    /// You are an admin.
     Admin,
-    /// Its owner shared it with you: edit and publish, but not delete or re-share.
+    /// It is in a year you own.
+    YearOwner,
+    /// Its year or subject is shared with you: view, edit and publish, but not delete.
     Shared,
 }
 
-/// Ownership details returned with every item in the editor API.
+/// Access details returned with every item in the editor API.
 #[derive(Debug, Clone, Serialize)]
 pub struct AccessInfo {
-    /// `owner`, `admin` or `shared`.
+    /// `owner`, `admin`, `year_owner` or `shared`.
     pub access: Access,
+    /// Who created the item.
     pub owner_id: Option<i64>,
     pub owner_name: Option<String>,
-    /// How many users it is shared with.
-    pub share_count: i64,
 }
 
 impl AccessInfo {
-    pub fn is_owner(&self) -> bool {
-        self.access == Access::Owner
-    }
-
-    /// Owner rights: delete the item and manage who it is shared with (owner or admin).
+    /// Full rights: delete the item (owner, admin or the year's owner).
     pub fn can_manage(&self) -> bool {
-        matches!(self.access, Access::Owner | Access::Admin)
+        self.access != Access::Shared
     }
 
-    /// Only the owner (or an admin) may do this (delete, manage sharing).
     pub fn require_owner(&self, what: &str) -> AppResult<()> {
         if self.can_manage() {
             Ok(())
@@ -94,21 +98,29 @@ impl AccessInfo {
     }
 }
 
-fn access_for(actor: Actor, owner_id: Option<i64>, shared_with_actor: bool) -> Option<Access> {
+fn access_for(
+    actor: Actor,
+    owner_id: Option<i64>,
+    year_owner: Option<i64>,
+    shared: bool,
+) -> Option<Access> {
     if owner_id == Some(actor.id) {
         Some(Access::Owner)
     } else if actor.is_admin {
         Some(Access::Admin)
-    } else if shared_with_actor {
+    } else if year_owner == Some(actor.id) {
+        Some(Access::YearOwner)
+    } else if shared {
         Some(Access::Shared)
     } else {
         None
     }
 }
 
-type AccessRow = (Option<i64>, Option<String>, i64, i64);
-/// (id, owner_id, owner_name, share_count, shared_with_actor)
-type AccessListRow = (i64, Option<i64>, Option<String>, i64, i64);
+/// (item owner, owner name, year owner, shared with actor via year or subject)
+type AccessRow = (Option<i64>, Option<String>, Option<i64>, i64);
+/// (id, item owner, owner name, year owner, shared with actor via year or subject)
+type AccessListRow = (i64, Option<i64>, Option<String>, Option<i64>, i64);
 
 /// Access of `actor` to one item, or `NotFound` if it doesn't exist or isn't accessible.
 pub async fn require(
@@ -120,11 +132,13 @@ pub async fn require(
     let row: Option<AccessRow> = match kind {
         Content::Quiz => {
             sqlx::query_as(
-                "SELECT z.created_by, u.display_name, \
-                 CAST(EXISTS(SELECT 1 FROM quiz_shares s WHERE s.quiz_id = z.id AND s.user_id = ?) AS SIGNED), \
-                 (SELECT COUNT(*) FROM quiz_shares s WHERE s.quiz_id = z.id) \
-                 FROM quizzes z LEFT JOIN users u ON u.id = z.created_by WHERE z.id = ?",
+                "SELECT z.created_by, u.display_name, y.created_by, \
+                 CAST(EXISTS(SELECT 1 FROM year_shares ys WHERE ys.year_id = y.id AND ys.user_id = ?) \
+                   OR EXISTS(SELECT 1 FROM subject_shares ss WHERE ss.subject_id = sj.id AND ss.user_id = ?) AS SIGNED) \
+                 FROM quizzes z JOIN subjects sj ON sj.id = z.subject_id JOIN years y ON y.id = sj.year_id \
+                 LEFT JOIN users u ON u.id = z.created_by WHERE z.id = ?",
             )
+            .bind(actor.id)
             .bind(actor.id)
             .bind(id)
             .fetch_optional(db)
@@ -132,29 +146,30 @@ pub async fn require(
         }
         Content::Review => {
             sqlx::query_as(
-                "SELECT r.created_by, u.display_name, \
-                 CAST(EXISTS(SELECT 1 FROM review_shares s WHERE s.review_id = r.id AND s.user_id = ?) AS SIGNED), \
-                 (SELECT COUNT(*) FROM review_shares s WHERE s.review_id = r.id) \
-                 FROM interactive_reviews r LEFT JOIN users u ON u.id = r.created_by WHERE r.id = ?",
+                "SELECT r.created_by, u.display_name, y.created_by, \
+                 CAST(EXISTS(SELECT 1 FROM year_shares ys WHERE ys.year_id = y.id AND ys.user_id = ?) \
+                   OR EXISTS(SELECT 1 FROM subject_shares ss WHERE ss.subject_id = sj.id AND ss.user_id = ?) AS SIGNED) \
+                 FROM interactive_reviews r JOIN subjects sj ON sj.id = r.subject_id JOIN years y ON y.id = sj.year_id \
+                 LEFT JOIN users u ON u.id = r.created_by WHERE r.id = ?",
             )
+            .bind(actor.id)
             .bind(actor.id)
             .bind(id)
             .fetch_optional(db)
             .await?
         }
     };
-    let (owner_id, owner_name, shared, share_count) =
-        row.ok_or(AppError::NotFound(kind.label()))?;
-    let access = access_for(actor, owner_id, shared > 0).ok_or(AppError::NotFound(kind.label()))?;
+    let (owner_id, owner_name, year_owner, shared) = row.ok_or(AppError::NotFound(kind.label()))?;
+    let access = access_for(actor, owner_id, year_owner, shared > 0)
+        .ok_or(AppError::NotFound(kind.label()))?;
     Ok(AccessInfo {
         access,
         owner_id,
         owner_name,
-        share_count,
     })
 }
 
-/// Access info for every item `actor` can manage (admins: every item), keyed by item id.
+/// Access info for every item `actor` can manage, keyed by item id.
 pub async fn accessible(
     db: &MySqlPool,
     kind: Content,
@@ -163,22 +178,26 @@ pub async fn accessible(
     let rows: Vec<AccessListRow> = match kind {
         Content::Quiz => {
             sqlx::query_as(
-                "SELECT z.id, z.created_by, u.display_name, \
-                 (SELECT COUNT(*) FROM quiz_shares s WHERE s.quiz_id = z.id), \
-                 CAST(EXISTS(SELECT 1 FROM quiz_shares s WHERE s.quiz_id = z.id AND s.user_id = ?) AS SIGNED) \
-                 FROM quizzes z LEFT JOIN users u ON u.id = z.created_by",
+                "SELECT z.id, z.created_by, u.display_name, y.created_by, \
+                 CAST(EXISTS(SELECT 1 FROM year_shares ys WHERE ys.year_id = y.id AND ys.user_id = ?) \
+                   OR EXISTS(SELECT 1 FROM subject_shares ss WHERE ss.subject_id = sj.id AND ss.user_id = ?) AS SIGNED) \
+                 FROM quizzes z JOIN subjects sj ON sj.id = z.subject_id JOIN years y ON y.id = sj.year_id \
+                 LEFT JOIN users u ON u.id = z.created_by",
             )
+            .bind(actor.id)
             .bind(actor.id)
             .fetch_all(db)
             .await?
         }
         Content::Review => {
             sqlx::query_as(
-                "SELECT r.id, r.created_by, u.display_name, \
-                 (SELECT COUNT(*) FROM review_shares s WHERE s.review_id = r.id), \
-                 CAST(EXISTS(SELECT 1 FROM review_shares s WHERE s.review_id = r.id AND s.user_id = ?) AS SIGNED) \
-                 FROM interactive_reviews r LEFT JOIN users u ON u.id = r.created_by",
+                "SELECT r.id, r.created_by, u.display_name, y.created_by, \
+                 CAST(EXISTS(SELECT 1 FROM year_shares ys WHERE ys.year_id = y.id AND ys.user_id = ?) \
+                   OR EXISTS(SELECT 1 FROM subject_shares ss WHERE ss.subject_id = sj.id AND ss.user_id = ?) AS SIGNED) \
+                 FROM interactive_reviews r JOIN subjects sj ON sj.id = r.subject_id JOIN years y ON y.id = sj.year_id \
+                 LEFT JOIN users u ON u.id = r.created_by",
             )
+            .bind(actor.id)
             .bind(actor.id)
             .fetch_all(db)
             .await?
@@ -186,24 +205,23 @@ pub async fn accessible(
     };
     Ok(rows
         .into_iter()
-        .filter_map(|(id, owner_id, owner_name, share_count, shared)| {
-            let access = access_for(actor, owner_id, shared > 0)?;
+        .filter_map(|(id, owner_id, owner_name, year_owner, shared)| {
+            let access = access_for(actor, owner_id, year_owner, shared > 0)?;
             Some((
                 id,
                 AccessInfo {
                     access,
                     owner_id,
                     owner_name,
-                    share_count,
                 },
             ))
         })
         .collect())
 }
 
-// ---------- Years ----------
+// ---------- Years and subjects ----------
 
-/// Owner rights on a year (edit/delete it, manage its subjects, add content to them).
+/// Owner rights on a year: edit/delete it, manage its subjects and who it is shared with.
 pub fn can_manage_year(actor: Actor, year_owner: Option<i64>) -> bool {
     actor.is_admin || year_owner == Some(actor.id)
 }
@@ -222,8 +240,32 @@ pub async fn require_year(db: &MySqlPool, actor: Actor, year_id: i64, what: &str
     }
 }
 
-/// Content may only be added to (or moved into) subjects of years the actor owns; admins may
-/// use every year. The error lists the actor's own years so an API client knows its options.
+/// The years and subjects shared with a user.
+#[derive(Debug, Default)]
+pub struct SharedWithMe {
+    pub years: HashSet<i64>,
+    pub subjects: HashSet<i64>,
+}
+
+pub async fn shared_with(db: &MySqlPool, user_id: i64) -> AppResult<SharedWithMe> {
+    let years: Vec<(i64,)> = sqlx::query_as("SELECT year_id FROM year_shares WHERE user_id = ?")
+        .bind(user_id)
+        .fetch_all(db)
+        .await?;
+    let subjects: Vec<(i64,)> =
+        sqlx::query_as("SELECT subject_id FROM subject_shares WHERE user_id = ?")
+            .bind(user_id)
+            .fetch_all(db)
+            .await?;
+    Ok(SharedWithMe {
+        years: years.into_iter().map(|(y,)| y).collect(),
+        subjects: subjects.into_iter().map(|(s,)| s).collect(),
+    })
+}
+
+/// Content may only be added to (or moved into) a subject whose year you own, whose year or
+/// subject is shared with you, or anywhere if you are an admin. The error lists where you can
+/// add content, so an API client knows its options.
 pub async fn check_can_add_to_subject(
     db: &MySqlPool,
     actor: Actor,
@@ -232,33 +274,49 @@ pub async fn check_can_add_to_subject(
     if actor.is_admin {
         return Ok(());
     }
-    let row: Option<(Option<i64>, String)> = sqlx::query_as(
-        "SELECT y.created_by, y.name FROM subjects s JOIN years y ON y.id = s.year_id WHERE s.id = ?",
+    let row: Option<(i64, Option<i64>, String, String)> = sqlx::query_as(
+        "SELECT y.id, y.created_by, y.name, s.name FROM subjects s JOIN years y ON y.id = s.year_id \
+         WHERE s.id = ?",
     )
     .bind(subject_id)
     .fetch_optional(db)
     .await?;
-    let (owner, year_name) = row.ok_or(AppError::NotFound("subject"))?;
-    if owner == Some(actor.id) {
+    let (year_id, owner, year_name, subject_name) = row.ok_or(AppError::NotFound("subject"))?;
+    let shared = shared_with(db, actor.id).await?;
+    if owner == Some(actor.id)
+        || shared.years.contains(&year_id)
+        || shared.subjects.contains(&subject_id)
+    {
         return Ok(());
     }
-    let mine: Vec<(String,)> =
-        sqlx::query_as("SELECT name FROM years WHERE created_by = ? ORDER BY sort_order, name")
-            .bind(actor.id)
-            .fetch_all(db)
-            .await?;
-    let mine = if mine.is_empty() {
-        "you don't own any year yet; create one in the dashboard (Years)".to_string()
+    let places: Vec<(String,)> = sqlx::query_as(
+        "SELECT y.name FROM years y WHERE y.created_by = ? \
+           OR EXISTS(SELECT 1 FROM year_shares ys WHERE ys.year_id = y.id AND ys.user_id = ?) \
+         UNION \
+         SELECT CONCAT(y.name, ' · ', s.name) FROM subject_shares ss \
+           JOIN subjects s ON s.id = ss.subject_id JOIN years y ON y.id = s.year_id \
+         WHERE ss.user_id = ?",
+    )
+    .bind(actor.id)
+    .bind(actor.id)
+    .bind(actor.id)
+    .fetch_all(db)
+    .await?;
+    let yours = if places.is_empty() {
+        "you can't add content anywhere yet: create a year in the dashboard, or ask a year's \
+         owner to share it (or one of its subjects) with you"
+            .to_string()
     } else {
         format!(
-            "your years: {}",
-            mine.into_iter()
-                .map(|(n,)| n)
+            "you can add content to: {}",
+            places
+                .into_iter()
+                .map(|(p,)| p)
                 .collect::<Vec<_>>()
                 .join(", ")
         )
     };
     Err(AppError::NotYourYear(format!(
-        "you can only add content to subjects of years you own; \"{year_name}\" is not yours ({mine})"
+        "\"{year_name} · {subject_name}\" isn't yours or shared with you ({yours})"
     )))
 }

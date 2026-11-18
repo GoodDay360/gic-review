@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
 
 import { discardUpload } from '@/api/admin'
 import { api, errorMessage } from '@/api/client'
@@ -10,7 +9,6 @@ import ImageUploader from '@/components/admin/ImageUploader.vue'
 import QuestionEditor from '@/components/admin/QuestionEditor.vue'
 import QuestionPreview from '@/components/admin/QuestionPreview.vue'
 import OwnershipBadge from '@/components/admin/OwnershipBadge.vue'
-import ShareDialog from '@/components/admin/ShareDialog.vue'
 import AppIcon from '@/components/AppIcon.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -21,7 +19,6 @@ import { useToastStore } from '@/stores/toast'
 
 const props = defineProps<{ id: string }>()
 const toast = useToastStore()
-const router = useRouter()
 
 const quiz = ref<QuizDetail | null>(null)
 const subjects = ref<Subject[]>([])
@@ -106,7 +103,6 @@ async function togglePublish() {
 const editing = ref<{ question: Question | null } | null>(null)
 const previewing = ref<Question | null>(null)
 const deleting = ref<Question | null>(null)
-const sharing = ref(false)
 
 function onSaved(q: QuizDetail) {
   setQuiz(q)
@@ -185,9 +181,6 @@ function onDrop(target: number) {
       </span>
       <OwnershipBadge :item="quiz" />
       <div class="ml-auto flex flex-wrap gap-2">
-        <button class="btn-secondary btn-sm" @click="sharing = true">
-          <AppIcon name="users" :size="14" /> Share
-        </button>
         <RouterLink
           v-for="m in quiz.available_modes"
           :key="m"
@@ -340,14 +333,6 @@ function onDrop(target: number) {
         @cancel="editing = null"
       />
     </BaseModal>
-
-    <ShareDialog
-      kind="quizzes"
-      :item="sharing ? quiz : null"
-      @close="sharing = false"
-      @changed="load"
-      @left="router.push('/admin/quizzes')"
-    />
 
     <QuestionPreview :question="previewing" @close="previewing = null" />
 

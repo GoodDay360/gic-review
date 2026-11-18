@@ -109,7 +109,8 @@ curl -H "Authorization: Bearer gic_…" -H 'Content-Type: application/json' \
   --data @docs/examples/hci-sample-quiz.json http://localhost:8080/api/admin/quizzes/import
 ```
 
-A key only reaches content its manager owns or that another manager shared with them.
+A key reaches the content its owner created, everything in their years, and everything in years or
+subjects shared with them.
 To let an AI build content from your course material, give it the key, the API base URL and
 `docs/AI-HOW-ADD-QUIZ.md` / `docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md`.
 Admins can see and revoke every manager's key under **Dashboard → API keys**. Keys never work

@@ -52,7 +52,7 @@ Full URL = `BASE` + path. `{id}` = a review id.
 | 7 | `PUT` | `/admin/reviews/{id}` | yes | replace the HTML and/or change title, slug, order, published |
 | 8 | `DELETE` | `/admin/reviews/{id}` | yes | delete a review (owner only; **ask the human first**) |
 | 9 | `GET` | `/subjects/{slug}/reviews` | no | see what students see (published reviews only) |
-| 10 | `GET` | `/admin/years` | yes | **list years and their subjects, with `can_manage`** (where you may add content) |
+| 10 | `GET` | `/admin/years` | yes | **list years and subjects with `can_add_content`** (where you may add content) |
 
 **Most jobs only need #1, #10, #3, #5 (if there are images) and #6.**
 
@@ -60,10 +60,10 @@ Don't call anything else under `/admin/…` (users, subjects, API keys, sharing)
 humans in the dashboard and refuse API keys (`403 api_key_not_allowed`). You can't create
 years or subjects either: a human does that in the dashboard. If what you need is missing, ask.
 
-**What your key can reach:** it acts as the person who made it. You see and edit reviews they own
-or that another manager shared with them; others return `404`. An **admin's** key reaches all reviews
-with owner rights (`"access": "admin"`). On a shared review
-you can update it (#7) but not delete it (`403 owner_only`).
+**What your key can reach:** it acts as the person who made it. You see and edit reviews
+in **their years** and in **years or subjects shared with them** (plus anything they created);
+others return `404`. Items you reach through a share (`"access": "shared"`) can be edited and
+published but not deleted (`403 owner_only`). An **admin's** key reaches everything.
 
 ---
 
@@ -75,20 +75,24 @@ you can update it (#7) but not delete it (`403 owner_only`).
 
 ```bash
 curl -H "Authorization: Bearer $KEY" $BASE/admin/years
-# [ { "id": 3, "name": "I4", "slug": "i4", "can_manage": true, "owner_name": "Dara",
-#      "subjects": [ { "id": 7, "slug": "hci-i4", "name": "Human Computer Interaction", … } ] },
-#   { "id": 1, "name": "General", "can_manage": false, "subjects": [ … ] } ]
+# [ { "id": 3, "name": "I4", "slug": "i4", "can_manage": true, "can_add_content": true,
+#     "subjects": [ { "id": 7, "slug": "hci-i4", "name": "Human Computer Interaction",
+#                     "can_add_content": true, … } ] },
+#   { "id": 5, "name": "I3", "can_manage": false, "can_add_content": true,
+#     "subjects": [ { "id": 9, "name": "Networks", "can_add_content": true, "shared_with_you": true },
+#                   { "id": 10, "name": "Databases", "can_add_content": false } ] } ]
 ```
-Only use years with `"can_manage": true`, and take the subject's numeric `id` from their `subjects`.
+Only use **subjects with `"can_add_content": true`**, and take their numeric `id`.
 
 **Years and subjects: the rules**
 - Subjects are grouped by **year** (e.g. `I3`, `I4`, or custom names like "Very Cool Year").
-- Each year **belongs to a person**. You can only add content to subjects of years that belong to
-  the key's owner (`"can_manage": true`). Anything else is refused with `403 not_your_year` (the
-  message lists your years). Admin keys may use every year.
-- **You cannot create, rename or delete years or subjects.** A human does that in the dashboard
-  (Years / Subjects pages). If the year or subject you need doesn't exist, or isn't yours, **stop and
-  ask the human** to create it (or to tell you which existing one to use).
+- Each year **belongs to a person**, who can share the whole year, or single subjects of it, with
+  others. You can add content to a subject when the key's owner owns its year or the year/subject
+  was shared with them: that's `"can_add_content": true`. Anything else is refused with
+  `403 not_your_year` (the message lists where you can add). Admin keys may use every year.
+- **You cannot create, rename or delete years or subjects, or share them.** A human does that in
+  the dashboard (Years / Subjects pages). If the year or subject you need doesn't exist or isn't
+  available to you, **stop and ask the human** to create or share it (or to say which one to use).
 - When the human says e.g. *"I4 HCI"*, pick the subject named like "HCI" inside your year named
   "I4". Two years can have similarly named subjects, so always check the year.
 
@@ -190,8 +194,10 @@ human's explicit request.
 Published reviews of the subject, as students see them.
 
 ### #10 `GET /admin/years`
-Response `200`: array of years, each with `{ "id", "slug", "name", "description", "sort_order", "subject_count", "owner_id", "owner_name", "can_manage", "subjects": [ … ] }`.
-`can_manage: true` = the year belongs to you (or you're an admin): you may add content to its subjects.
+Response `200`: array of years, each with `{ "id", "slug", "name", "description", "sort_order", "subject_count", "owner_id", "owner_name", "can_manage", "shared_with_you", "can_add_content", "subjects": [ { …subject, "can_add_content", "shared_with_you" } ] }`.
+`can_manage: true` = the year is yours (or you're an admin). `can_add_content` (on the year and on each
+subject) = you may add quizzes/reviews there, because the year is yours or the year/subject is shared with you
+(`shared_with_you`).
 The public `GET /years` and `GET /years/{year_slug}` (no key) show the same years without ownership.
 `GET /years/{year_slug}` returns one year plus its `subjects`.
 
@@ -206,7 +212,7 @@ The public `GET /years` and `GET /years/{year_slug}` (no key) show the same year
   "url": "https://files.example.com/reviews/1/3f9a….html?v=1763458000",   // the public page
   "sort_order": 0,
   "is_published": false,
-  "access": "owner", "owner_id": 4, "owner_name": "Dara", "share_count": 0,
+  "access": "owner", "owner_id": 4, "owner_name": "Dara",
   "created_at": "2026-11-18T10:00:00", "updated_at": "2026-11-18T10:00:00"
 }
 ```
@@ -523,8 +529,8 @@ Errors look like `{ "error": { "code": "…", "message": "…" } }`. The `messag
 |---|---|---|
 | 401 | `unauthorized` | Key missing/wrong/expired/revoked → ask the human for a new key. |
 | 403 | `missing_scope` | Key lacks `reviews:write` → ask for a key with that permission. |
-| 403 | `owner_only` | Only the review's owner can do that (e.g. delete a shared review). |
-| 403 | `not_your_year` | That subject's year isn't yours → use a subject from a year with `can_manage: true` (#10), or ask the human. |
+| 403 | `owner_only` | Only the review's owner can do that (e.g. delete a review shared with you). |
+| 403 | `not_your_year` | You can't add to that subject → use a subject with `can_add_content: true` (#10), or ask the human. |
 | 403 | `api_key_not_allowed` | You called a dashboard-only endpoint; don't. |
 | 404 | `not_found` | Wrong id, or not your review. |
 | 409 | `conflict` | That `slug` already exists in this subject → choose another. |

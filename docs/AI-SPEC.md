@@ -92,8 +92,8 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Role-based dashboard: managers get Quizzes, Bulk import, Interactive reviews, API key; admins get Managers, API keys, Subjects
 - ✅ Admins have every manager permission: create content, own API key, and owner rights on **all** quizzes/reviews (`access: "admin"`, "Owned by …" badge)
 - ✅ Content ownership: quizzes and reviews are private to the manager who created them (others get 404)
-- ✅ Sharing by email: owner shares a quiz/review with other managers (Share dialog), shared managers can edit and publish, only the owner deletes or manages access, shared managers can leave; badges "Shared by …" / "Shared with N"
-- ✅ Deleting a manager hands each of their items to the manager it was shared with first
+- ✅ Sharing years and subjects by email (Share buttons on the Years and Subjects pages): recipients can add content there and view, edit and publish everything in it, but not delete others' items; the year owner/admin manages access, recipients can leave. No per-item sharing (removed).
+- ✅ Deleting a manager hands each of their years to the person it was first shared with
 - ✅ Quizzes (manager): create, edit, delete, publish/unpublish (refused while no mode is available)
 - ✅ Questions (manager): add, edit, delete, reorder (drag & drop and ↑/↓), options add/remove/reorder
 - ✅ `ImageUploader` for every image field (cover, question, options, flashcard back, explanation): browse, drag & drop, Ctrl+V paste, progress bar, preview, alt text, Replace/Remove
@@ -107,7 +107,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ API keys overview (admin only): every manager's keys with owner, prefix, scopes, dates and status; filter; revoke
 - ✅ Years belong to their creator: any editor creates years in the dashboard ("Yours" / "Owned by …"), only the owner or an admin edits/deletes them; seeded "General" has no owner (admins only)
 - ✅ Years and subjects can only be created in the dashboard (API keys get `403 api_key_not_allowed`)
-- ✅ New quizzes/reviews only in subjects of years you own (`403 not_your_year` listing your years; admins: all); editing shared content is unaffected; `GET /admin/years` (works with API keys) shows `can_manage` per year
+- ✅ New quizzes/reviews only in subjects of years you own or that are shared with you (year or subject); `403 not_your_year` lists where you can add; admins: all; `GET /admin/years` (works with API keys) shows `can_manage`, `shared_with_you` and `can_add_content` per year and subject
 - ✅ Subjects: managers create/edit/delete them in their own years, admins in all (year, name, slug, description, color, order; delete when empty); subject pickers show `Year · Subject` and only offer your own years for new content
 - ✅ "Clean up orphaned images" (admin only, on the Subjects page)
 - ✅ Frontend route guards per role, mirrored by the backend
@@ -118,7 +118,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Role and `is_active` re-checked from the DB on every authenticated request (deactivation is immediate, for sessions and API keys)
 - ✅ API keys: `gic_` + 64 hex chars, only SHA-256 hash stored, shown once, Bearer auth, max 1 active per manager, scopes `quizzes:write` / `reviews:write`, optional expiry, revocable by owner or admin
 - ✅ API keys refused on session-only endpoints (users, API key management, sharing, subjects, cleanup), so a leaked key cannot escalate
-- ✅ Access checks on every content endpoint (owner or shared, else 404; owner-only delete → 403 `owner_only`), also for drafts on `GET /quizzes/:id`
+- ✅ Access checks on every content endpoint (creator, year owner, admin, or shared year/subject; else 404; delete needs full rights → 403 `owner_only`), also for drafts on `GET /quizzes/:id`
 - ✅ Login rate limit (5 attempts / minute / IP)
 - ✅ Input validation and parameterized SQL only
 - ✅ Uploads: MIME + extension + magic-number checks, size limits from `.env`, random UUID keys, re-encoding strips EXIF
@@ -163,17 +163,17 @@ questions           id, quiz_id → quizzes (CASCADE), position, prompt NULL, im
                     explanation NULL, explanation_image_key NULL, multi_select, created_at, updated_at
 question_options    id, question_id → questions (CASCADE), position, text NULL, image_key NULL,
                     image_alt NULL, is_correct
-quiz_shares         quiz_id → quizzes (CASCADE), user_id → users (CASCADE), granted_by NULL → users,
-                    created_at, PK (quiz_id, user_id)
-review_shares       review_id → interactive_reviews (CASCADE), user_id → users (CASCADE),
-                    granted_by NULL → users, created_at, PK (review_id, user_id)
+year_shares         year_id → years (CASCADE), user_id → users (CASCADE), granted_by NULL → users,
+                    created_at, PK (year_id, user_id)
+subject_shares      subject_id → subjects (CASCADE), user_id → users (CASCADE),
+                    granted_by NULL → users, created_at, PK (subject_id, user_id)
 api_keys            id, user_id → users (CASCADE), name, key_prefix, key_hash UNIQUE (sha-256 hex),
                     scopes ('quizzes:write,reviews:write'), expires_at NULL, last_used_at NULL,
                     revoked_at NULL, created_at
 ```
 
 Migrations: `20261118000001_init_schema.sql`, `20261118000002_seed_hci_subject.sql`,
-`20261118000003_api_keys.sql`, `20261118000004_content_shares.sql`, `20261118000005_years.sql` (creates the default year "General"), `20261118000006_year_owners.sql`. R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
+`20261118000003_api_keys.sql`, `20261118000004_content_shares.sql`, `20261118000005_years.sql` (creates the default year "General"), `20261118000006_year_owners.sql`, `20261118000007_year_subject_shares.sql` (adds year/subject shares, drops the item share tables). R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
 `reviews/{subject_id}/{uuid}.html`.
 
 ## API endpoints (current, prefix `/api`)
@@ -197,8 +197,8 @@ or admin session only, **A-s** = admin session only, **any** = any session or AP
 | `POST /admin/quizzes/import` | M `quizzes:write` | one transaction |
 | `POST /admin/uploads/image`, `DELETE /admin/uploads/image/*key` | M `quizzes:write` or `reviews:write` | |
 | `GET/POST /admin/reviews`, `GET/PUT/DELETE /admin/reviews/:id` | M `reviews:write` | multipart `.html`; delete owner-only |
-| `GET/POST /admin/quizzes/:id/shares`, `DELETE …/shares/:user_id` | M-s | add = owner only (`{email}`); delete = owner, or yourself to leave |
-| `GET/POST /admin/reviews/:id/shares`, `DELETE …/shares/:user_id` | M-s | same rules as quizzes |
+| `GET/POST /admin/years/:id/shares`, `DELETE …/shares/:user_id` | M-s | view: year owner/admin/recipients; add (`{email}`): year owner or admin; delete: year owner/admin, or yourself to leave |
+| `GET/POST /admin/subjects/:id/shares`, `DELETE …/shares/:user_id` | M-s | same rules (managed by the subject's year owner or an admin) |
 | `GET /admin/api-keys/mine`, `POST /admin/api-keys` | M-s | 409 when an active key exists (unless `replace_existing`) |
 | `DELETE /admin/api-keys/:id` (also `POST …/:id/revoke`) | M-s own / A-s any | |
 | `GET /admin/api-keys[?user_id=]` | A-s | all managers' keys |
@@ -208,8 +208,9 @@ or admin session only, **A-s** = admin session only, **any** = any session or AP
 | `POST /admin/years`, `PUT/DELETE /admin/years/:id` | M-s | create: you become owner; edit/delete: owner or admin; delete refused (409) while it has subjects |
 | `POST /admin/uploads/cleanup-orphans` | A-s | |
 
-All manager content endpoints only reach items the manager owns or that were shared with them
-(404 otherwise) and return `access`, `owner_id`, `owner_name`, `share_count`.
+All editor content endpoints only reach items the caller created, items in their years, or items in a
+year/subject shared with them (admins: all; 404 otherwise), and return `access`
+(`owner`/`admin`/`year_owner`/`shared`), `owner_id`, `owner_name` (creator).
 
 Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), `owner_only` (403),
 `api_key_not_allowed` (403), `missing_scope` (403), `conflict` (409), `validation_error` (422),
@@ -239,6 +240,9 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-18: Sharing moved to years and subjects (`year_shares`, `subject_shares`, Share buttons on the
+  Years/Subjects pages); per-item quiz/review sharing **removed** (tables dropped). Access values now
+  `owner`/`admin`/`year_owner`/`shared`; `share_count` removed. Year owners get full rights on content in their years.
 - 2026-11-18: Years belong to their creator; managers create years and subjects in the dashboard (never via
   API keys) and can only add content to subjects of their own years (`403 not_your_year`). New
   `GET /admin/years` (works with API keys) shows `can_manage`. Migration `0006_year_owners`.

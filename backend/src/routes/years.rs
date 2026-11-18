@@ -1,8 +1,8 @@
 //! Years ("I3", "I4", or any custom name) group subjects. Students pick a year first.
 //!
 //! - Public: `GET /years`, `GET /years/{slug}` (the year and its subjects)
-//! - Editors (session or API key): `GET /admin/years`: every year with its owner, subjects and
-//!   `can_manage` (true = you own it or are an admin: you may add content to its subjects)
+//! - Editors (session or API key): `GET /admin/years`: every year with its owner, its subjects,
+//!   `can_manage` (owner/admin), `shared_with_you` and `can_add_content` (per year and subject)
 //! - Dashboard only (never with an API key): `POST /admin/years` (the creator becomes the
 //!   owner), `PUT/DELETE /admin/years/{id}` (owner or admin)
 
@@ -82,6 +82,17 @@ async fn get_year(
     Ok(Json(YearWithSubjects { year, subjects }))
 }
 
+/// A subject as seen in the dashboard and by API clients.
+#[derive(Debug, Serialize)]
+struct ManagedSubject {
+    #[serde(flatten)]
+    subject: SubjectDto,
+    /// You may add quizzes/reviews to this subject (your year, shared year/subject, or admin).
+    can_add_content: bool,
+    /// This subject was shared with you on its own.
+    shared_with_you: bool,
+}
+
 /// A year as seen in the dashboard and by API clients.
 #[derive(Debug, Serialize)]
 struct ManagedYear {
@@ -89,9 +100,13 @@ struct ManagedYear {
     year: YearDto,
     owner_id: Option<i64>,
     owner_name: Option<String>,
-    /// You own this year (or are an admin): you may add content to its subjects and edit it.
+    /// You own this year (or are an admin): edit it, manage its subjects and sharing.
     can_manage: bool,
-    subjects: Vec<SubjectDto>,
+    /// The whole year was shared with you.
+    shared_with_you: bool,
+    /// You may add content to at least one of its subjects.
+    can_add_content: bool,
+    subjects: Vec<ManagedSubject>,
 }
 
 async fn list_managed_years(
@@ -99,6 +114,7 @@ async fn list_managed_years(
     State(state): State<AppState>,
 ) -> AppResult<Json<Vec<ManagedYear>>> {
     let actor = Actor::of(&user);
+    let shared = access::shared_with(&state.db, actor.id).await?;
     let owners: Vec<(i64, Option<String>)> = sqlx::query_as(
         "SELECT y.id, u.display_name FROM years y LEFT JOIN users u ON u.id = y.created_by",
     )
@@ -115,13 +131,26 @@ async fn list_managed_years(
                     .iter()
                     .find(|(id, _)| *id == year.year.id)
                     .and_then(|(_, n)| n.clone());
-                let subjects = subjects
+                let can_manage = access::can_manage_year(actor, owner_id);
+                let year_shared = shared.years.contains(&year.year.id);
+                let subjects: Vec<ManagedSubject> = subjects
                     .iter()
                     .filter(|s| s.year_id == year.year.id)
-                    .cloned()
+                    .map(|s| {
+                        let subject_shared = shared.subjects.contains(&s.id);
+                        ManagedSubject {
+                            can_add_content: can_manage || year_shared || subject_shared,
+                            shared_with_you: subject_shared,
+                            subject: s.clone(),
+                        }
+                    })
                     .collect();
                 ManagedYear {
-                    can_manage: access::can_manage_year(actor, owner_id),
+                    can_add_content: can_manage
+                        || year_shared
+                        || subjects.iter().any(|s| s.can_add_content),
+                    can_manage,
+                    shared_with_you: year_shared,
                     owner_id,
                     owner_name,
                     subjects,

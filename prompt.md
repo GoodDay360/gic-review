@@ -379,7 +379,7 @@ VITE_API_BASE_URL=http://localhost:8080/api
 ```
 
 ### `backend/.env.example`
-The backend loads this with `dotenvy`. The connection is built **only from the `DB_*` values**; there is no `DATABASE_URL` (so credentials are never written twice). `DB_SSL_REQUIRED=true` (the default, also when the line is missing) forces an SSL connection to MySQL (connecting fails without it); `false` does not require it but still uses SSL when the server offers it (e.g. a local MySQL without SSL). Any value other than true/false stops startup with a clear error. The server, `cargo run -- migrate` and the database integration tests all use `DB_*`.
+The backend loads this with `dotenvy`. The connection is built **only from the `DB_*` values**; there is no `DATABASE_URL` (so credentials are never written twice). The MySQL TLS connection uses **OpenSSL** (sqlx `tls-native-tls`), not rustls, because managed MySQL services (e.g. Oracle Cloud MySQL HeatWave) present self-signed **X.509 v1** certificates that rustls cannot parse (`UnsupportedCertVersion`); the Docker image therefore installs `libssl-dev` (build) and `libssl3` (runtime). `DB_SSL_REQUIRED=true` (the default, also when the line is missing) forces an SSL connection to MySQL (connecting fails without it); `false` does not require it but still uses SSL when the server offers it (e.g. a local MySQL without SSL). Any value other than true/false stops startup with a clear error. The server, `cargo run -- migrate` and the database integration tests all use `DB_*`.
 
 ```dotenv
 # ---------- App ----------

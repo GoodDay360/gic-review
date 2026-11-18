@@ -133,6 +133,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Integration tests for auth, roles and API keys (database tests use one test database from `DB_TEST_NAME`, wiped before each test, run one at a time; skipped when `DB_*` is empty)
 - ✅ No `DATABASE_URL`: the server, `cargo run -- migrate` and the tests build the connection from `DB_*`
 - ✅ `DB_SSL_REQUIRED=true|false` (default `true`) to require an SSL connection to MySQL (validated at startup)
+- ✅ MySQL TLS via OpenSSL (native-tls) so managed MySQL with X.509 v1 certificates works (verified with Oracle Cloud MySQL 26.10 HeatWave)
 - 🚧 Compile-time checked queries (`sqlx::query!`) and committed `.sqlx/`: not used yet, needs a dev database
 - ✅ Backend Dockerfile (multi-stage, non-root, `PORT` support) for Render/Railway, with deployment notes in the README
 - ⏳ CI pipeline, frontend deployment docs
@@ -219,6 +220,8 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 - No per-key rate limit yet; keys are long random secrets, but a busy AI client is only limited by
   the server.
 - Serve R2 from its own domain (not the API host).
+- With `DB_SSL_REQUIRED=true` the connection is encrypted but the server certificate is not verified
+  (managed MySQL services use self-signed certificates); there is no CA-pinning option yet.
 - Import URL downloads check for private IPs before connecting (DNS rebinding could race it).
 - `tmp/` image keys are not moved under `quizzes/{id}/` once the quiz exists.
 
@@ -226,6 +229,8 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-18: MySQL TLS switched from rustls to OpenSSL (native-tls): the cloud MySQL's X.509 v1
+  certificate failed with `UnsupportedCertVersion`. Dockerfile installs libssl. All tests pass on the cloud DB.
 - 2026-11-18: External AI guides restructured around a numbered endpoint list and a step-by-step recipe;
   all 25 documented calls verified against the live API.
 - 2026-11-18: Content ownership and sharing between managers by email (`quiz_shares`, `review_shares`,

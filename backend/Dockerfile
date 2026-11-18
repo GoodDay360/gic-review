@@ -13,9 +13,10 @@ ARG RUST_VERSION=1.96
 FROM rust:${RUST_VERSION}-slim-bookworm AS build
 WORKDIR /app
 
-# C toolchain for aws-lc-sys / ring (TLS crypto); no OpenSSL needed (rustls everywhere).
+# C toolchain for aws-lc-sys / ring, and OpenSSL headers for the MySQL TLS connection
+# (native-tls/OpenSSL accepts the X.509 v1 certificates some managed MySQL servers use).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential cmake pkg-config \
+ && apt-get install -y --no-install-recommends build-essential cmake pkg-config libssl-dev \
  && rm -rf /var/lib/apt/lists/*
 
 # 1) Build dependencies only, so they are cached until Cargo.toml/Cargo.lock change.
@@ -37,7 +38,7 @@ RUN touch src/main.rs src/lib.rs \
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates \
+ && apt-get install -y --no-install-recommends ca-certificates libssl3 \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 

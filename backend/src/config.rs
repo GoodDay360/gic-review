@@ -188,12 +188,12 @@ impl Config {
     }
 }
 
-/// `DB_SSL_REQUIRED=true|false` (default false).
+/// `DB_SSL_REQUIRED=true|false` (default true).
 /// - `true`: the MySQL connection must use SSL/TLS, otherwise connecting fails.
 /// - `false`: SSL is not required (it is still used when the server offers it).
 pub fn db_ssl_required_from_env() -> Result<bool, String> {
     match optional("DB_SSL_REQUIRED").map(|v| v.to_ascii_lowercase()) {
-        None => Ok(false),
+        None => Ok(true),
         Some(v) if matches!(v.as_str(), "true" | "1" | "yes") => Ok(true),
         Some(v) if matches!(v.as_str(), "false" | "0" | "no") => Ok(false),
         Some(v) => Err(format!("DB_SSL_REQUIRED must be true or false (got '{v}')")),

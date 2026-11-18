@@ -367,7 +367,7 @@ VITE_API_BASE_URL=http://localhost:8080/api
 ```
 
 ### `backend/.env.example`
-The backend loads this with `dotenvy`. The connection is built **only from the `DB_*` values**; there is no `DATABASE_URL` (so credentials are never written twice). `DB_SSL_REQUIRED=true` forces an SSL connection to MySQL (connecting fails without it); `false` (default) does not require it but still uses SSL when the server offers it. Any value other than true/false stops startup with a clear error. The server, `cargo run -- migrate` and the database integration tests all use `DB_*`.
+The backend loads this with `dotenvy`. The connection is built **only from the `DB_*` values**; there is no `DATABASE_URL` (so credentials are never written twice). `DB_SSL_REQUIRED=true` (the default, also when the line is missing) forces an SSL connection to MySQL (connecting fails without it); `false` does not require it but still uses SSL when the server offers it (e.g. a local MySQL without SSL). Any value other than true/false stops startup with a clear error. The server, `cargo run -- migrate` and the database integration tests all use `DB_*`.
 
 ```dotenv
 # ---------- App ----------
@@ -382,7 +382,7 @@ DB_PORT=3306
 DB_NAME=gic_review
 DB_USER=
 DB_PASSWORD=
-DB_SSL_REQUIRED=false           # true = the MySQL connection must use SSL (e.g. cloud databases)
+DB_SSL_REQUIRED=true            # true (default) = MySQL connection must use SSL; false = only if the server offers it
 
 # ---------- Auth ----------
 JWT_SECRET=                      # long random string (e.g. openssl rand -hex 64)

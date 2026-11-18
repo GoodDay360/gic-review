@@ -98,6 +98,12 @@ const router = createRouter({
           meta: { requiresEditor: true, title: 'API key' },
         },
         {
+          path: 'account',
+          name: 'admin-account',
+          component: () => import('@/views/admin/AccountView.vue'),
+          meta: { title: 'My account' },
+        },
+        {
           path: 'api-keys',
           name: 'admin-api-keys',
           component: () => import('@/views/admin/AdminApiKeysView.vue'),

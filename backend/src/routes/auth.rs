@@ -12,8 +12,9 @@ use validator::Validate;
 use crate::{
     api_keys::ApiScope,
     auth::{
-        AuthMethod, ClientIp, RequireAuth, Role, UserDto, UserRow, clear_session_cookie,
-        create_token, dummy_hash, session_cookie, user_columns, verify_password,
+        AuthMethod, ClientIp, RequireAuth, RequireSession, Role, UserDto, UserRow,
+        clear_session_cookie, create_token, dummy_hash, hash_password, session_cookie,
+        user_columns, verify_password,
     },
     error::{AppError, AppResult},
     extract::AppJson,
@@ -25,6 +26,7 @@ pub fn router() -> Router<AppState> {
         .route("/auth/login", post(login))
         .route("/auth/logout", post(logout))
         .route("/auth/me", get(me))
+        .route("/auth/change-password", post(change_password))
 }
 
 #[derive(Debug, Deserialize, Validate)]
@@ -71,7 +73,7 @@ async fn login(
         _ => return Err(AppError::InvalidCredentials),
     };
     let role = Role::parse(&user.role).ok_or(AppError::InvalidCredentials)?;
-    let token = create_token(&state.config, user.id, role)?;
+    let token = create_token(&state.config, user.id, role, user.session_version)?;
     tracing::info!(user_id = user.id, "staff login");
     Ok((
         jar.add(session_cookie(&state.config, token)),
@@ -110,4 +112,71 @@ async fn me(RequireAuth(user): RequireAuth) -> Json<MeResponse> {
         auth_method,
         api_key_scopes,
     })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChangePassword {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+/// Change your own password (dashboard session only). The current password must be given and
+/// is checked first; attempts are rate-limited per user. On success every other session is
+/// signed out and this browser gets a fresh session cookie.
+async fn change_password(
+    RequireSession(user): RequireSession,
+    State(state): State<AppState>,
+    jar: CookieJar,
+    AppJson(body): AppJson<ChangePassword>,
+) -> AppResult<(CookieJar, Json<serde_json::Value>)> {
+    if !state
+        .login_limiter
+        .check(&format!("change-password:{}", user.id))
+    {
+        return Err(AppError::TooManyRequests);
+    }
+    let new_len = body.new_password.chars().count();
+    if !(8..=256).contains(&new_len) {
+        return Err(AppError::Validation(
+            "new_password: must be 8 to 256 characters".into(),
+        ));
+    }
+    if body.new_password == body.current_password {
+        return Err(AppError::Validation(
+            "new_password: must be different from the current password".into(),
+        ));
+    }
+
+    // Verify the current password before anything else.
+    let hash = user.row.password_hash.clone();
+    let current = body.current_password;
+    let ok = tokio::task::spawn_blocking(move || verify_password(&current, &hash))
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
+    if !ok {
+        return Err(AppError::Validation(
+            "current_password: is incorrect".into(),
+        ));
+    }
+
+    let new_password = body.new_password;
+    let new_hash = tokio::task::spawn_blocking(move || hash_password(&new_password))
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?
+        .map_err(AppError::Internal)?;
+    let new_version = user.row.session_version + 1;
+    sqlx::query("UPDATE users SET password_hash = ?, session_version = ? WHERE id = ?")
+        .bind(new_hash)
+        .bind(new_version)
+        .bind(user.id)
+        .execute(&state.db)
+        .await?;
+
+    // Keep this browser signed in with a token for the new session version.
+    let token = create_token(&state.config, user.id, user.role, new_version)?;
+    tracing::info!(user_id = user.id, "password changed");
+    Ok((
+        jar.add(session_cookie(&state.config, token)),
+        Json(serde_json::json!({ "ok": true })),
+    ))
 }

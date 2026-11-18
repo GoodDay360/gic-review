@@ -42,6 +42,7 @@ const STAFF_ENDPOINTS: &[(&str, &str)] = &[
     ("DELETE", "/api/admin/years/1"),
     ("DELETE", "/api/admin/subjects/1"),
     ("GET", "/api/auth/me"),
+    ("POST", "/api/auth/change-password"),
     ("GET", "/api/admin/api-keys"),
     ("POST", "/api/admin/api-keys"),
     ("GET", "/api/admin/api-keys/mine"),
@@ -51,6 +52,7 @@ const STAFF_ENDPOINTS: &[(&str, &str)] = &[
 /// Endpoints that only accept a dashboard session: an API key must be refused
 /// (403 api_key_not_allowed) before any database access.
 const SESSION_ONLY_ENDPOINTS: &[(&str, &str)] = &[
+    ("POST", "/api/auth/change-password"),
     ("GET", "/api/admin/users"),
     ("POST", "/api/admin/users"),
     ("PATCH", "/api/admin/users/2"),
@@ -89,7 +91,7 @@ async fn garbage_or_forged_tokens_are_rejected() {
     // Signed with a different secret.
     let mut other = test_config();
     other.jwt_secret = "another-secret-another-secret-another-secret".into();
-    let forged = create_token(&other, 1, Role::Admin).unwrap();
+    let forged = create_token(&other, 1, Role::Admin, 0).unwrap();
     let cookie = format!("gic_session={forged}");
     let res = send(&app, "GET", "/api/admin/users", Some(&cookie), None).await;
     assert_eq!(res.status, StatusCode::UNAUTHORIZED);
@@ -1254,5 +1256,152 @@ async fn db_years_belong_to_their_creator() {
     )
     .await;
     assert_eq!(r.status, StatusCode::OK);
+    tdb.cleanup().await;
+}
+
+#[tokio::test]
+async fn db_change_own_password_requires_the_current_one() {
+    let Some(tdb) = common::test_db().await else {
+        return;
+    };
+    let db = tdb.pool.clone();
+    bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
+    let m_id = insert_manager(&db, "pw@example.com", "old-password-1", true).await;
+    let app = app_with_pool(db.clone());
+    let browser1 = cookie_from(
+        &login(&app, "pw@example.com", "old-password-1")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    let browser2 = cookie_from(
+        &login(&app, "pw@example.com", "old-password-1")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    let change =
+        |current: &str, new: &str| json!({ "current_password": current, "new_password": new });
+
+    // Wrong current password, too short, or unchanged: refused, nothing changes.
+    let r = send(
+        &app,
+        "POST",
+        "/api/auth/change-password",
+        Some(&browser1),
+        Some(change("wrong-password", "new-password-2")),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        r.json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("current_password")
+    );
+    let r = send(
+        &app,
+        "POST",
+        "/api/auth/change-password",
+        Some(&browser1),
+        Some(change("old-password-1", "short")),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let r = send(
+        &app,
+        "POST",
+        "/api/auth/change-password",
+        Some(&browser1),
+        Some(change("old-password-1", "old-password-1")),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // Correct current password: changed; this browser gets a fresh cookie and stays signed in…
+    let r = send(
+        &app,
+        "POST",
+        "/api/auth/change-password",
+        Some(&browser1),
+        Some(change("old-password-1", "new-password-2")),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
+    let fresh = cookie_from(&r.set_cookie.expect("new session cookie"));
+    assert_eq!(
+        send(&app, "GET", "/api/auth/me", Some(&fresh), None)
+            .await
+            .status,
+        StatusCode::OK
+    );
+    // …and every other session is signed out (including this browser's old cookie).
+    assert_eq!(
+        send(&app, "GET", "/api/auth/me", Some(&browser2), None)
+            .await
+            .status,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        send(&app, "GET", "/api/auth/me", Some(&browser1), None)
+            .await
+            .status,
+        StatusCode::UNAUTHORIZED
+    );
+    // Old password no longer works, new one does.
+    assert_eq!(
+        login(&app, "pw@example.com", "old-password-1").await.status,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        login(&app, "pw@example.com", "new-password-2").await.status,
+        StatusCode::OK
+    );
+
+    // An admin reset also signs the manager out everywhere.
+    let admin = cookie_from(
+        &login(&app, "admin@example.com", "admin-password-123")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    let r = send(
+        &app,
+        "POST",
+        &format!("/api/admin/users/{m_id}/reset-password"),
+        Some(&admin),
+        Some(json!({ "password": "reset-password-3" })),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        send(&app, "GET", "/api/auth/me", Some(&fresh), None)
+            .await
+            .status,
+        StatusCode::UNAUTHORIZED
+    );
+
+    // Guessing the current password is rate-limited (5 attempts / minute per user).
+    // (A fresh app instance: the login limiter above has already seen 6 logins from this test.)
+    let app = app_with_pool(db);
+    let m = cookie_from(
+        &login(&app, "pw@example.com", "reset-password-3")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    let mut last = StatusCode::OK;
+    for _ in 0..6 {
+        last = send(
+            &app,
+            "POST",
+            "/api/auth/change-password",
+            Some(&m),
+            Some(change("guess-123", "whatever-456")),
+        )
+        .await
+        .status;
+    }
+    assert_eq!(last, StatusCode::TOO_MANY_REQUESTS);
     tdb.cleanup().await;
 }

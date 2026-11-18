@@ -141,11 +141,14 @@ async fn reset_password(
     body.validate()?;
     load_manager(&state, id).await?;
     let password_hash = hash(body.password).await?;
-    sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
-        .bind(password_hash)
-        .bind(id)
-        .execute(&state.db)
-        .await?;
+    // Also signs the manager out of every session (tokens issued before now are rejected).
+    sqlx::query(
+        "UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?",
+    )
+    .bind(password_hash)
+    .bind(id)
+    .execute(&state.db)
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

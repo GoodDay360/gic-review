@@ -183,6 +183,7 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 
 ### 3.5 Staff area
 - `/login`: email + password login for admin/manager only. There is no public sign-up.
+- `/admin/account` (**My account**, every manager and admin): shows the user's name, email and role, and a **change password** form: current password (required and verified first), new password (min 8, different from the current one), confirmation, and a "show passwords" toggle. After a change the user stays signed in on this browser and **every other session is signed out**.
 - `/admin` is the dashboard. Everyone gets Quizzes, Bulk import, Interactive reviews, Years, Subjects and API key; admins additionally get Managers and All API keys.
 - Content dashboard (**managers and admins**; admins see and manage everyone's content):
   - **Quizzes**: create, edit, delete, publish/unpublish quizzes; add, edit and reorder questions and options.
@@ -239,6 +240,7 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
   - Keys never work on session-only endpoints (users, API key management, subjects, orphan cleanup): `403 api_key_not_allowed`. So a leaked key cannot create more keys or escalate.
   - Optional expiry (1–365 days), `last_used_at` tracking, revocation by the owner or any admin. Deleting a manager deletes their keys; deactivating them disables the keys.
 - Rate-limit `POST /api/auth/login` (for example 5 attempts per minute per IP).
+- **Password changes:** `POST /api/auth/change-password` (`{ current_password, new_password }`, dashboard session only, never with an API key) verifies the current password with Argon2 before anything else, is rate-limited (5 attempts per minute per user), and bumps `users.session_version`. Session JWTs carry the version they were issued with (`sv`), and tokens with an older version are rejected, so the change signs out every other device (this browser gets a fresh cookie). An admin's reset of a manager's password also bumps the version. API keys are not affected.
 - Validate every input. Use parameterized SQLx queries only, never string-concatenated SQL.
 - Uploads: check MIME type and extension (images: png/jpg/webp/gif; reviews: `.html` only), enforce size limits from `backend/.env`, and generate random object keys (UUID). Never use the original filename as the key.
 - Set CORS to `FRONTEND_URL` only.
@@ -247,7 +249,7 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 ### 4.2 Database schema (MySQL, via migrations)
 
 ```
-users              (id, email UNIQUE, password_hash, display_name, role ENUM('admin','manager'),
+users              (id, email UNIQUE, password_hash, session_version INT DEFAULT 0, display_name, role ENUM('admin','manager'),
                     is_active BOOL, created_by NULL FK users, created_at, updated_at)
 years              (id, slug UNIQUE, name, description NULL, sort_order, created_by NULL FK users ON DELETE SET NULL
                     (= owner; NULL: admins only), created_at, updated_at)
@@ -320,7 +322,7 @@ Public:
 - `GET  /health`
 
 Auth:
-- `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` (also works with an API key and then returns `auth_method: "api_key"` and the key's scopes, handy to test a key)
+- `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/change-password` (session only: `{ current_password, new_password }`) (also works with an API key and then returns `auth_method: "api_key"` and the key's scopes, handy to test a key)
 
 Managers and admins ("editors"), via session cookie **or** API key (`Authorization: Bearer gic_…`) with the scope in brackets:
 - `POST/PUT/DELETE /admin/quizzes[/:id]`, `PATCH /admin/quizzes/:id/publish` (`quizzes:write`)

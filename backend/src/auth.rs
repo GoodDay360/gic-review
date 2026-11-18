@@ -54,6 +54,8 @@ pub struct UserRow {
     pub id: i64,
     pub email: String,
     pub password_hash: String,
+    /// Bumped on every password change; session tokens with an older version are rejected.
+    pub session_version: i32,
     pub display_name: String,
     pub role: String,
     pub is_active: bool,
@@ -93,7 +95,7 @@ impl From<UserRow> for UserDto {
 /// Column list for SELECTs (a macro so queries stay `&'static str` literals).
 macro_rules! user_columns {
     () => {
-        "id, email, password_hash, display_name, role, is_active, created_by, created_at, updated_at"
+        "id, email, password_hash, session_version, display_name, role, is_active, created_by, created_at, updated_at"
     };
 }
 pub(crate) use user_columns;
@@ -133,15 +135,24 @@ pub struct Claims {
     pub role: Role,
     pub iat: i64,
     pub exp: i64,
+    /// The user's `session_version` when the token was issued.
+    #[serde(default)]
+    pub sv: i32,
 }
 
-pub fn create_token(config: &Config, user_id: i64, role: Role) -> anyhow::Result<String> {
+pub fn create_token(
+    config: &Config,
+    user_id: i64,
+    role: Role,
+    session_version: i32,
+) -> anyhow::Result<String> {
     let now = Utc::now().timestamp();
     let claims = Claims {
         sub: user_id.to_string(),
         role,
         iat: now,
         exp: now + config.jwt_expires_in_hours * 3600,
+        sv: session_version,
     };
     let key = EncodingKey::from_secret(config.jwt_secret.as_bytes())
         .map_err(|e| anyhow::anyhow!("invalid JWT secret: {e}"))?;
@@ -290,6 +301,8 @@ async fn authenticate_session(parts: &Parts, state: &AppState) -> AppResult<Opti
     };
     Ok(load_active_user(state, user_id)
         .await?
+        // A password change bumps session_version and signs out every older session.
+        .filter(|(row, _)| claims.sv == row.session_version)
         .map(|(row, role)| AuthUser {
             id: row.id,
             role,

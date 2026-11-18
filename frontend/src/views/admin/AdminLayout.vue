@@ -15,6 +15,7 @@ const links = computed(() => [
   { to: '/admin/years', label: 'Years', icon: 'calendar' },
   { to: '/admin/subjects', label: 'Subjects', icon: 'folder' },
   { to: '/admin/api-key', label: 'API key', icon: 'key' },
+  { to: '/admin/account', label: 'My account', icon: 'user' },
   ...(auth.isAdmin
     ? [
         { to: '/admin/users', label: 'Managers', icon: 'users' },

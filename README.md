@@ -67,10 +67,12 @@ before building for production).
 (`openssl rand -hex 64`), `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `R2_*`, upload limits, and the cache size (`CACHE_MAX_MB`, default 32; `CACHE_TTL_SECONDS`). Both
 `.env` files are git-ignored; only the `.env.example` templates are committed.
 
-Deployment notes: serve the frontend and the API on the same site (e.g. `example.com` and
-`api.example.com`), because the session cookie is `SameSite=Strict`; set
-`APP_ENV=production` so the cookie is `Secure`; set `FRONTEND_URL` to the frontend origin
-(CORS); serve R2 from its own domain.
+Deployment notes: set `APP_ENV=production` so the session cookie is `Secure`, and set
+`FRONTEND_URL` to the exact frontend origin (CORS and cookie-authenticated write protection).
+Production cookies use `SameSite=None` to support a frontend and API on separate sites, such as
+Cloudflare Pages and Render. A shared custom domain is still preferable because some browsers
+block or partition third-party cookies; API requests also enforce the configured frontend origin
+for cookie-authenticated writes. Serve R2 from its own domain.
 
 ## Deploying the backend (Docker: Render, Railway, …)
 
@@ -95,11 +97,11 @@ Set the environment variables from `backend/.env.example` in the platform's dash
 Things to know:
 - **Database:** the cloud service must reach your MySQL, so use a hosted MySQL (Railway MySQL,
   Aiven, PlanetScale-compatible, a VPS…), not one on your own machine. Keep `DB_SSL_REQUIRED=true`.
-- **Use your own domain for the dashboard login.** `*.onrender.com` and `*.up.railway.app` are
-  public suffixes, so `my-app.onrender.com` and `my-api.onrender.com` are *different sites* and
-  the `SameSite=Strict` login cookie is not sent. Put both on one domain, e.g. `gic.example.com`
-  (frontend) and `api.gic.example.com` (backend), and set `FRONTEND_URL` accordingly.
-  API keys work from anywhere regardless.
+- **Cookie compatibility:** cross-site sessions require a browser that permits the API's
+  `SameSite=None; Secure` cookie in a credentialed request. If the browser blocks third-party
+  cookies, use a shared custom domain (e.g. `gic.example.com` and `api.gic.example.com`) or a
+  same-origin API proxy. Set `FRONTEND_URL` to the exact dashboard origin. API keys work from
+  anywhere regardless.
 - Free instances sleep when idle; the first request after a pause can take a while.
 
 ## API keys (for scripts and AI assistants)

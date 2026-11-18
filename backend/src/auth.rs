@@ -173,7 +173,7 @@ pub fn session_cookie(config: &Config, token: String) -> Cookie<'static> {
     Cookie::build((SESSION_COOKIE, token))
         .http_only(true)
         .secure(config.is_production())
-        .same_site(SameSite::Strict)
+        .same_site(session_cookie_same_site(config))
         .path("/")
         .max_age(time::Duration::hours(config.jwt_expires_in_hours))
         .build()
@@ -183,10 +183,18 @@ pub fn clear_session_cookie(config: &Config) -> Cookie<'static> {
     Cookie::build((SESSION_COOKIE, ""))
         .http_only(true)
         .secure(config.is_production())
-        .same_site(SameSite::Strict)
+        .same_site(session_cookie_same_site(config))
         .path("/")
         .max_age(time::Duration::ZERO)
         .build()
+}
+
+fn session_cookie_same_site(config: &Config) -> SameSite {
+    if config.is_production() {
+        SameSite::None
+    } else {
+        SameSite::Strict
+    }
 }
 
 // ---------- Extractors ----------

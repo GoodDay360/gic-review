@@ -6,6 +6,7 @@ pub mod auth;
 pub mod bootstrap;
 pub mod cache;
 pub mod config;
+pub mod csrf;
 pub mod error;
 pub mod extract;
 pub mod images;
@@ -50,6 +51,7 @@ pub fn build_router(state: AppState) -> Router {
         .max_age(Duration::from_secs(3600));
 
     let cache_state = state.clone();
+    let csrf_state = state.clone();
     Router::new()
         .nest("/api", routes::api(&config))
         .fallback(|| async {
@@ -62,6 +64,10 @@ pub fn build_router(state: AppState) -> Router {
         .layer(axum::middleware::from_fn_with_state(
             cache_state,
             cache::layer,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            csrf_state,
+            csrf::layer,
         ))
         .layer(DefaultBodyLimit::max(1024 * 1024))
         .layer(TimeoutLayer::with_status_code(

@@ -12,8 +12,9 @@ mod common;
 use axum::http::StatusCode;
 use common::{app_with_pool, app_without_db, send, send_key, test_config};
 use gic_review_api::{
-    auth::{Role, create_token, hash_password},
+    auth::{Role, create_token, hash_password, session_cookie},
     bootstrap,
+    config::AppEnv,
 };
 use serde_json::json;
 use sqlx::MySqlPool;
@@ -48,6 +49,17 @@ const STAFF_ENDPOINTS: &[(&str, &str)] = &[
     ("GET", "/api/admin/api-keys/mine"),
     ("DELETE", "/api/admin/api-keys/1"),
 ];
+
+#[test]
+fn production_session_cookie_allows_cross_site_requests_securely() {
+    let mut config = test_config();
+    config.app_env = AppEnv::Production;
+
+    let cookie = session_cookie(&config, "test-token".into()).to_string();
+    assert!(cookie.contains("SameSite=None"));
+    assert!(cookie.contains("Secure"));
+    assert!(cookie.contains("HttpOnly"));
+}
 
 /// Endpoints that only accept a dashboard session: an API key must be refused
 /// (403 api_key_not_allowed) before any database access.

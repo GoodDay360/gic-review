@@ -1,10 +1,10 @@
 //! Auth and role checks.
 //!
 //! The first group runs without a database (requests are rejected before any query).
-//! The `db_*` tests need MySQL and are ignored by default; run them with
-//!   DATABASE_URL=mysql://user:pass@host:3306/gic_review cargo test -- --ignored
-//! (`#[sqlx::test]` creates and drops a throwaway database per test, so the user needs
-//! CREATE/DROP DATABASE privileges.)
+//! The `db_*` tests use the MySQL server from `DB_*` in `backend/.env` (no DATABASE_URL).
+//! Each one creates a temporary `gic_test_*` database, runs the migrations and drops it at
+//! the end, so `DB_USER` needs CREATE/DROP privileges. When `DB_*` is not filled in, they
+//! are skipped with a message and plain `cargo test` still passes.
 
 mod common;
 
@@ -174,9 +174,12 @@ async fn login(app: &axum::Router, email: &str, password: &str) -> common::TestR
     .await
 }
 
-#[ignore = "needs MySQL (DATABASE_URL)"]
-#[sqlx::test(migrations = "./migrations")]
-async fn db_seed_and_admin_bootstrap(db: MySqlPool) {
+#[tokio::test]
+async fn db_seed_and_admin_bootstrap() {
+    let Some(tdb) = common::test_db().await else {
+        return;
+    };
+    let db = tdb.pool.clone();
     let config = test_config();
     bootstrap::ensure_admin(&db, &config).await.unwrap();
     bootstrap::ensure_admin(&db, &config).await.unwrap(); // idempotent
@@ -192,11 +195,15 @@ async fn db_seed_and_admin_bootstrap(db: MySqlPool) {
     assert_eq!(subjects.status, StatusCode::OK);
     assert_eq!(subjects.json.as_array().unwrap().len(), 1);
     assert_eq!(subjects.json[0]["slug"], "hci");
+    tdb.cleanup().await;
 }
 
-#[ignore = "needs MySQL (DATABASE_URL)"]
-#[sqlx::test(migrations = "./migrations")]
-async fn db_login_sets_secure_cookie_and_me_works(db: MySqlPool) {
+#[tokio::test]
+async fn db_login_sets_secure_cookie_and_me_works() {
+    let Some(tdb) = common::test_db().await else {
+        return;
+    };
+    let db = tdb.pool.clone();
     bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
     let app = app_with_pool(db);
 
@@ -220,11 +227,15 @@ async fn db_login_sets_secure_cookie_and_me_works(db: MySqlPool) {
     .await;
     assert_eq!(me.status, StatusCode::OK);
     assert_eq!(me.json["role"], "admin");
+    tdb.cleanup().await;
 }
 
-#[ignore = "needs MySQL (DATABASE_URL)"]
-#[sqlx::test(migrations = "./migrations")]
-async fn db_manager_cannot_reach_admin_only_endpoints(db: MySqlPool) {
+#[tokio::test]
+async fn db_manager_cannot_reach_admin_only_endpoints() {
+    let Some(tdb) = common::test_db().await else {
+        return;
+    };
+    let db = tdb.pool.clone();
     bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
     insert_manager(&db, "manager@example.com", "manager-pass-1", true).await;
     let app = app_with_pool(db);
@@ -270,11 +281,15 @@ async fn db_manager_cannot_reach_admin_only_endpoints(db: MySqlPool) {
         let r = send(&app, method, uri, Some(&admin), body).await;
         assert_eq!(r.status, StatusCode::FORBIDDEN, "admin {method} {uri}");
     }
+    tdb.cleanup().await;
 }
 
-#[ignore = "needs MySQL (DATABASE_URL)"]
-#[sqlx::test(migrations = "./migrations")]
-async fn db_deactivated_manager_loses_access_immediately(db: MySqlPool) {
+#[tokio::test]
+async fn db_deactivated_manager_loses_access_immediately() {
+    let Some(tdb) = common::test_db().await else {
+        return;
+    };
+    let db = tdb.pool.clone();
     bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
     let id = insert_manager(&db, "m2@example.com", "manager-pass-2", true).await;
     let app = app_with_pool(db.clone());
@@ -299,11 +314,15 @@ async fn db_deactivated_manager_loses_access_immediately(db: MySqlPool) {
     // Same, still-unexpired JWT is now rejected.
     let r = send(&app, "GET", "/api/admin/quizzes", Some(&manager), None).await;
     assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    tdb.cleanup().await;
 }
 
-#[ignore = "needs MySQL (DATABASE_URL)"]
-#[sqlx::test(migrations = "./migrations")]
-async fn db_admin_accounts_cannot_be_changed_through_the_api(db: MySqlPool) {
+#[tokio::test]
+async fn db_admin_accounts_cannot_be_changed_through_the_api() {
+    let Some(tdb) = common::test_db().await else {
+        return;
+    };
+    let db = tdb.pool.clone();
     bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
     let app = app_with_pool(db);
     let res = login(&app, "admin@example.com", "admin-password-123").await;
@@ -335,6 +354,7 @@ async fn db_admin_accounts_cannot_be_changed_through_the_api(db: MySqlPool) {
     .await;
     assert_eq!(r.status, StatusCode::CREATED);
     assert_eq!(r.json["role"], "manager");
+    tdb.cleanup().await;
 }
 
 async fn create_key(
@@ -358,9 +378,12 @@ async fn create_key(
     .await
 }
 
-#[ignore = "needs MySQL (DATABASE_URL)"]
-#[sqlx::test(migrations = "./migrations")]
-async fn db_manager_api_key_lifecycle(db: MySqlPool) {
+#[tokio::test]
+async fn db_manager_api_key_lifecycle() {
+    let Some(tdb) = common::test_db().await else {
+        return;
+    };
+    let db = tdb.pool.clone();
     bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
     let manager_id = insert_manager(&db, "ai-owner@example.com", "manager-pass-3", true).await;
     let app = app_with_pool(db);
@@ -449,11 +472,15 @@ async fn db_manager_api_key_lifecycle(db: MySqlPool) {
     assert_eq!(r.json["status"], "revoked");
     let r = send_key(&app, "GET", "/api/admin/quizzes", &new_key, None).await;
     assert_eq!(r.status, StatusCode::UNAUTHORIZED);
+    tdb.cleanup().await;
 }
 
-#[ignore = "needs MySQL (DATABASE_URL)"]
-#[sqlx::test(migrations = "./migrations")]
-async fn db_deactivating_a_manager_disables_their_api_key(db: MySqlPool) {
+#[tokio::test]
+async fn db_deactivating_a_manager_disables_their_api_key() {
+    let Some(tdb) = common::test_db().await else {
+        return;
+    };
+    let db = tdb.pool.clone();
     bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
     let id = insert_manager(&db, "m4@example.com", "manager-pass-4", true).await;
     let app = app_with_pool(db);
@@ -496,4 +523,5 @@ async fn db_deactivating_a_manager_disables_their_api_key(db: MySqlPool) {
             .status,
         StatusCode::UNAUTHORIZED
     );
+    tdb.cleanup().await;
 }

@@ -22,7 +22,7 @@ Anyone can browse and do quizzes **without logging in**. Only staff accounts can
 |---|---|
 | Frontend | Vue 3 (Composition API, `<script setup>`), TypeScript, Vite, Tailwind CSS, Vue Router, Pinia. **Package manager and runtime: Bun** (not npm, yarn or pnpm) |
 | Backend | Rust (stable), **Axum**, **Tokio**, **SQLx** (MySQL, compile-time-checked queries where practical), `serde`, `tower-http` (CORS, tracing, limits), `argon2` (password hashing), `jsonwebtoken` (JWT), `validator`, `thiserror`/`anyhow`, `tracing` |
-| Database | MySQL 8, with migrations through `sqlx migrate` (files in `backend/migrations/`) |
+| Database | MySQL 8, with SQLx migrations (files in `backend/migrations/`), applied automatically on server start or with `cargo run -- migrate` |
 | File storage | **Cloudflare R2** (S3-compatible) for Interactive Review HTML files and images, used through `aws-sdk-s3` with a custom endpoint |
 | Config | All secrets and credentials come from each project's own `.env` (`frontend/.env`, `backend/.env`); never hard-coded, never committed |
 
@@ -63,7 +63,7 @@ gic-review/                    # single Git repo
 ```
 
 Rules:
-- Run frontend commands from `frontend/` with **Bun** (`bun install`, `bun run dev`, `bun run build`, `bun run lint`, `bun add <pkg>`, `bunx <tool>`) and backend commands from `backend/` (`cargo run`, `cargo sqlx migrate run`). There is no root `package.json` and no root Cargo workspace.
+- Run frontend commands from `frontend/` with **Bun** (`bun install`, `bun run dev`, `bun run build`, `bun run lint`, `bun add <pkg>`, `bunx <tool>`) and backend commands from `backend/` (`cargo run`, `cargo run -- migrate`). There is no root `package.json` and no root Cargo workspace.
 - **Frontend uses Bun only.** Scaffold with `bun create vite frontend --template vue-ts`, install with `bun install`, and add packages with `bun add` / `bun add -d`. Never run `npm`, `yarn` or `pnpm`, and never commit their lockfiles. Add `"packageManager": "bun@<current version>"` to `frontend/package.json`, and write all README and docs instructions with `bun` commands. Vite is still the dev server and bundler; Bun runs it through the `package.json` scripts (`"dev": "vite"`, `"build": "vue-tsc -b && vite build"`, `"preview": "vite preview"`).
 - **Backend secrets must never reach the frontend.** The frontend has its own `.env` with only `VITE_*` values; DB, JWT and R2 credentials live only in `backend/.env`.
 - Both `.env` files are git-ignored. Only the `.env.example` files are committed.
@@ -367,7 +367,7 @@ VITE_API_BASE_URL=http://localhost:8080/api
 ```
 
 ### `backend/.env.example`
-The backend loads this with `dotenvy`, and `sqlx-cli` reads `DATABASE_URL` from it when run inside `backend/`.
+The backend loads this with `dotenvy`. The connection is built **only from the `DB_*` values**; there is no `DATABASE_URL` (so credentials are never written twice). The server, `cargo run -- migrate` and the database integration tests all use `DB_*`.
 
 ```dotenv
 # ---------- App ----------
@@ -382,7 +382,6 @@ DB_PORT=3306
 DB_NAME=gic_review
 DB_USER=
 DB_PASSWORD=
-DATABASE_URL=mysql://DB_USER:DB_PASSWORD@DB_HOST:3306/gic_review   # used by sqlx-cli
 
 # ---------- Auth ----------
 JWT_SECRET=                      # long random string (e.g. openssl rand -hex 64)
@@ -454,7 +453,7 @@ Two parts:
 ## 10. Build phases and acceptance criteria
 
 1. **Scaffold:** separate `frontend/` and `backend/` projects, both `.env.example` files, all three `.gitignore` files, README, Rust Axum server with `/api/health`, Vue + Tailwind app with the "GIC Review" header, and the Catppuccin theme system with the flavor picker. ✔ Both run locally, and switching between Latte, Frappé, Macchiato and Mocha recolors the page instantly and is still applied after a reload. `git status` shows no `.env`, `node_modules/` or `target/` files.
-2. **Database:** SQLx migrations for all tables, seed `Human Computer Interaction`, admin bootstrap from `backend/.env`. ✔ `sqlx migrate run` works and an admin is created on first start.
+2. **Database:** SQLx migrations for all tables, seed `Human Computer Interaction`, admin bootstrap from `backend/.env`. ✔ `cargo run -- migrate` (and server start) applies the migrations from `DB_*` alone, and an admin is created on first start.
 3. **Public browsing:** home subjects grid → activity modal → quiz list → mode modal. ✔ Works with no login.
 4. **Quiz players:** QCM and Flashcard players with result screens and the mode registry. ✔ A sample quiz is playable in both modes.
 5. **Auth and staff area:** login, role guards (frontend and backend), quiz CRUD, image upload to R2 (drag & drop, paste, preview) for every image field, bulk import. ✔ A manager can create a quiz with images on the cover, questions, options and flashcard backs, and all of them display in both play modes. Deleting a question also deletes its images from R2. A guest gets `401`/`403` on admin endpoints.
@@ -465,7 +464,7 @@ Two parts:
 
 General quality bar:
 - Rust passes `cargo fmt` and `cargo clippy` with no warnings. The frontend passes `bun run build` and ESLint/Prettier (`bun run lint`).
-- Add a few backend integration tests (auth and role checks at minimum).
+- Add a few backend integration tests (auth and role checks at minimum). Database tests create a temporary `gic_test_*` database from the `DB_*` values in `backend/.env`, drop it afterwards, and are skipped with a message when `DB_*` is empty.
 - Do not commit `.env` or any real credentials.
 - When done, print a short summary of what was built, how to run it, and which values I still need to fill in for `frontend/.env` and `backend/.env`.
 
@@ -484,4 +483,5 @@ These refine the requirements above; they do not remove any of them.
 - **Bulk import:** unknown JSON fields are rejected; `*_url` images must be public http(s) URLs (no private IPs, no redirects); the admin import page has a "Load HCI sample" button (`docs/examples/hci-sample-quiz.json`, text-only, playable in QCM and Flashcard).
 - **Interactive reviews:** replacing the file overwrites the same R2 key; the API returns the URL with a `?v=<updated_at>` cache-buster. The viewer refuses to render a review URL on the site's own origin.
 - **Theme:** text on accent buttons uses `base`, or `text` where that gives better contrast (e.g. Latte yellow), computed at build time from `@catppuccin/palette`.
+- **No `DATABASE_URL` (2026-11-18):** replaced by `cargo run -- migrate` and `DB_*`-based test databases; the `.env` template no longer has it.
 - **SQL:** queries are parameterized `&'static str` SQL (sqlx 0.9 rejects dynamic SQL strings). Compile-time `query!` macros and a committed `.sqlx/` directory are planned once a development database is available.

@@ -2,10 +2,13 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use gic_review_api::{
-    bootstrap, build_router, config::Config, rate_limit::RateLimiter, state::AppState,
+    bootstrap, build_router,
+    config::{Config, db_options_from_env},
+    rate_limit::RateLimiter,
+    state::AppState,
     storage::Storage,
 };
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+use sqlx::mysql::MySqlPoolOptions;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -21,6 +24,11 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    // `cargo run -- migrate`: apply migrations using only the DB_* values, then exit.
+    if std::env::args().nth(1).as_deref() == Some("migrate") {
+        return migrate_only().await;
+    }
+
     let config = match Config::from_env() {
         Ok(c) => c,
         Err(msg) => {
@@ -30,13 +38,7 @@ async fn main() -> anyhow::Result<()> {
     };
     tracing::info!(?config, "configuration loaded");
 
-    let connect = MySqlConnectOptions::new()
-        .host(&config.db_host)
-        .port(config.db_port)
-        .username(&config.db_user)
-        .password(&config.db_password)
-        .database(&config.db_name)
-        .charset("utf8mb4");
+    let connect = config.connect_options();
     let db = MySqlPoolOptions::new()
         .max_connections(10)
         .acquire_timeout(Duration::from_secs(10))
@@ -79,5 +81,30 @@ async fn main() -> anyhow::Result<()> {
         let _ = tokio::signal::ctrl_c().await;
     })
     .await?;
+    Ok(())
+}
+
+async fn migrate_only() -> anyhow::Result<()> {
+    let options = match db_options_from_env() {
+        Ok(o) => o,
+        Err(msg) => {
+            eprintln!("\n{msg}\n");
+            std::process::exit(1);
+        }
+    };
+    let db = MySqlPoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .context("could not connect to MySQL; check DB_* in backend/.env")?;
+    let migrator = sqlx::migrate!("./migrations");
+    migrator
+        .run(&db)
+        .await
+        .context("running database migrations failed")?;
+    println!(
+        "Database is up to date ({} migrations).",
+        migrator.iter().count()
+    );
     Ok(())
 }

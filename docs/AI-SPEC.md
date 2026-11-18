@@ -46,7 +46,7 @@ Rust + Axum + Tokio + SQLx (MySQL 8) + Cloudflare R2 (`aws-sdk-s3`) in `backend/
 # Backend
 cd backend
 cp .env.example .env               # fill in DB, JWT, admin and R2 values
-cargo sqlx migrate run             # optional: the server also runs migrations on start
+cargo run -- migrate               # optional: the server also runs migrations on start
 cargo run                          # http://127.0.0.1:8080/api/health
 
 # Frontend (Bun only)
@@ -57,7 +57,7 @@ bun run dev                        # http://localhost:5173
 ```
 
 Checks: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`
-(DB tests: `DATABASE_URL=… cargo test -- --ignored`), `bun run lint`, `bun run format:check`,
+(DB tests use `DB_*` from `backend/.env` and a temporary database; skipped when empty), `bun run lint`, `bun run format:check`,
 `bun run build`.
 
 ---
@@ -124,7 +124,8 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ SQLx migrations for all tables (`users`, `subjects`, `interactive_reviews`, `quizzes`, `questions`, `question_options`, `api_keys`)
 - ✅ R2 storage stores keys only; URLs built from `R2_PUBLIC_BASE_URL`; images deleted from R2 when replaced or when their row is deleted
 - ✅ Backend fails fast at startup with a clear list of missing/invalid variables
-- ✅ Integration tests for auth, roles and API keys (DB-backed ones run with `--ignored`)
+- ✅ Integration tests for auth, roles and API keys (database tests use a temporary DB from `DB_*`, skipped when empty)
+- ✅ No `DATABASE_URL`: the server, `cargo run -- migrate` and the tests build the connection from `DB_*`
 - 🚧 Compile-time checked queries (`sqlx::query!`) and committed `.sqlx/`: not used yet, needs a dev database
 - ⏳ CI pipeline, Docker images, deployment docs
 
@@ -192,8 +193,8 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role),
 
 - Queries are parameterized `&'static str` SQL, not `query!` macros; no `.sqlx/` yet (no DB was
   available while building). Next: convert hot queries and run `cargo sqlx prepare`.
-- DB-backed integration tests are `#[ignore]`; run them with a MySQL `DATABASE_URL` whose user may
-  create databases. They have not been run yet.
+- The database integration tests need `DB_*` filled in (and CREATE/DROP rights); until then they
+  are skipped, so they have not actually run yet.
 - Login rate limiting is in memory (per process); behind a proxy the client IP is the proxy's.
 - Cookie auth needs frontend and API on the same site (`SameSite=Strict`). API keys work from anywhere.
 - API key timestamps use the MySQL server clock (`NOW()`); the dashboard shows them in the browser's
@@ -216,5 +217,7 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role),
 - 2026-11-18: Roles changed: admins now only manage manager accounts, API keys, subjects and orphan
   cleanup; quizzes, reviews and uploads are manager-only.
 - 2026-11-18: Frontend switched to Bun (`bun.lock`, `packageManager`), per the updated build brief.
+- 2026-11-18: Removed `DATABASE_URL`; added `cargo run -- migrate`; database tests create their own
+  temporary database from `DB_*` instead of using `#[sqlx::test]`.
 - 2026-11-18: AI-SPEC restructured to the "Keep features in sync" rules (Features checklist only is
   shared with `prompt.md`).

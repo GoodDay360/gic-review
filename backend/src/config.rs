@@ -5,6 +5,8 @@
 
 use std::{env, fmt};
 
+use sqlx::mysql::MySqlConnectOptions;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AppEnv {
     Development,
@@ -58,6 +60,17 @@ impl fmt::Debug for Config {
 impl Config {
     pub fn is_production(&self) -> bool {
         self.app_env == AppEnv::Production
+    }
+
+    /// MySQL connection options built from the `DB_*` values.
+    pub fn connect_options(&self) -> MySqlConnectOptions {
+        mysql_options(
+            &self.db_host,
+            self.db_port,
+            &self.db_user,
+            &self.db_password,
+            &self.db_name,
+        )
     }
 
     /// Load from the environment. Collects every problem before failing, so the operator
@@ -165,6 +178,50 @@ impl Config {
             max_review_html_size_bytes: max_html_mb * 1024 * 1024,
         })
     }
+}
+
+fn mysql_options(
+    host: &str,
+    port: u16,
+    user: &str,
+    password: &str,
+    db: &str,
+) -> MySqlConnectOptions {
+    MySqlConnectOptions::new()
+        .host(host)
+        .port(port)
+        .username(user)
+        .password(password)
+        .database(db)
+        .charset("utf8mb4")
+}
+
+/// Database connection options from `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+/// only (no JWT/R2 needed). Used by `cargo run -- migrate` and by the integration tests, so a
+/// separate `DATABASE_URL` is never required.
+pub fn db_options_from_env() -> Result<MySqlConnectOptions, String> {
+    let mut missing = Vec::new();
+    let mut get = |name: &str| {
+        optional(name).unwrap_or_else(|| {
+            missing.push(name.to_string());
+            String::new()
+        })
+    };
+    let host = get("DB_HOST");
+    let name = get("DB_NAME");
+    let user = get("DB_USER");
+    let password = get("DB_PASSWORD");
+    if !missing.is_empty() {
+        return Err(format!("missing in backend/.env: {}", missing.join(", ")));
+    }
+    let port = optional("DB_PORT")
+        .map(|p| {
+            p.parse::<u16>()
+                .map_err(|_| format!("DB_PORT must be a number (got '{p}')"))
+        })
+        .transpose()?
+        .unwrap_or(3306);
+    Ok(mysql_options(&host, port, &user, &password, &name))
 }
 
 /// Read a variable, treating empty strings as missing. Strips a trailing ` # comment`

@@ -130,3 +130,66 @@ pub async fn send_auth(
         json,
     }
 }
+
+/// A throwaway database for one test, created from the `DB_*` values in `backend/.env`
+/// (no `DATABASE_URL` needed). Migrations are applied; call `cleanup()` at the end.
+pub struct TestDb {
+    pub pool: MySqlPool,
+    server: MySqlPool,
+    name: String,
+}
+
+/// `None` (test skipped) when `DB_*` is not filled in. Panics with a clear message when it
+/// is filled in but the database cannot be used, so real problems are not hidden.
+pub async fn test_db() -> Option<TestDb> {
+    let _ = dotenvy::from_path(concat!(env!("CARGO_MANIFEST_DIR"), "/.env"));
+    let options = match gic_review_api::config::db_options_from_env() {
+        Ok(o) => o,
+        Err(msg) => {
+            eprintln!("skipping database test: {msg}");
+            return None;
+        }
+    };
+    let server = MySqlPoolOptions::new()
+        .max_connections(2)
+        .connect_with(options.clone())
+        .await
+        .expect("cannot connect to MySQL with DB_* from backend/.env");
+
+    // Generated name (hex only), so building the statement with format! is safe.
+    let name = format!(
+        "gic_test_{}",
+        &uuid::Uuid::new_v4().simple().to_string()[..16]
+    );
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "CREATE DATABASE `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+    )))
+    .execute(&server)
+    .await
+    .expect("DB_USER needs the CREATE privilege to make a temporary test database");
+
+    let pool = MySqlPoolOptions::new()
+        .max_connections(5)
+        .connect_with(options.database(&name))
+        .await
+        .expect("cannot connect to the temporary test database");
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("migrations failed on the test database");
+    Some(TestDb { pool, server, name })
+}
+
+impl TestDb {
+    /// Drop the temporary database. (If a test panics first, a `gic_test_*` database is
+    /// left behind; it is safe to drop by hand.)
+    pub async fn cleanup(self) {
+        self.pool.close().await;
+        let _ = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DROP DATABASE IF EXISTS `{}`",
+            self.name
+        )))
+        .execute(&self.server)
+        .await;
+    }
+}

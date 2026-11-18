@@ -17,7 +17,7 @@ The two projects are fully separate (own dependencies, own `.env`) and talk only
 
 ## Prerequisites
 
-- Rust (stable) and `sqlx-cli`: `cargo install sqlx-cli --no-default-features --features mysql,rustls`
+- Rust (stable). `sqlx-cli` is optional, only for creating new migration files (`sqlx migrate add <name>`)
 - [Bun](https://bun.sh) 1.3+ (the frontend uses Bun only; don't use npm, yarn or pnpm)
 - MySQL 8 (an empty database, e.g. `CREATE DATABASE gic_review CHARACTER SET utf8mb4;`)
 - A Cloudflare R2 bucket with **public access** enabled (custom domain or `r2.dev` URL) and
@@ -28,7 +28,7 @@ The two projects are fully separate (own dependencies, own `.env`) and talk only
 ```bash
 cd backend
 cp .env.example .env        # then fill it in (see below)
-cargo sqlx migrate run      # optional: migrations also run automatically at startup
+cargo run -- migrate        # optional: migrations also run automatically at startup
 cargo run                   # API on http://127.0.0.1:8080/api (try /api/health)
 ```
 
@@ -37,8 +37,8 @@ Log in and change that password. The server refuses to start, with a list of wha
 wrong, if a required variable is missing.
 
 Checks: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`.
-DB-backed tests: `DATABASE_URL=mysql://user:pass@host:3306/gic_review cargo test -- --ignored`
-(the user needs permission to create test databases).
+The database tests use the same `DB_*` values: each creates a temporary `gic_test_*` database
+and drops it afterwards (so `DB_USER` needs CREATE/DROP rights). With `DB_*` empty they are skipped.
 
 ## Frontend
 
@@ -56,7 +56,7 @@ bun run lint && bun run format:check
 `frontend/.env` holds only public `VITE_*` values (they end up in the JS bundle):
 `VITE_APP_NAME`, `VITE_API_BASE_URL`.
 
-`backend/.env` holds all secrets: `DB_*` / `DATABASE_URL`, `JWT_SECRET`
+`backend/.env` holds all secrets: `DB_*` (the only database settings), `JWT_SECRET`
 (`openssl rand -hex 64`), `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `R2_*`, upload limits. Both
 `.env` files are git-ignored; only the `.env.example` templates are committed.
 

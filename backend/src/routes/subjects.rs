@@ -1,0 +1,138 @@
+//! Admin-only subject management.
+
+use axum::{
+    Json, Router,
+    extract::{Path, State},
+    http::StatusCode,
+    routing::{post, put},
+};
+use serde::Deserialize;
+
+use crate::{
+    auth::RequireAdmin,
+    error::{AppError, AppResult},
+    models::SubjectDto,
+    routes::public::all_subjects,
+    state::AppState,
+    validation::{ACCENTS, check_len, clean, is_slug},
+};
+
+pub fn router() -> Router<AppState> {
+    Router::new()
+        .route("/admin/subjects", post(create_subject))
+        .route(
+            "/admin/subjects/{id}",
+            put(update_subject).delete(delete_subject),
+        )
+}
+
+#[derive(Debug, Deserialize)]
+struct SubjectInput {
+    name: String,
+    slug: String,
+    description: Option<String>,
+    color: Option<String>,
+    #[serde(default)]
+    sort_order: i32,
+}
+
+impl SubjectInput {
+    fn normalize(mut self) -> AppResult<Self> {
+        self.name = self.name.trim().to_string();
+        self.slug = self.slug.trim().to_string();
+        self.description = clean(self.description);
+        self.color = clean(self.color);
+        if self.name.is_empty() || self.name.chars().count() > 150 {
+            return Err(AppError::Validation(
+                "name: is required (max 150 characters)".into(),
+            ));
+        }
+        if !is_slug(&self.slug) {
+            return Err(AppError::Validation(
+                "slug: use lowercase letters, digits and dashes (e.g. internet-programming)".into(),
+            ));
+        }
+        check_len("description", &self.description, 2000)?;
+        if let Some(c) = &self.color
+            && !ACCENTS.contains(&c.as_str())
+        {
+            return Err(AppError::Validation(format!(
+                "color: must be one of {}",
+                ACCENTS.join(", ")
+            )));
+        }
+        Ok(self)
+    }
+}
+
+async fn find(state: &AppState, id: i64) -> AppResult<SubjectDto> {
+    all_subjects(state)
+        .await?
+        .into_iter()
+        .find(|s| s.id == id)
+        .ok_or(AppError::NotFound("subject"))
+}
+
+async fn create_subject(
+    _admin: RequireAdmin,
+    State(state): State<AppState>,
+    Json(body): Json<SubjectInput>,
+) -> AppResult<(StatusCode, Json<SubjectDto>)> {
+    let body = body.normalize()?;
+    let res = sqlx::query(
+        "INSERT INTO subjects (slug, name, description, color, sort_order) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&body.slug)
+    .bind(&body.name)
+    .bind(&body.description)
+    .bind(body.color.as_deref().unwrap_or("mauve"))
+    .bind(body.sort_order)
+    .execute(&state.db)
+    .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(find(&state, res.last_insert_id() as i64).await?),
+    ))
+}
+
+async fn update_subject(
+    _admin: RequireAdmin,
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    Json(body): Json<SubjectInput>,
+) -> AppResult<Json<SubjectDto>> {
+    let body = body.normalize()?;
+    find(&state, id).await?;
+    sqlx::query(
+        "UPDATE subjects SET slug = ?, name = ?, description = ?, color = ?, sort_order = ? WHERE id = ?",
+    )
+    .bind(&body.slug)
+    .bind(&body.name)
+    .bind(&body.description)
+    .bind(body.color.as_deref().unwrap_or("mauve"))
+    .bind(body.sort_order)
+    .bind(id)
+    .execute(&state.db)
+    .await?;
+    Ok(Json(find(&state, id).await?))
+}
+
+async fn delete_subject(
+    _admin: RequireAdmin,
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> AppResult<StatusCode> {
+    find(&state, id).await?;
+    // FK RESTRICT: fails with 409 if quizzes or reviews still belong to the subject.
+    sqlx::query("DELETE FROM subjects WHERE id = ?")
+        .bind(id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| match AppError::from(e) {
+            AppError::Conflict(_) => {
+                AppError::Conflict("delete or move this subject's quizzes and reviews first".into())
+            }
+            other => other,
+        })?;
+    Ok(StatusCode::NO_CONTENT)
+}

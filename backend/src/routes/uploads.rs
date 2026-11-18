@@ -1,0 +1,203 @@
+//! Image uploads to R2 and orphan cleanup.
+
+use std::collections::HashSet;
+
+use axum::{
+    Json, Router,
+    extract::{DefaultBodyLimit, Multipart, Path, State},
+    http::StatusCode,
+    routing::{delete, post},
+};
+use chrono::Utc;
+use serde::Serialize;
+use serde_json::json;
+
+use crate::{
+    auth::{RequireAdmin, RequireStaff},
+    config::Config,
+    error::{AppError, AppResult},
+    images,
+    state::AppState,
+    validation::is_image_key,
+};
+
+pub fn router(config: &Config) -> Router<AppState> {
+    Router::new()
+        .route(
+            "/admin/uploads/image",
+            post(upload_image).layer(DefaultBodyLimit::max(
+                config.max_image_size_bytes + 64 * 1024,
+            )),
+        )
+        .route("/admin/uploads/image/{*key}", delete(delete_image))
+        .route("/admin/uploads/cleanup-orphans", post(cleanup_orphans))
+}
+
+#[derive(Debug, Serialize)]
+pub struct UploadedImage {
+    pub key: String,
+    pub url: String,
+}
+
+/// Validate, process and store an image. Returns its new key.
+pub async fn store_image(
+    state: &AppState,
+    bytes: Vec<u8>,
+    filename: Option<String>,
+    quiz_id: Option<i64>,
+) -> AppResult<UploadedImage> {
+    if bytes.is_empty() {
+        return Err(AppError::BadRequest("the uploaded file is empty".into()));
+    }
+    if bytes.len() > state.config.max_image_size_bytes {
+        return Err(AppError::PayloadTooLarge(format!(
+            "images must be at most {} MB",
+            state.config.max_image_size_bytes / 1024 / 1024
+        )));
+    }
+    let processed =
+        tokio::task::spawn_blocking(move || images::process(bytes, filename.as_deref()))
+            .await
+            .map_err(|e| AppError::Internal(e.into()))??;
+
+    // Random key; the original file name is never used.
+    let id = uuid::Uuid::new_v4();
+    let ext = processed.kind.ext();
+    let key = match quiz_id {
+        Some(qid) => format!("quizzes/{qid}/{id}.{ext}"),
+        None => format!("tmp/{id}.{ext}"),
+    };
+    state
+        .storage
+        .put(
+            &key,
+            processed.bytes,
+            processed.kind.content_type(),
+            "public, max-age=31536000, immutable",
+        )
+        .await?;
+    Ok(UploadedImage {
+        url: state.storage.public_url(&key),
+        key,
+    })
+}
+
+/// `multipart/form-data` with a `file` field and an optional `quiz_id` field.
+async fn upload_image(
+    _staff: RequireStaff,
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> AppResult<(StatusCode, Json<UploadedImage>)> {
+    let mut file: Option<(Vec<u8>, Option<String>, Option<String>)> = None;
+    let mut quiz_id: Option<i64> = None;
+
+    while let Some(field) = multipart.next_field().await? {
+        match field.name() {
+            Some("file") => {
+                let filename = field.file_name().map(str::to_string);
+                let content_type = field.content_type().map(str::to_string);
+                let bytes = field.bytes().await?.to_vec();
+                file = Some((bytes, filename, content_type));
+            }
+            Some("quiz_id") => {
+                let text = field.text().await?;
+                let text = text.trim();
+                if !text.is_empty() {
+                    quiz_id =
+                        Some(text.parse().map_err(|_| {
+                            AppError::Validation("quiz_id: must be a number".into())
+                        })?);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let (bytes, filename, content_type) =
+        file.ok_or_else(|| AppError::BadRequest("missing 'file' field".into()))?;
+    if let Some(ct) = &content_type
+        && !matches!(
+            ct.as_str(),
+            "image/png" | "image/jpeg" | "image/jpg" | "image/webp" | "image/gif"
+        )
+    {
+        return Err(AppError::UnsupportedMediaType(
+            "only PNG, JPEG, WebP and GIF images are accepted".into(),
+        ));
+    }
+
+    // Only use the quiz prefix for quizzes that really exist.
+    if let Some(qid) = quiz_id {
+        let exists: Option<(i64,)> = sqlx::query_as("SELECT id FROM quizzes WHERE id = ?")
+            .bind(qid)
+            .fetch_optional(&state.db)
+            .await?;
+        if exists.is_none() {
+            quiz_id = None;
+        }
+    }
+
+    let uploaded = store_image(&state, bytes, filename, quiz_id).await?;
+    Ok((StatusCode::CREATED, Json(uploaded)))
+}
+
+/// Every image/review key currently referenced by a database row.
+async fn referenced_keys(state: &AppState) -> AppResult<HashSet<String>> {
+    let rows: Vec<(Option<String>,)> = sqlx::query_as(
+        "SELECT cover_image_key FROM quizzes \
+         UNION ALL SELECT image_key FROM questions \
+         UNION ALL SELECT answer_image_key FROM questions \
+         UNION ALL SELECT explanation_image_key FROM questions \
+         UNION ALL SELECT image_key FROM question_options \
+         UNION ALL SELECT r2_key FROM interactive_reviews",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    Ok(rows.into_iter().filter_map(|(k,)| k).collect())
+}
+
+/// Delete an uploaded image that is not (or no longer) used by any row, e.g. when an
+/// editor discards an image before saving.
+async fn delete_image(
+    _staff: RequireStaff,
+    State(state): State<AppState>,
+    Path(key): Path<String>,
+) -> AppResult<StatusCode> {
+    if !is_image_key(&key) {
+        return Err(AppError::Validation("not a valid image key".into()));
+    }
+    if referenced_keys(&state).await?.contains(&key) {
+        return Err(AppError::Conflict(
+            "this image is still used; remove it from the quiz/question and save instead".into(),
+        ));
+    }
+    state.storage.delete(&key).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Admin only: remove R2 objects that no row references. Objects younger than one hour are
+/// kept, because an editor may have just uploaded them and not saved yet.
+async fn cleanup_orphans(
+    _admin: RequireAdmin,
+    State(state): State<AppState>,
+) -> AppResult<Json<serde_json::Value>> {
+    let referenced = referenced_keys(&state).await?;
+    let cutoff = Utc::now() - chrono::Duration::hours(1);
+
+    let mut scanned = 0usize;
+    let mut deleted = Vec::new();
+    for prefix in ["quizzes/", "tmp/", "reviews/"] {
+        for obj in state.storage.list(prefix).await? {
+            scanned += 1;
+            let old_enough = obj.last_modified.is_none_or(|t| t < cutoff);
+            if !referenced.contains(&obj.key) && old_enough {
+                state.storage.delete(&obj.key).await?;
+                deleted.push(obj.key);
+            }
+        }
+    }
+    tracing::info!(scanned, deleted = deleted.len(), "orphan cleanup finished");
+    Ok(Json(
+        json!({ "scanned": scanned, "deleted": deleted.len(), "deleted_keys": deleted }),
+    ))
+}

@@ -64,7 +64,7 @@ before building for production).
 
 `backend/.env` holds all secrets: `DB_*` (the only database settings; SSL is required by default, set
 `DB_SSL_REQUIRED=false` for a local MySQL without SSL), `JWT_SECRET`
-(`openssl rand -hex 64`), `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `R2_*`, upload limits. Both
+(`openssl rand -hex 64`), `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `R2_*`, upload limits, and the cache size (`CACHE_MAX_MB`, default 32; `CACHE_TTL_SECONDS`). Both
 `.env` files are git-ignored; only the `.env.example` templates are committed.
 
 Deployment notes: serve the frontend and the API on the same site (e.g. `example.com` and

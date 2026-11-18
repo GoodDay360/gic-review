@@ -9,6 +9,7 @@ use axum::{
 };
 use gic_review_api::{
     build_router,
+    cache::ResponseCache,
     config::{AppEnv, Config},
     rate_limit::RateLimiter,
     state::AppState,
@@ -45,6 +46,8 @@ pub fn test_config() -> Config {
         r2_public_base_url: "https://files.example.com".into(),
         max_image_size_bytes: 5 * 1024 * 1024,
         max_review_html_size_bytes: 10 * 1024 * 1024,
+        cache_max_bytes: 4 * 1024 * 1024,
+        cache_ttl_seconds: 300,
     }
 }
 
@@ -55,6 +58,8 @@ pub fn app_with_pool(db: MySqlPool) -> Router {
         storage: Storage::new(&config),
         config: Arc::new(config),
         login_limiter: RateLimiter::new(5, Duration::from_secs(60)),
+        // Same cache as production, so tests exercise caching and invalidation.
+        cache: ResponseCache::new(4 * 1024 * 1024, Duration::from_secs(300)),
     })
 }
 
@@ -71,6 +76,9 @@ pub fn app_without_db() -> Router {
 pub struct TestResponse {
     pub status: StatusCode,
     pub set_cookie: Option<String>,
+    /// `x-cache` response header (`hit` / `miss`), if any.
+    pub x_cache: Option<String>,
+    pub cache_control: Option<String>,
     pub json: serde_json::Value,
 }
 
@@ -123,11 +131,21 @@ pub async fn send_auth(
         .headers()
         .get(header::SET_COOKIE)
         .map(|v| v.to_str().unwrap().to_string());
+    let x_cache = resp
+        .headers()
+        .get("x-cache")
+        .map(|v| v.to_str().unwrap().to_string());
+    let cache_control = resp
+        .headers()
+        .get(header::CACHE_CONTROL)
+        .map(|v| v.to_str().unwrap().to_string());
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     let json = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
     TestResponse {
         status,
         set_cookie,
+        x_cache,
+        cache_control,
         json,
     }
 }

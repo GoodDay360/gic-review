@@ -123,6 +123,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ API keys refused on session-only endpoints (users, API key management, sharing, subjects, cleanup), so a leaked key cannot escalate
 - ✅ Access checks on every content endpoint (creator, year owner, admin, or shared year/subject; else 404; delete needs full rights → 403 `owner_only`), also for drafts on `GET /quizzes/:id`
 - ✅ Login rate limit (5 attempts / minute / IP)
+- ✅ In-memory response cache for anonymous public reads (`CACHE_MAX_MB`, `CACHE_TTL_SECONDS`; `x-cache` header); any successful `/api/admin/` write clears it at once (generation-stamped entries), logged-in requests bypass it
 - ✅ Password change / admin reset bumps `session_version`; session JWTs with an older `sv` are rejected (other devices signed out)
 - ✅ Input validation and parameterized SQL only
 - ✅ Uploads: MIME + extension + magic-number checks, size limits from `.env`, random UUID keys, re-encoding strips EXIF
@@ -231,7 +232,9 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
   available while building). Next: convert hot queries and run `cargo sqlx prepare`.
 - The database integration tests need `DB_*` filled in and `DB_TEST_NAME` set to an existing database
   (e.g. `gic_review_test`, never the same as `DB_NAME`) the user has all privileges on; without `DB_*` they are skipped.
-- Login rate limiting is in memory (per process); behind a proxy the client IP is the proxy's.
+- Login rate limiting and the response cache are in memory (per process): with several backend
+  instances, another instance may serve a cached response for up to `CACHE_TTL_SECONDS` after an edit.
+- Login rate limiting: behind a proxy the client IP is the proxy's.
 - Cookie auth needs frontend and API on the same site (`SameSite=Strict`). API keys work from anywhere.
 - API key timestamps use the MySQL server clock (`NOW()`); the dashboard shows them in the browser's
   local time, so keep the DB server on UTC or the same timezone.
@@ -247,6 +250,8 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-18: Response cache (moka) for anonymous public reads, sized by `CACHE_MAX_MB` / `CACHE_TTL_SECONDS`;
+  cleared on every successful editor write; `Cache-Control: no-cache` so browsers never keep old data.
 - 2026-11-18: Admin from `.env` synced on every start: a changed `ADMIN_PASSWORD` is applied (sessions
   signed out), an unchanged one keeps dashboard password changes; a new `ADMIN_EMAIL` creates that admin.
 - 2026-11-18: My account page with password change (current password required, rate-limited);

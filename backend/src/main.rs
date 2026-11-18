@@ -3,6 +3,7 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 use anyhow::Context;
 use gic_review_api::{
     bootstrap, build_router,
+    cache::ResponseCache,
     config::{Config, db_options_from_env},
     rate_limit::RateLimiter,
     state::AppState,
@@ -61,11 +62,26 @@ async fn main() -> anyhow::Result<()> {
         .parse()
         .context("BACKEND_HOST/BACKEND_PORT do not form a valid address")?;
 
+    let cache = ResponseCache::new(
+        config.cache_max_bytes,
+        Duration::from_secs(config.cache_ttl_seconds.max(1)),
+    );
+    tracing::info!(
+        max_mb = config.cache_max_bytes / 1024 / 1024,
+        ttl_seconds = config.cache_ttl_seconds,
+        "response cache {}",
+        if config.cache_max_bytes > 0 {
+            "enabled"
+        } else {
+            "disabled"
+        }
+    );
     let state = AppState {
         db,
         storage: Storage::new(&config),
         config: Arc::new(config),
         login_limiter: RateLimiter::new(5, Duration::from_secs(60)),
+        cache,
     };
     let app = build_router(state);
 

@@ -4,6 +4,7 @@ pub mod access;
 pub mod api_keys;
 pub mod auth;
 pub mod bootstrap;
+pub mod cache;
 pub mod config;
 pub mod error;
 pub mod extract;
@@ -48,6 +49,7 @@ pub fn build_router(state: AppState) -> Router {
         .allow_headers([header::CONTENT_TYPE, header::ACCEPT, header::AUTHORIZATION])
         .max_age(Duration::from_secs(3600));
 
+    let cache_state = state.clone();
     Router::new()
         .nest("/api", routes::api(&config))
         .fallback(|| async {
@@ -57,6 +59,10 @@ pub fn build_router(state: AppState) -> Router {
             )
         })
         // Default JSON body limit; upload routes set their own larger limits.
+        .layer(axum::middleware::from_fn_with_state(
+            cache_state,
+            cache::layer,
+        ))
         .layer(DefaultBodyLimit::max(1024 * 1024))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,

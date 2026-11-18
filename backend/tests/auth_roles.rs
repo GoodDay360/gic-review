@@ -1499,3 +1499,170 @@ async fn db_admin_password_follows_env_but_keeps_dashboard_changes() {
     assert_eq!(r.json["role"], "admin");
     tdb.cleanup().await;
 }
+
+#[tokio::test]
+async fn db_cache_serves_students_but_never_outlives_an_update() {
+    let Some(tdb) = common::test_db().await else {
+        return;
+    };
+    let db = tdb.pool.clone();
+    bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
+    insert_manager(&db, "cache-m@example.com", "manager-pass-c", true).await;
+    let app = app_with_pool(db);
+    let m = cookie_from(
+        &login(&app, "cache-m@example.com", "manager-pass-c")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    own_subject(&app, &m, "cache").await;
+
+    // A published quiz in the manager's subject.
+    let quiz = send(
+        &app,
+        "POST",
+        "/api/admin/quizzes/import",
+        Some(&m),
+        Some(json!({
+            "subject_slug": "subject-cache", "title": "Cached quiz",
+            "questions": [{ "prompt": "Original prompt", "answer_text": "A",
+                            "options": [{ "text": "A", "is_correct": true }, { "text": "B" }] }]
+        })),
+    )
+    .await;
+    assert_eq!(quiz.status, StatusCode::CREATED);
+    let qid = quiz.json["id"].as_i64().unwrap();
+    let question = quiz.json["questions"][0].clone();
+    send(
+        &app,
+        "PATCH",
+        &format!("/api/admin/quizzes/{qid}/publish"),
+        Some(&m),
+        Some(json!({ "is_published": true })),
+    )
+    .await;
+    let public = format!("/api/quizzes/{qid}");
+
+    // Students: first request computes, second is served from the cache.
+    let first = send(&app, "GET", &public, None, None).await;
+    assert_eq!(first.x_cache.as_deref(), Some("miss"));
+    assert_eq!(first.cache_control.as_deref(), Some("no-cache")); // browsers must re-check
+    let second = send(&app, "GET", &public, None, None).await;
+    assert_eq!(second.x_cache.as_deref(), Some("hit"));
+    assert_eq!(second.json, first.json);
+    assert_eq!(
+        send(
+            &app,
+            "GET",
+            "/api/subjects/subject-cache/quizzes",
+            None,
+            None
+        )
+        .await
+        .x_cache
+        .as_deref(),
+        Some("miss")
+    );
+    assert_eq!(
+        send(
+            &app,
+            "GET",
+            "/api/subjects/subject-cache/quizzes",
+            None,
+            None
+        )
+        .await
+        .x_cache
+        .as_deref(),
+        Some("hit")
+    );
+
+    // Logged-in editors never get cached data.
+    assert_eq!(
+        send(&app, "GET", &public, Some(&m), None).await.x_cache,
+        None
+    );
+
+    // The editor changes the question → the very next student request sees the new text.
+    let mut edited = json!({
+        "prompt": "Updated prompt", "answer_text": "A", "multi_select": false,
+        "options": [{ "text": "A", "is_correct": true }, { "text": "B" }]
+    });
+    edited["image_key"] = question["image_key"].clone();
+    let r = send(
+        &app,
+        "PUT",
+        &format!("/api/admin/quizzes/{qid}/questions/{}", question["id"]),
+        Some(&m),
+        Some(edited),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
+    let after = send(&app, "GET", &public, None, None).await;
+    assert_eq!(after.x_cache.as_deref(), Some("miss"));
+    assert_eq!(after.json["questions"][0]["prompt"], "Updated prompt");
+
+    // Same through an API key: unpublishing hides the quiz immediately (no stale cached copy).
+    send(&app, "GET", &public, None, None).await; // re-cache
+    let key = send(
+        &app,
+        "POST",
+        "/api/admin/api-keys",
+        Some(&m),
+        Some(json!({ "name": "k", "scopes": ["quizzes:write"], "expires_in_days": 1 })),
+    )
+    .await
+    .json["key"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let r = send_key(
+        &app,
+        "PATCH",
+        &format!("/api/admin/quizzes/{qid}/publish"),
+        &key,
+        Some(json!({ "is_published": false })),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(
+        send(&app, "GET", &public, None, None).await.status,
+        StatusCode::NOT_FOUND
+    );
+    let list = send(
+        &app,
+        "GET",
+        "/api/subjects/subject-cache/quizzes",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(list.json.as_array().unwrap().len(), 0);
+
+    // A failed write does not clear the cache (nothing changed).
+    send(&app, "GET", "/api/years", None, None).await;
+    assert_eq!(
+        send(&app, "GET", "/api/years", None, None)
+            .await
+            .x_cache
+            .as_deref(),
+        Some("hit")
+    );
+    let r = send(
+        &app,
+        "PUT",
+        &format!("/api/admin/quizzes/{qid}"),
+        Some(&m),
+        Some(json!({ "title": "" })),
+    )
+    .await;
+    assert!(!r.status.is_success());
+    assert_eq!(
+        send(&app, "GET", "/api/years", None, None)
+            .await
+            .x_cache
+            .as_deref(),
+        Some("hit")
+    );
+    tdb.cleanup().await;
+}

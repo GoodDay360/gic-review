@@ -40,6 +40,10 @@ pub struct Config {
 
     pub max_image_size_bytes: usize,
     pub max_review_html_size_bytes: usize,
+
+    /// In-memory response cache size in bytes (0 = disabled).
+    pub cache_max_bytes: u64,
+    pub cache_ttl_seconds: u64,
 }
 
 // Hand-written Debug so secrets can never end up in logs by accident.
@@ -126,6 +130,8 @@ impl Config {
         let r2_public_base_url = req("R2_PUBLIC_BASE_URL");
         let max_img_raw = optional("MAX_IMAGE_SIZE_MB").unwrap_or_else(|| "5".into());
         let max_html_raw = optional("MAX_REVIEW_HTML_SIZE_MB").unwrap_or_else(|| "10".into());
+        let cache_mb_raw = optional("CACHE_MAX_MB").unwrap_or_else(|| "32".into());
+        let cache_ttl_raw = optional("CACHE_TTL_SECONDS").unwrap_or_else(|| "300".into());
 
         let db_ssl_required = db_ssl_required_from_env().unwrap_or_else(|e| {
             errors.push(e);
@@ -137,6 +143,11 @@ impl Config {
             parse_num::<i64>("JWT_EXPIRES_IN_HOURS", &jwt_hours_raw, &mut errors);
         let max_img_mb = parse_num::<usize>("MAX_IMAGE_SIZE_MB", &max_img_raw, &mut errors);
         let max_html_mb = parse_num::<usize>("MAX_REVIEW_HTML_SIZE_MB", &max_html_raw, &mut errors);
+        let cache_max_mb = parse_num::<u64>("CACHE_MAX_MB", &cache_mb_raw, &mut errors);
+        let cache_ttl = parse_num::<u64>("CACHE_TTL_SECONDS", &cache_ttl_raw, &mut errors);
+        if cache_max_mb > 0 && cache_ttl == 0 {
+            errors.push("CACHE_TTL_SECONDS must be > 0 when the cache is enabled".into());
+        }
 
         if !jwt_secret.is_empty() && jwt_secret.len() < 32 {
             errors.push("JWT_SECRET must be at least 32 characters long".into());
@@ -188,6 +199,8 @@ impl Config {
             r2_public_base_url: r2_public_base_url.trim_end_matches('/').to_string(),
             max_image_size_bytes: max_img_mb * 1024 * 1024,
             max_review_html_size_bytes: max_html_mb * 1024 * 1024,
+            cache_max_bytes: cache_max_mb * 1024 * 1024,
+            cache_ttl_seconds: cache_ttl,
         })
     }
 }

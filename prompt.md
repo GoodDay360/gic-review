@@ -239,6 +239,7 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
   - Scopes: `quizzes:write` (quizzes, questions, reorder, publish, import, image uploads) and `reviews:write` (interactive reviews, image uploads). A key without the needed scope gets `403 missing_scope`.
   - Keys never work on session-only endpoints (users, API key management, subjects, orphan cleanup): `403 api_key_not_allowed`. So a leaked key cannot create more keys or escalate.
   - Optional expiry (1–365 days), `last_used_at` tracking, revocation by the owner or any admin. Deleting a manager deletes their keys; deactivating them disables the keys.
+- **Response cache (small servers, 200–500 MB RAM):** successful anonymous `GET` responses of `/api/years…`, `/api/subjects…` and `/api/quizzes/…` are kept in an in-memory cache (moka) limited by `CACHE_MAX_MB` (0 = off) and `CACHE_TTL_SECONDS`. Requests with a session cookie or API key always bypass it (they can see drafts). **Any successful write under `/api/admin/`** (quizzes, questions, publish, import, uploads, reviews, years, subjects, sharing) clears the whole cache immediately, and entries carry a generation number so a response computed before a write is never served after it. Responses carry `x-cache: hit|miss` and `Cache-Control: no-cache` (browsers always revalidate). A single backend instance is assumed; with several instances each has its own cache (stale for at most `CACHE_TTL_SECONDS` on the others).
 - Rate-limit `POST /api/auth/login` (for example 5 attempts per minute per IP).
 - **Password changes:** `POST /api/auth/change-password` (`{ current_password, new_password }`, dashboard session only, never with an API key) verifies the current password with Argon2 before anything else, is rate-limited (5 attempts per minute per user), and bumps `users.session_version`. Session JWTs carry the version they were issued with (`sv`), and tokens with an older version are rejected, so the change signs out every other device (this browser gets a fresh cookie). An admin's reset of a manager's password also bumps the version. API keys are not affected.
 - Validate every input. Use parameterized SQLx queries only, never string-concatenated SQL.
@@ -437,6 +438,10 @@ R2_PUBLIC_BASE_URL=              # public bucket domain, e.g. https://files.exam
 # ---------- Upload limits ----------
 MAX_IMAGE_SIZE_MB=5
 MAX_REVIEW_HTML_SIZE_MB=10
+
+# ---------- Cache (spares the database and CPU) ----------
+CACHE_MAX_MB=32                  # RAM for cached public responses (0 = cache off)
+CACHE_TTL_SECONDS=300            # max age of a cached response; any edit clears the cache at once
 ```
 
 The backend must fail fast at startup, with a clear message, if a required variable is missing.

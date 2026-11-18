@@ -32,6 +32,7 @@ pub fn test_config() -> Config {
         db_name: "unused".into(),
         db_user: "unused".into(),
         db_password: "unused".into(),
+        db_ssl_required: false,
         jwt_secret: "test-secret-test-secret-test-secret-0123456789".into(),
         jwt_expires_in_hours: 1,
         admin_email: "admin@example.com".into(),

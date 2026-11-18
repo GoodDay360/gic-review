@@ -126,6 +126,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Backend fails fast at startup with a clear list of missing/invalid variables
 - ✅ Integration tests for auth, roles and API keys (database tests use a temporary DB from `DB_*`, skipped when empty)
 - ✅ No `DATABASE_URL`: the server, `cargo run -- migrate` and the tests build the connection from `DB_*`
+- ✅ `DB_SSL_REQUIRED=true|false` to require an SSL connection to MySQL (validated at startup)
 - 🚧 Compile-time checked queries (`sqlx::query!`) and committed `.sqlx/`: not used yet, needs a dev database
 - ⏳ CI pipeline, Docker images, deployment docs
 
@@ -217,6 +218,7 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role),
 - 2026-11-18: Roles changed: admins now only manage manager accounts, API keys, subjects and orphan
   cleanup; quizzes, reviews and uploads are manager-only.
 - 2026-11-18: Frontend switched to Bun (`bun.lock`, `packageManager`), per the updated build brief.
+- 2026-11-18: Added `DB_SSL_REQUIRED` (true/false) to require SSL for the MySQL connection.
 - 2026-11-18: Removed `DATABASE_URL`; added `cargo run -- migrate`; database tests create their own
   temporary database from `DB_*` instead of using `#[sqlx::test]`.
 - 2026-11-18: AI-SPEC restructured to the "Keep features in sync" rules (Features checklist only is

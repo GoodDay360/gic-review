@@ -5,7 +5,7 @@
 
 use std::{env, fmt};
 
-use sqlx::mysql::MySqlConnectOptions;
+use sqlx::mysql::{MySqlConnectOptions, MySqlSslMode};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AppEnv {
@@ -25,6 +25,7 @@ pub struct Config {
     pub db_name: String,
     pub db_user: String,
     pub db_password: String,
+    pub db_ssl_required: bool,
 
     pub jwt_secret: String,
     pub jwt_expires_in_hours: i64,
@@ -51,6 +52,7 @@ impl fmt::Debug for Config {
             .field("frontend_url", &self.frontend_url)
             .field("db_host", &self.db_host)
             .field("db_name", &self.db_name)
+            .field("db_ssl_required", &self.db_ssl_required)
             .field("r2_bucket", &self.r2_bucket)
             .field("r2_public_base_url", &self.r2_public_base_url)
             .finish_non_exhaustive()
@@ -70,6 +72,7 @@ impl Config {
             &self.db_user,
             &self.db_password,
             &self.db_name,
+            self.db_ssl_required,
         )
     }
 
@@ -120,6 +123,10 @@ impl Config {
         let max_img_raw = optional("MAX_IMAGE_SIZE_MB").unwrap_or_else(|| "5".into());
         let max_html_raw = optional("MAX_REVIEW_HTML_SIZE_MB").unwrap_or_else(|| "10".into());
 
+        let db_ssl_required = db_ssl_required_from_env().unwrap_or_else(|e| {
+            errors.push(e);
+            false
+        });
         let backend_port = parse_num::<u16>("BACKEND_PORT", &backend_port_raw, &mut errors);
         let db_port = parse_num::<u16>("DB_PORT", &db_port_raw, &mut errors);
         let jwt_expires_in_hours =
@@ -165,6 +172,7 @@ impl Config {
             db_name,
             db_user,
             db_password,
+            db_ssl_required,
             jwt_secret,
             jwt_expires_in_hours,
             admin_email: admin_email.to_lowercase(),
@@ -180,12 +188,25 @@ impl Config {
     }
 }
 
+/// `DB_SSL_REQUIRED=true|false` (default false).
+/// - `true`: the MySQL connection must use SSL/TLS, otherwise connecting fails.
+/// - `false`: SSL is not required (it is still used when the server offers it).
+pub fn db_ssl_required_from_env() -> Result<bool, String> {
+    match optional("DB_SSL_REQUIRED").map(|v| v.to_ascii_lowercase()) {
+        None => Ok(false),
+        Some(v) if matches!(v.as_str(), "true" | "1" | "yes") => Ok(true),
+        Some(v) if matches!(v.as_str(), "false" | "0" | "no") => Ok(false),
+        Some(v) => Err(format!("DB_SSL_REQUIRED must be true or false (got '{v}')")),
+    }
+}
+
 fn mysql_options(
     host: &str,
     port: u16,
     user: &str,
     password: &str,
     db: &str,
+    ssl_required: bool,
 ) -> MySqlConnectOptions {
     MySqlConnectOptions::new()
         .host(host)
@@ -194,10 +215,15 @@ fn mysql_options(
         .password(password)
         .database(db)
         .charset("utf8mb4")
+        .ssl_mode(if ssl_required {
+            MySqlSslMode::Required
+        } else {
+            MySqlSslMode::Preferred
+        })
 }
 
 /// Database connection options from `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
-/// only (no JWT/R2 needed). Used by `cargo run -- migrate` and by the integration tests, so a
+/// and the optional `DB_SSL_REQUIRED` only (no JWT/R2 needed). Used by `cargo run -- migrate` and by the integration tests, so a
 /// separate `DATABASE_URL` is never required.
 pub fn db_options_from_env() -> Result<MySqlConnectOptions, String> {
     let mut missing = Vec::new();
@@ -221,7 +247,15 @@ pub fn db_options_from_env() -> Result<MySqlConnectOptions, String> {
         })
         .transpose()?
         .unwrap_or(3306);
-    Ok(mysql_options(&host, port, &user, &password, &name))
+    let ssl_required = db_ssl_required_from_env()?;
+    Ok(mysql_options(
+        &host,
+        port,
+        &user,
+        &password,
+        &name,
+        ssl_required,
+    ))
 }
 
 /// Read a variable, treating empty strings as missing. Strips a trailing ` # comment`

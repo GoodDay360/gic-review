@@ -56,7 +56,8 @@ bun run lint && bun run format:check
 `frontend/.env` holds only public `VITE_*` values (they end up in the JS bundle):
 `VITE_APP_NAME`, `VITE_API_BASE_URL`.
 
-`backend/.env` holds all secrets: `DB_*` (the only database settings), `JWT_SECRET`
+`backend/.env` holds all secrets: `DB_*` (the only database settings; set `DB_SSL_REQUIRED=true`
+when your MySQL server requires SSL), `JWT_SECRET`
 (`openssl rand -hex 64`), `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `R2_*`, upload limits. Both
 `.env` files are git-ignored; only the `.env.example` templates are committed.
 

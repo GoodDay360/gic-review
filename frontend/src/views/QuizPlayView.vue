@@ -49,9 +49,9 @@ const progressPrompt = computed(() => {
   if (!active || !quiz.value) return ''
   const oldMode = getQuizMode(active.mode)?.label ?? active.mode
   if (active.quizId === quiz.value.id) {
-    return `Your ${oldMode} attempt for “${active.quizTitle}” is unfinished. Continue where you left off, or clear its progress and switch to ${mode.value?.label}? Your saved results will stay.`
+    return `Your ${oldMode} attempt for “${active.quizTitle}” is unfinished. Continue where you left off, or clear its progress and switch to ${mode.value?.label}?`
   }
-  return `Your ${oldMode} attempt for “${active.quizTitle}” is unfinished. Continue it, or clear its progress and start “${quiz.value.title}”? Your saved results will stay.`
+  return `Your ${oldMode} attempt for “${active.quizTitle}” is unfinished. Continue it, or clear its progress and start “${quiz.value.title}”?`
 })
 const startSelectedLabel = computed(() =>
   pendingProgress.value?.quizId === quiz.value?.id ? 'Clear & switch mode' : 'Clear & start quiz',

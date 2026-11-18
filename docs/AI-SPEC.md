@@ -67,7 +67,7 @@ Checks: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo
 Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 
 ### Public site
-- ✅ Header with the "GIC Review" name and a small "Staff login" link (Dashboard + logout when logged in)
+- ✅ Header with the "GIC Review" name, a small "Staff login" link (Dashboard + logout when logged in), a flavor picker, and an icon-only link to the documentation
 - ✅ Default font Plus Jakarta Sans, self-hosted at build time by `vite-plugin-webfont-dl` (zero config) and set via Tailwind `--font-sans`
 - ✅ Link previews: meta description, Open Graph + Twitter card tags with a 1200×630 preview image, absolute URLs from `VITE_SITE_URL`; favicon.ico/PNG/Apple/Android icons and web manifest
 - ✅ Footer credit "Made by: @GoodDay360" linking to https://github.com/GoodDay360 (new tab)

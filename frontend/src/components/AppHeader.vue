@@ -36,6 +36,16 @@ async function logout() {
         <span class="text-lg">{{ APP_NAME }}</span>
       </RouterLink>
       <nav class="flex items-center gap-1">
+        <a
+          href="https://github.com/GoodDay360/gic-review/blob/main/docs/README.md"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn-ghost px-2.5"
+          aria-label="Documentation (opens in a new tab)"
+          title="Documentation"
+        >
+          <AppIcon name="file-text" :size="18" />
+        </a>
         <ThemePicker />
         <template v-if="auth.isStaff">
           <RouterLink to="/admin" class="btn-ghost px-2.5 text-sm">

@@ -185,6 +185,28 @@ async fn insert_manager(db: &MySqlPool, email: &str, password: &str, active: boo
     .last_insert_id() as i64
 }
 
+/// Create a year + subject owned by the logged-in editor (dashboard session); returns the subject id.
+async fn own_subject(app: &axum::Router, cookie: &str, tag: &str) -> i64 {
+    let y = send(
+        app,
+        "POST",
+        "/api/admin/years",
+        Some(cookie),
+        Some(json!({ "name": format!("Year {tag}") })),
+    )
+    .await;
+    assert_eq!(y.status, StatusCode::CREATED, "create year: {:?}", y.json);
+    let s = send(app, "POST", "/api/admin/subjects", Some(cookie),
+        Some(json!({ "year_id": y.json["id"], "name": format!("Subject {tag}"), "slug": format!("subject-{tag}") }))).await;
+    assert_eq!(
+        s.status,
+        StatusCode::CREATED,
+        "create subject: {:?}",
+        s.json
+    );
+    s.json["id"].as_i64().unwrap()
+}
+
 fn cookie_from(set_cookie: &str) -> String {
     set_cookie.split(';').next().unwrap().to_string()
 }
@@ -273,7 +295,6 @@ async fn db_manager_cannot_reach_admin_only_endpoints() {
     for (method, uri, body) in [
         ("GET", "/api/admin/users", None),
         ("POST", "/api/admin/users", Some(json!({}))),
-        ("POST", "/api/admin/subjects", Some(json!({}))),
         ("POST", "/api/admin/uploads/cleanup-orphans", None),
     ] {
         let r = send(&app, method, uri, Some(&manager), body).await;
@@ -445,7 +466,8 @@ async fn db_manager_api_key_lifecycle() {
     let second = create_key(&app, &manager, &["quizzes:write"], false).await;
     assert_eq!(second.status, StatusCode::CONFLICT);
 
-    // The key works for quiz content…
+    // The key works for quiz content in the manager's own year…
+    let sid = own_subject(&app, &manager, "lifecycle").await;
     let me = send_key(&app, "GET", "/api/auth/me", &key, None).await;
     assert_eq!(me.json["auth_method"], "api_key");
     let quiz = send_key(
@@ -453,7 +475,7 @@ async fn db_manager_api_key_lifecycle() {
         "POST",
         "/api/admin/quizzes",
         &key,
-        Some(json!({ "subject_id": 1, "title": "From an AI", "description": null, "cover_image_key": null })),
+        Some(json!({ "subject_id": sid, "title": "From an AI", "description": null, "cover_image_key": null })),
     )
     .await;
     assert_eq!(quiz.status, StatusCode::CREATED);
@@ -581,14 +603,15 @@ async fn db_content_is_private_until_shared_by_email() {
             .unwrap(),
     );
 
-    // A creates a quiz; B can't see or touch it (404, not even its existence).
+    // A creates a quiz (in A's own year); B can't see or touch it (404, not even its existence).
+    let a_sid = own_subject(&app, &a, "a").await;
     let quiz = send(&app, "POST", "/api/admin/quizzes", Some(&a),
-        Some(json!({ "subject_id": 1, "title": "A's quiz", "description": null, "cover_image_key": null }))).await;
+        Some(json!({ "subject_id": a_sid, "title": "A's quiz", "description": null, "cover_image_key": null }))).await;
     assert_eq!(quiz.status, StatusCode::CREATED);
     assert_eq!(quiz.json["access"], "owner");
     let qid = quiz.json["id"].as_i64().unwrap();
     let q = format!("/api/admin/quizzes/{qid}");
-    let update = json!({ "subject_id": 1, "title": "Edited by B", "description": null, "cover_image_key": null });
+    let update = json!({ "subject_id": a_sid, "title": "Edited by B", "description": null, "cover_image_key": null });
     assert_eq!(
         send(&app, "GET", "/api/admin/quizzes", Some(&b), None)
             .await
@@ -891,7 +914,7 @@ async fn db_years_group_subjects() {
         "hci"
     );
 
-    // Managers can't manage years.
+    // Managers can create their own years, but not change someone else's.
     let m = cookie_from(
         &login(&app, "m-years@example.com", "manager-pass-y")
             .await
@@ -906,6 +929,158 @@ async fn db_years_group_subjects() {
         Some(json!({ "name": "X" })),
     )
     .await;
+    assert_eq!(r.status, StatusCode::CREATED);
+    let r = send(
+        &app,
+        "PUT",
+        "/api/admin/years/1",
+        Some(&m),
+        Some(json!({ "name": "Hijack" })),
+    )
+    .await;
     assert_eq!(r.status, StatusCode::FORBIDDEN);
+    assert_eq!(r.json["error"]["code"], "owner_only");
+    tdb.cleanup().await;
+}
+
+#[tokio::test]
+async fn db_years_belong_to_their_creator() {
+    let Some(tdb) = common::test_db().await else {
+        return;
+    };
+    let db = tdb.pool.clone();
+    bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
+    insert_manager(&db, "owner-y@example.com", "manager-pass-1", true).await;
+    insert_manager(&db, "other-y@example.com", "manager-pass-2", true).await;
+    let app = app_with_pool(db);
+    let a = cookie_from(
+        &login(&app, "owner-y@example.com", "manager-pass-1")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    let b = cookie_from(
+        &login(&app, "other-y@example.com", "manager-pass-2")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    let admin = cookie_from(
+        &login(&app, "admin@example.com", "admin-password-123")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+
+    // A creates year "I4" with subject "a-hci" in the dashboard.
+    let a_sid = own_subject(&app, &a, "a").await;
+    let a_key = send(&app, "POST", "/api/admin/api-keys", Some(&a),
+        Some(json!({ "name": "A's AI", "scopes": ["quizzes:write", "reviews:write"], "expires_in_days": 1 }))).await
+        .json["key"].as_str().unwrap().to_string();
+    let quiz = |slug: &str| {
+        json!({
+            "subject_slug": slug, "title": "From the AI",
+            "questions": [{ "prompt": "Q?", "answer_text": "A", "options": [{ "text": "A", "is_correct": true }, { "text": "B" }] }]
+        })
+    };
+
+    // The key sees which years it may use…
+    let years = send_key(&app, "GET", "/api/admin/years", &a_key, None).await;
+    assert_eq!(years.status, StatusCode::OK);
+    let mine: Vec<&serde_json::Value> = years
+        .json
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|y| y["can_manage"] == true)
+        .collect();
+    assert_eq!(mine.len(), 1);
+    assert_eq!(mine[0]["subjects"][0]["id"], a_sid);
+
+    // …adds content to A's own year…
+    let r = send_key(
+        &app,
+        "POST",
+        "/api/admin/quizzes/import",
+        &a_key,
+        Some(quiz("subject-a")),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::CREATED);
+    // …but not to a year A doesn't own (the admin-owned "General" with hci).
+    let r = send_key(
+        &app,
+        "POST",
+        "/api/admin/quizzes/import",
+        &a_key,
+        Some(quiz("hci")),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    assert_eq!(r.json["error"]["code"], "not_your_year");
+    assert!(
+        r.json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Year a")
+    );
+
+    // The AI can't create years or subjects, only a human in the dashboard.
+    let r = send_key(
+        &app,
+        "POST",
+        "/api/admin/years",
+        &a_key,
+        Some(json!({ "name": "AI year" })),
+    )
+    .await;
+    assert_eq!(r.json["error"]["code"], "api_key_not_allowed");
+    let r = send_key(
+        &app,
+        "POST",
+        "/api/admin/subjects",
+        &a_key,
+        Some(json!({ "year_id": 1, "name": "x", "slug": "x" })),
+    )
+    .await;
+    assert_eq!(r.json["error"]["code"], "api_key_not_allowed");
+
+    // B can't add content or subjects to A's year, nor change it.
+    let a_year = mine[0]["id"].as_i64().unwrap();
+    let r = send(&app, "POST", "/api/admin/quizzes", Some(&b),
+        Some(json!({ "subject_id": a_sid, "title": "B in A's year", "description": null, "cover_image_key": null }))).await;
+    assert_eq!(r.json["error"]["code"], "not_your_year");
+    let r = send(
+        &app,
+        "POST",
+        "/api/admin/subjects",
+        Some(&b),
+        Some(json!({ "year_id": a_year, "name": "B subject", "slug": "b-subject" })),
+    )
+    .await;
+    assert_eq!(r.json["error"]["code"], "owner_only");
+    let r = send(
+        &app,
+        "DELETE",
+        &format!("/api/admin/years/{a_year}"),
+        Some(&b),
+        None,
+    )
+    .await;
+    assert_eq!(r.json["error"]["code"], "owner_only");
+
+    // Admins may use and manage every year.
+    let r = send(&app, "POST", "/api/admin/quizzes", Some(&admin),
+        Some(json!({ "subject_id": a_sid, "title": "Admin in A's year", "description": null, "cover_image_key": null }))).await;
+    assert_eq!(r.status, StatusCode::CREATED);
+    let r = send(
+        &app,
+        "PUT",
+        &format!("/api/admin/years/{a_year}"),
+        Some(&admin),
+        Some(json!({ "name": "I4" })),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
     tdb.cleanup().await;
 }

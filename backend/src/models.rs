@@ -14,6 +14,9 @@ pub struct YearRow {
     pub name: String,
     pub description: Option<String>,
     pub sort_order: i32,
+    /// Owner (creator) of the year; not exposed publicly.
+    #[serde(skip)]
+    pub created_by: Option<i64>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }
@@ -21,7 +24,7 @@ pub struct YearRow {
 /// Column list for SELECTs (a macro so queries stay `&'static str` literals).
 macro_rules! year_columns {
     () => {
-        "id, slug, name, description, sort_order, created_at, updated_at"
+        "id, slug, name, description, sort_order, created_by, created_at, updated_at"
     };
 }
 pub(crate) use year_columns;
@@ -57,7 +60,7 @@ macro_rules! subject_columns {
 }
 pub(crate) use subject_columns;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SubjectDto {
     pub id: i64,
     pub year_id: i64,

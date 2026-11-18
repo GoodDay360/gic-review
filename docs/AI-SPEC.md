@@ -105,8 +105,10 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Manager API key page: create one key (shown once with copy button and curl examples), choose permissions and expiry, last-used time, regenerate, revoke
 - ✅ Managers (admin only): create, reset password, activate/deactivate, delete
 - ✅ API keys overview (admin only): every manager's keys with owner, prefix, scopes, dates and status; filter; revoke
-- ✅ Years (admin only): create, rename, reorder, delete when empty (`/admin/years`)
-- ✅ Subjects (admin only): create, edit (year, name, slug, description, color, order), delete when empty; dashboard subject pickers show `Year · Subject`
+- ✅ Years belong to their creator: any editor creates years in the dashboard ("Yours" / "Owned by …"), only the owner or an admin edits/deletes them; seeded "General" has no owner (admins only)
+- ✅ Years and subjects can only be created in the dashboard (API keys get `403 api_key_not_allowed`)
+- ✅ New quizzes/reviews only in subjects of years you own (`403 not_your_year` listing your years; admins: all); editing shared content is unaffected; `GET /admin/years` (works with API keys) shows `can_manage` per year
+- ✅ Subjects: managers create/edit/delete them in their own years, admins in all (year, name, slug, description, color, order; delete when empty); subject pickers show `Year · Subject` and only offer your own years for new content
 - ✅ "Clean up orphaned images" (admin only, on the Subjects page)
 - ✅ Frontend route guards per role, mirrored by the backend
 
@@ -148,7 +150,8 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 ```
 users               id, email UNIQUE, password_hash, display_name, role ENUM('admin','manager'),
                     is_active, created_by NULL → users (SET NULL), created_at, updated_at
-years               id, slug UNIQUE, name, description NULL, sort_order, created_at, updated_at
+years               id, slug UNIQUE, name, description NULL, sort_order, created_by NULL → users (SET NULL)
+                    (owner; NULL = admins only), created_at, updated_at
 subjects            id, year_id → years (RESTRICT), slug UNIQUE, name, description NULL, color (accent name), sort_order,
                     created_at, updated_at
 interactive_reviews id, subject_id → subjects (RESTRICT), title, slug (UNIQUE per subject), r2_key,
@@ -170,7 +173,7 @@ api_keys            id, user_id → users (CASCADE), name, key_prefix, key_hash 
 ```
 
 Migrations: `20261118000001_init_schema.sql`, `20261118000002_seed_hci_subject.sql`,
-`20261118000003_api_keys.sql`, `20261118000004_content_shares.sql`, `20261118000005_years.sql` (creates the default year "General"). R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
+`20261118000003_api_keys.sql`, `20261118000004_content_shares.sql`, `20261118000005_years.sql` (creates the default year "General"), `20261118000006_year_owners.sql`. R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
 `reviews/{subject_id}/{uuid}.html`.
 
 ## API endpoints (current, prefix `/api`)
@@ -200,8 +203,9 @@ or admin session only, **A-s** = admin session only, **any** = any session or AP
 | `DELETE /admin/api-keys/:id` (also `POST …/:id/revoke`) | M-s own / A-s any | |
 | `GET /admin/api-keys[?user_id=]` | A-s | all managers' keys |
 | `GET/POST /admin/users`, `PATCH/DELETE /admin/users/:id`, `POST …/:id/reset-password` | A-s | managers only |
-| `POST /admin/subjects`, `PUT/DELETE /admin/subjects/:id` | A-s | `year_id` required |
-| `POST /admin/years`, `PUT/DELETE /admin/years/:id` | A-s | delete refused (409) while the year has subjects |
+| `POST /admin/subjects`, `PUT/DELETE /admin/subjects/:id` | M-s | `year_id` required; only in years you own (admins: any) |
+| `GET /admin/years` | M (any scope) | every year with `owner_id`, `owner_name`, `can_manage`, `subjects` |
+| `POST /admin/years`, `PUT/DELETE /admin/years/:id` | M-s | create: you become owner; edit/delete: owner or admin; delete refused (409) while it has subjects |
 | `POST /admin/uploads/cleanup-orphans` | A-s | |
 
 All manager content endpoints only reach items the manager owns or that were shared with them
@@ -235,6 +239,9 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-18: Years belong to their creator; managers create years and subjects in the dashboard (never via
+  API keys) and can only add content to subjects of their own years (`403 not_your_year`). New
+  `GET /admin/years` (works with API keys) shows `can_manage`. Migration `0006_year_owners`.
 - 2026-11-18: Admins get every manager permission back: content creation, own API key, and owner
   rights on all content (`access: "admin"`). Extractors renamed `RequireEditor*` / `MaybeEditor`.
 - 2026-11-18: Years: students pick a year (I3, I4, custom names) before a subject. `years` table,

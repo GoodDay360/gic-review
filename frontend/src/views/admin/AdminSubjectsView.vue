@@ -1,22 +1,29 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+/**
+ * Subjects live inside years. You can add/edit subjects only in years you own (admins: all).
+ * Subjects can only be created here, never through the API.
+ */
+import { computed, onMounted, reactive, ref } from 'vue'
 
 import { api, errorMessage } from '@/api/client'
-import type { Subject, SubjectInput, Year } from '@/api/types'
+import type { Subject, SubjectInput } from '@/api/types'
+import { loadManagedYears, type ManagedYear } from '@/api/years'
 import AppIcon from '@/components/AppIcon.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
 import { useAsync } from '@/composables/useAsync'
 import { ACCENT_NAMES } from '@/stores/theme'
+import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 
 const toast = useToastStore()
-const { data: subjects, loading, run } = useAsync(() => api.get<Subject[]>('/subjects'), [])
-const years = ref<Year[]>([])
-onMounted(async () => {
-  years.value = await api.get<Year[]>('/years').catch(() => [])
-  run()
-})
+const auth = useAuthStore()
+const { data: years, loading, run } = useAsync(loadManagedYears, [] as ManagedYear[])
+onMounted(run)
+const subjects = computed<Subject[]>(() => years.value.flatMap((y) => y.subjects))
+/** Years you can add subjects to. */
+const myYears = computed(() => years.value.filter((y) => y.can_manage))
+const canManage = (s: Subject) => years.value.some((y) => y.id === s.year_id && y.can_manage)
 
 const editing = ref<Subject | 'new' | null>(null)
 const form = reactive<SubjectInput>({
@@ -31,7 +38,7 @@ let slugTouched = false
 
 function openNew() {
   Object.assign(form, {
-    year_id: years.value[0]?.id ?? 0,
+    year_id: myYears.value[0]?.id ?? 0,
     name: '',
     slug: '',
     description: '',
@@ -110,6 +117,7 @@ async function cleanupOrphans() {
       <h1 class="text-2xl font-bold text-ctp-text">Subjects</h1>
       <div class="flex flex-wrap gap-2">
         <button
+          v-if="auth.isAdmin"
           class="btn-secondary"
           :disabled="cleaning"
           title="Delete R2 files that no quiz, question, option or review uses (keeps files younger than 1 hour)"
@@ -118,7 +126,12 @@ async function cleanupOrphans() {
           <AppIcon name="trash" :size="16" />
           {{ cleaning ? 'Cleaning…' : 'Clean up orphaned images' }}
         </button>
-        <button class="btn-primary" @click="openNew">
+        <button
+          class="btn-primary"
+          :disabled="!myYears.length"
+          :title="myYears.length ? '' : 'Create a year first (Years page)'"
+          @click="openNew"
+        >
           <AppIcon name="plus" :size="16" /> New subject
         </button>
       </div>
@@ -141,10 +154,16 @@ async function cleanupOrphans() {
             order {{ s.sort_order }} · {{ s.quiz_count }} published quizzes
           </p>
         </div>
-        <button class="btn-ghost btn-sm" aria-label="Edit" @click="openEdit(s)">
+        <span v-if="!canManage(s)" class="text-xs text-ctp-overlay1">Not your year</span>
+        <button v-if="canManage(s)" class="btn-ghost btn-sm" aria-label="Edit" @click="openEdit(s)">
           <AppIcon name="pencil" :size="16" />
         </button>
-        <button class="btn-ghost btn-sm text-ctp-red" aria-label="Delete" @click="deleting = s">
+        <button
+          v-if="canManage(s)"
+          class="btn-ghost btn-sm text-ctp-red"
+          aria-label="Delete"
+          @click="deleting = s"
+        >
           <AppIcon name="trash" :size="16" />
         </button>
       </li>
@@ -159,10 +178,10 @@ async function cleanupOrphans() {
         <div>
           <label class="label" for="sj-year">Year</label>
           <select id="sj-year" v-model="form.year_id" class="input" required>
-            <option v-for="y in years" :key="y.id" :value="y.id">{{ y.name }}</option>
+            <option v-for="y in myYears" :key="y.id" :value="y.id">{{ y.name }}</option>
           </select>
-          <p v-if="!years.length" class="mt-1 text-xs text-ctp-yellow">
-            Create a year first (Dashboard → Years).
+          <p v-if="!myYears.length" class="mt-1 text-xs text-ctp-yellow">
+            Create a year first (Years page). You can only add subjects to your own years.
           </p>
         </div>
         <div>

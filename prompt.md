@@ -182,7 +182,7 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 
 ### 3.5 Staff area
 - `/login`: email + password login for admin/manager only. There is no public sign-up.
-- `/admin` is the dashboard. Everyone gets Quizzes, Bulk import, Interactive reviews and API key; admins additionally get Managers, All API keys, Years and Subjects).
+- `/admin` is the dashboard. Everyone gets Quizzes, Bulk import, Interactive reviews, Years, Subjects and API key; admins additionally get Managers and All API keys.
 - Content dashboard (**managers and admins**; admins see and manage everyone's content):
   - **Quizzes**: create, edit, delete, publish/unpublish quizzes; add, edit and reorder questions and options.
   - **Image inputs**: every image field (quiz cover, question, each option, flashcard back, explanation) uses a reusable `ImageUploader` component. It supports click-to-browse, **drag & drop**, and **paste from clipboard (Ctrl+V)**, which is handy for screenshots. It shows an upload progress bar, a preview thumbnail, an alt-text field, and Replace/Remove buttons.
@@ -193,8 +193,10 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
   - **API key** (`/admin/api-key`): a manager can create **one** personal API key (shown once, with a copy button and curl examples), choose its permissions (`quizzes:write`, `reviews:write`) and expiry (30/90/365 days or never), see when it was last used, **regenerate** it (the old key stops working immediately) or revoke it. Scripts and AI assistants send it as `Authorization: Bearer gic_…` to add quizzes and interactive reviews through the API.
 - `/admin/users` (**admin only**): create manager accounts, reset a manager's password, deactivate or delete managers.
 - `/admin/api-keys` (**admin only**): see every manager's API keys (owner, name, prefix, permissions, created/last used/expiry, status), filter by manager or status, and revoke any key. Admins cannot create API keys.
-- `/admin/years` (**admin only**): create, rename, reorder and delete years (name, link name/slug, description, order); a year can only be deleted when it has no subjects.
-- `/admin/subjects` (**admin only**): create and edit subjects (**year**, name, slug, description, icon/color, order), plus the "clean up orphaned images" maintenance action.
+- `/admin/years` (**managers and admins**): every editor can create years and **owns** the years they create ("Yours" badge; others show "Owned by …"). Only the owner (or an admin) can rename, reorder or delete a year (name, link name/slug, description, order); a year can only be deleted when it has no subjects. The seeded "General" year has no owner, so only admins manage it.
+- `/admin/subjects` (**managers and admins**): create and edit subjects (**year**, name, slug, description, icon/color, order) **in years you own** (admins: any year); other subjects are listed as "Not your year". The "clean up orphaned images" maintenance action is admin only.
+- **Years and subjects are created only in the dashboard**, by a human. There is no API path for API keys to create, edit or delete them (`403 api_key_not_allowed`), so an AI must ask the human to create a missing year or subject.
+- **New content only in your own years:** a manager (in the dashboard or with their API key) can only create quizzes/reviews in, or move them into, subjects of **years they own** (`403 not_your_year`, the message lists the caller's own years). Editing existing content shared with you is allowed regardless of whose year it is. Admins can use every year. Dashboard subject pickers for new content only offer subjects of your own years.
 - Route guards hide staff pages from users without the role, AND the backend enforces the same rules (never trust the frontend).
 
 ---
@@ -212,7 +214,9 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 | Preview unpublished quizzes they can manage | ❌ | ✅ | ✅ |
 | Create/regenerate/revoke **own** API key (max 1 active) | ❌ | ✅ | ✅ |
 | See and revoke **anyone's** API keys | ❌ | ❌ | ✅ |
-| Create/edit years and subjects, clean up orphaned images | ❌ | ❌ | ✅ |
+| Create years (becomes owner); create/edit subjects in **own** years (dashboard only) | ❌ | ✅ | ✅ (all years) |
+| Add new quizzes/reviews to subjects of **own** years (others: `403 not_your_year`) | ❌ | ✅ | ✅ (all years) |
+| Clean up orphaned images | ❌ | ❌ | ✅ |
 | Create/manage manager accounts | ❌ | ❌ | ✅ |
 
 - **Content ownership and sharing:** the owner of a quiz or interactive review is the manager who created it (`created_by`). Content is private to its owner in the manager area (others get `404`). The owner shares it with other active managers **by email**; shared managers can view, edit (questions, images, file) and publish it, in the dashboard or with their API key, but only the owner can delete it or add/remove people; a shared manager can remove themselves. Sharing is dashboard-only (API keys get `403`). When an owner account is deleted, each of their items goes to the manager it was shared with first; never-shared items stay online (if published) without an owner. Students are unaffected: published content is public.
@@ -243,7 +247,8 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 ```
 users              (id, email UNIQUE, password_hash, display_name, role ENUM('admin','manager'),
                     is_active BOOL, created_by NULL FK users, created_at, updated_at)
-years              (id, slug UNIQUE, name, description NULL, sort_order, created_at, updated_at)
+years              (id, slug UNIQUE, name, description NULL, sort_order, created_by NULL FK users ON DELETE SET NULL
+                    (= owner; NULL: admins only), created_at, updated_at)
 subjects           (id, year_id FK years ON DELETE RESTRICT, slug UNIQUE, name, description, color, sort_order,
                     created_at, updated_at)
 interactive_reviews(id, subject_id FK, title, slug, r2_key, sort_order, is_published,
@@ -322,17 +327,19 @@ Managers and admins ("editors"), via session cookie **or** API key (`Authorizati
 - `POST /admin/uploads/image` (multipart, optional `quiz_id`), which returns `{ key, url }` (`quizzes:write` or `reviews:write`)
 - `DELETE /admin/uploads/image/:key` (`quizzes:write` or `reviews:write`)
 - `GET /admin/reviews[?subject_id=]`, `GET /admin/reviews/:id`, `POST/PUT/DELETE /admin/reviews[/:id]` (multipart `.html` upload) (`reviews:write`)
+- `GET /admin/years` (any scope): every year with `owner_id`, `owner_name`, `can_manage` (true = you may add content to its subjects) and its `subjects`, so API clients know where they may add content
+- Creating content, or moving it to another subject, requires owning that subject's year (`403 not_your_year`; admins: any year)
 - All of the above only for content the user owns or that was shared with them (`404` otherwise; admins reach all content); `DELETE` of a quiz or review is owner-only (`403 owner_only`; admins count as owner). List endpoints return `access` (`owner`/`shared`), `owner_id`, `owner_name`, `share_count`.
 
 Managers and admins, dashboard session only (never with an API key):
 - `GET /admin/quizzes/:id/shares`, `POST /admin/quizzes/:id/shares` (`{ email }`, owner only), `DELETE /admin/quizzes/:id/shares/:user_id` (owner, or yourself to leave); the same three under `/admin/reviews/:id/shares`
+- `POST /admin/years` (creator = owner), `PUT/DELETE /admin/years/:id` (owner or admin; `{ name, slug?, description?, sort_order }`; slug derived from the name when empty; a year with subjects can't be deleted → 409)
+- `POST/PUT/DELETE /admin/subjects[/:id]` (subjects require `year_id`; owner of the year, or admin)
 - `GET /admin/api-keys/mine`, `POST /admin/api-keys` (`{ name, scopes, expires_in_days | null, replace_existing }` → `{ key, api_key }`, the key is shown only in this response), `DELETE /admin/api-keys/:id` (own key)
 
 Admin only, dashboard session only:
 - `GET/POST /admin/users`, `PATCH /admin/users/:id` (active flag, display name), `POST /admin/users/:id/reset-password`, `DELETE /admin/users/:id`
 - `GET /admin/api-keys[?user_id=]` (all managers' keys), `DELETE /admin/api-keys/:id` (revoke any key)
-- `POST/PUT/DELETE /admin/subjects[/:id]` (subjects require `year_id`)
-- `POST/PUT/DELETE /admin/years[/:id]` (`{ name, slug?, description?, sort_order }`; slug derived from the name when empty; a year with subjects can't be deleted → 409)
 - `POST /admin/uploads/cleanup-orphans`
 
 ---

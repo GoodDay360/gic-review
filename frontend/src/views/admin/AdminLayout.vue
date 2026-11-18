@@ -6,18 +6,19 @@ import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
 
-// Everyone gets the content pages; admins also get account, key, year and subject management.
+// Everyone gets content, years (their own), subjects (in their years) and their API key;
+// admins also manage accounts and everyone's API keys.
 const links = computed(() => [
   { to: '/admin/quizzes', label: 'Quizzes', icon: 'list-check' },
   { to: '/admin/import', label: 'Bulk import', icon: 'import' },
   { to: '/admin/reviews', label: 'Interactive reviews', icon: 'book' },
+  { to: '/admin/years', label: 'Years', icon: 'calendar' },
+  { to: '/admin/subjects', label: 'Subjects', icon: 'folder' },
   { to: '/admin/api-key', label: 'API key', icon: 'key' },
   ...(auth.isAdmin
     ? [
         { to: '/admin/users', label: 'Managers', icon: 'users' },
         { to: '/admin/api-keys', label: 'All API keys', icon: 'key' },
-        { to: '/admin/years', label: 'Years', icon: 'calendar' },
-        { to: '/admin/subjects', label: 'Subjects', icon: 'folder' },
       ]
     : []),
 ])

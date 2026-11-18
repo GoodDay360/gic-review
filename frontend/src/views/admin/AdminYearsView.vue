@@ -1,21 +1,27 @@
 <script setup lang="ts">
-/** Admin: years group subjects (e.g. "I3", "I4" or any custom name). Students pick a year first. */
+/**
+ * Years group subjects (e.g. "I3", "I4" or any custom name). Students pick a year first.
+ * Any editor can create a year (they own it); only its owner or an admin can change it.
+ * New quizzes/reviews can only go into subjects of years you own.
+ */
 import { onMounted, reactive, ref } from 'vue'
 
 import { api, errorMessage } from '@/api/client'
-import type { Year } from '@/api/types'
+import { loadManagedYears, type ManagedYear } from '@/api/years'
 import AppIcon from '@/components/AppIcon.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
 import { useAsync } from '@/composables/useAsync'
+import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 
 const toast = useToastStore()
-const { data: years, loading, run } = useAsync(() => api.get<Year[]>('/years'), [])
+const auth = useAuthStore()
+const { data: years, loading, run } = useAsync(loadManagedYears, [] as ManagedYear[])
 onMounted(run)
 
-const editing = ref<Year | 'new' | null>(null)
+const editing = ref<ManagedYear | 'new' | null>(null)
 const form = reactive({ name: '', slug: '', description: '', sort_order: 0 })
 let slugTouched = false
 
@@ -31,7 +37,7 @@ function openNew() {
   slugTouched = false
   editing.value = 'new'
 }
-function openEdit(y: Year) {
+function openEdit(y: ManagedYear) {
   Object.assign(form, {
     name: y.name,
     slug: y.slug,
@@ -63,7 +69,7 @@ async function save() {
   }
 }
 
-const deleting = ref<Year | null>(null)
+const deleting = ref<ManagedYear | null>(null)
 async function confirmDelete() {
   if (!deleting.value) return
   try {
@@ -87,8 +93,10 @@ async function confirmDelete() {
     </div>
     <p class="max-w-2xl text-sm text-ctp-subtext0">
       Students choose a year first (e.g. <strong>I3</strong>, <strong>I4</strong> or any name you
-      like), then a subject of that year. Every subject belongs to one year; set it on the Subjects
-      page.
+      like), then a subject of that year. A year belongs to whoever created it: only you (and
+      admins) can change your years, add subjects to them, and add quizzes or reviews to their
+      subjects, in the dashboard or with your API key. Years can only be created here, never through
+      the API.
     </p>
 
     <div v-if="loading" class="space-y-2">
@@ -108,17 +116,31 @@ async function confirmDelete() {
           {{ y.name.slice(0, 4) }}
         </span>
         <div class="min-w-0 flex-1">
-          <p class="font-medium text-ctp-text">{{ y.name }}</p>
+          <p class="flex flex-wrap items-center gap-2 font-medium text-ctp-text">
+            {{ y.name }}
+            <span
+              v-if="y.can_manage && y.owner_id === auth.user?.id"
+              class="rounded-full bg-ctp-green/15 px-2 py-0.5 text-[11px] font-medium text-ctp-green"
+              >Yours</span
+            >
+            <span
+              v-else
+              class="rounded-full bg-ctp-surface0 px-2 py-0.5 text-[11px] text-ctp-subtext0"
+            >
+              {{ y.owner_name ? `Owned by ${y.owner_name}` : 'No owner (admins only)' }}
+            </span>
+          </p>
           <p class="text-xs text-ctp-subtext0">
             /years/{{ y.slug }} · order {{ y.sort_order }} · {{ y.subject_count }} subject{{
               y.subject_count === 1 ? '' : 's'
             }}
           </p>
         </div>
-        <button class="btn-ghost btn-sm" aria-label="Edit" @click="openEdit(y)">
+        <button v-if="y.can_manage" class="btn-ghost btn-sm" aria-label="Edit" @click="openEdit(y)">
           <AppIcon name="pencil" :size="16" />
         </button>
         <button
+          v-if="y.can_manage"
           class="btn-ghost btn-sm text-ctp-red"
           aria-label="Delete"
           :disabled="y.subject_count > 0"

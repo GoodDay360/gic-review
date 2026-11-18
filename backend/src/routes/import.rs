@@ -10,7 +10,7 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
-    access::Actor,
+    access::{self, Actor},
     auth::{QuizManager, RequireEditor},
     error::{AppError, AppResult},
     extract::AppJson,
@@ -216,6 +216,7 @@ async fn import_quiz(
     if subject_exists.is_none() {
         return Err(AppError::Validation("subject_id: subject not found".into()));
     }
+    access::check_can_add_to_subject(&state.db, Actor::of(&user), subject_id).await?;
     let title = body.title.trim().to_string();
     if title.is_empty() || title.chars().count() > 200 {
         return Err(AppError::Validation(

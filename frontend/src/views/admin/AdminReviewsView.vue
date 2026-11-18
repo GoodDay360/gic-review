@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 
 import { api, errorMessage, uploadWithProgress } from '@/api/client'
+import { addableSubjects, loadManagedYears, subjectsForEdit, type ManagedYear } from '@/api/years'
 import type { Review, Subject } from '@/api/types'
 import OwnershipBadge from '@/components/admin/OwnershipBadge.vue'
 import ShareDialog from '@/components/admin/ShareDialog.vue'
@@ -12,15 +13,23 @@ import SkeletonBlock from '@/components/SkeletonBlock.vue'
 import { useToastStore } from '@/stores/toast'
 
 const toast = useToastStore()
-const subjects = ref<Subject[]>([])
+const years = ref<ManagedYear[]>([])
+/** Every subject (for labels in the list). */
+const subjects = computed<Subject[]>(() => years.value.flatMap((y) => y.subjects))
+/** Subjects offered in the form: addable ones (+ the review's current subject when editing). */
+const formSubjects = computed<Subject[]>(() =>
+  editing.value && editing.value !== 'new'
+    ? subjectsForEdit(years.value, editing.value.subject_id)
+    : addableSubjects(years.value),
+)
 const reviews = ref<Review[]>([])
 const loading = ref(true)
 
 async function load() {
   loading.value = true
   try {
-    ;[subjects.value, reviews.value] = await Promise.all([
-      api.get<Subject[]>('/subjects'),
+    ;[years.value, reviews.value] = await Promise.all([
+      loadManagedYears(),
       api.get<Review[]>('/admin/reviews'),
     ])
   } catch (err) {
@@ -41,7 +50,7 @@ const progress = ref<number | null>(null)
 
 function openNew() {
   Object.assign(form, {
-    subject_id: subjects.value[0]?.id ?? 0,
+    subject_id: addableSubjects(years.value)[0]?.id ?? 0,
     title: '',
     slug: '',
     sort_order: 0,
@@ -193,7 +202,7 @@ async function confirmDelete() {
         <div>
           <label class="label" for="rv-subject">Subject</label>
           <select id="rv-subject" v-model="form.subject_id" class="input">
-            <option v-for="s in subjects" :key="s.id" :value="s.id">
+            <option v-for="s in formSubjects" :key="s.id" :value="s.id">
               {{ s.year_name }} · {{ s.name }}
             </option>
           </select>

@@ -1,4 +1,5 @@
-//! Admin-only subject management.
+//! Subject management (dashboard only): editors manage subjects in years they own;
+//! admins manage every subject.
 
 use axum::{
     Json, Router,
@@ -9,7 +10,8 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
-    auth::RequireAdmin,
+    access::{self, Actor},
+    auth::RequireEditorSession,
     error::{AppError, AppResult},
     extract::AppJson,
     models::SubjectDto,
@@ -76,13 +78,21 @@ async fn find(state: &AppState, id: i64) -> AppResult<SubjectDto> {
         .ok_or(AppError::NotFound("subject"))
 }
 
+/// Editors create subjects in years they own (admins: any year). Dashboard only.
 async fn create_subject(
-    _admin: RequireAdmin,
+    RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     AppJson(body): AppJson<SubjectInput>,
 ) -> AppResult<(StatusCode, Json<SubjectDto>)> {
     let body = body.normalize()?;
     ensure_year(&state, body.year_id).await?;
+    access::require_year(
+        &state.db,
+        Actor::of(&user),
+        body.year_id,
+        "add subjects to this year",
+    )
+    .await?;
     let res = sqlx::query(
         "INSERT INTO subjects (year_id, slug, name, description, color, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
     )
@@ -101,14 +111,24 @@ async fn create_subject(
 }
 
 async fn update_subject(
-    _admin: RequireAdmin,
+    RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     AppJson(body): AppJson<SubjectInput>,
 ) -> AppResult<Json<SubjectDto>> {
     let body = body.normalize()?;
-    find(&state, id).await?;
+    let current = find(&state, id).await?;
     ensure_year(&state, body.year_id).await?;
+    let actor = Actor::of(&user);
+    // Owner rights on the subject's current year, and on the new one if it moves.
+    access::require_year(&state.db, actor, current.year_id, "change this subject").await?;
+    access::require_year(
+        &state.db,
+        actor,
+        body.year_id,
+        "move subjects into this year",
+    )
+    .await?;
     sqlx::query(
         "UPDATE subjects SET year_id = ?, slug = ?, name = ?, description = ?, color = ?, sort_order = ? WHERE id = ?",
     )
@@ -125,11 +145,18 @@ async fn update_subject(
 }
 
 async fn delete_subject(
-    _admin: RequireAdmin,
+    RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<StatusCode> {
-    find(&state, id).await?;
+    let current = find(&state, id).await?;
+    access::require_year(
+        &state.db,
+        Actor::of(&user),
+        current.year_id,
+        "delete this subject",
+    )
+    .await?;
     // FK RESTRICT: fails with 409 if quizzes or reviews still belong to the subject.
     sqlx::query("DELETE FROM subjects WHERE id = ?")
         .bind(id)

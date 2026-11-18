@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 
 import { discardUpload } from '@/api/admin'
 import { api, errorMessage } from '@/api/client'
+import { loadManagedYears, subjectsForEdit } from '@/api/years'
 import type { Question, QuizDetail, Subject } from '@/api/types'
 import ImageUploader from '@/components/admin/ImageUploader.vue'
 import QuestionEditor from '@/components/admin/QuestionEditor.vue'
@@ -48,9 +49,9 @@ async function load() {
   try {
     const [q, s] = await Promise.all([
       api.get<QuizDetail>(`/admin/quizzes/${props.id}`),
-      api.get<Subject[]>('/subjects'),
+      loadManagedYears(),
     ])
-    subjects.value = s
+    subjects.value = subjectsForEdit(s, q.subject_id)
     setQuiz(q)
   } catch (err) {
     toast.error(errorMessage(err))

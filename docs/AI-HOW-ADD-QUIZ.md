@@ -56,13 +56,13 @@ Full URL = `BASE` + path. `{id}` = a quiz id, `{qid}` = a question id.
 | 13 | `DELETE` | `/admin/quizzes/{id}` | yes | delete a whole quiz (owner only; **ask the human first**) |
 | 14 | `DELETE` | `/admin/uploads/image/{key}` | yes | delete an uploaded image you didn't end up using |
 | 15 | `GET` | `/subjects/{slug}/quizzes` | no | see what students see (published quizzes only) |
-| 16 | `GET` | `/years` | no | list the years (`I3`, `I4`, …) with their `slug` |
+| 16 | `GET` | `/admin/years` | yes | **list years and their subjects, with `can_manage`** (where you may add content) |
 
-**Most jobs only need #1, #2, #3, #5 (if there are images) and #6.**
+**Most jobs only need #1, #16, #3, #5 (if there are images) and #6.**
 
 Don't call anything else under `/admin/…` (users, subjects, API keys, sharing). Those are for
-humans in the dashboard and refuse API keys (`403 api_key_not_allowed`). There is no endpoint to
-create subjects: if the subject you need is missing, ask the human.
+humans in the dashboard and refuse API keys (`403 api_key_not_allowed`). You can't create
+years or subjects either: a human does that in the dashboard. If what you need is missing, ask.
 
 **What your key can reach:** it acts as the person who made it. You see and edit quizzes they own
 or that another manager shared with them; others return `404`. On a shared quiz you can edit and
@@ -80,20 +80,26 @@ curl -H "Authorization: Bearer $KEY" $BASE/auth/me
 ```
 Expect `"role"` `"manager"` or `"admin"`, and `"quizzes:write"` in `"api_key_scopes"`.
 
-**Step 2. Find the subject** (#2)
+**Step 2. Find a subject you may add to** (#16)
 
 ```bash
-curl $BASE/subjects
-# [ { "id": 1, "slug": "hci", "name": "Human Computer Interaction",
-#     "year_id": 1, "year_slug": "i4", "year_name": "I4", … } ]
+curl -H "Authorization: Bearer $KEY" $BASE/admin/years
+# [ { "id": 3, "name": "I4", "slug": "i4", "can_manage": true, "owner_name": "Dara",
+#      "subjects": [ { "id": 7, "slug": "hci-i4", "name": "Human Computer Interaction", … } ] },
+#   { "id": 1, "name": "General", "can_manage": false, "subjects": [ … ] } ]
 ```
-Use the `slug` (`"hci"`) of the subject **in the right year**. Not there? Stop and ask the human.
+Only use years with `"can_manage": true`, and take the subject's `slug` from their `subjects`.
 
-**Years:** subjects are grouped by **year** (e.g. `I3`, `I4`, or custom names like "Very Cool Year").
-Every subject has `year_name` and `year_slug`. When the human says e.g. *"I4 HCI"*, pick the subject
-whose `year_name` is `I4` and whose name matches. `GET /years` lists the years and
-`GET /subjects?year=<year_slug>` lists one year's subjects. Two years can have similarly named subjects,
-so always check the year. Subject `slug`s are unique across all years.
+**Years and subjects: the rules**
+- Subjects are grouped by **year** (e.g. `I3`, `I4`, or custom names like "Very Cool Year").
+- Each year **belongs to a person**. You can only add content to subjects of years that belong to
+  the key's owner (`"can_manage": true`). Anything else is refused with `403 not_your_year` (the
+  message lists your years). Admin keys may use every year.
+- **You cannot create, rename or delete years or subjects.** A human does that in the dashboard
+  (Years / Subjects pages). If the year or subject you need doesn't exist, or isn't yours, **stop and
+  ask the human** to create it (or to tell you which existing one to use).
+- When the human says e.g. *"I4 HCI"*, pick the subject named like "HCI" inside your year named
+  "I4". Two years can have similarly named subjects, so always check the year.
 
 **Step 3. Check what already exists** (#3)
 
@@ -201,8 +207,10 @@ shared quizzes). Never do this without the human's explicit request.
 ### #15 `GET /subjects/{slug}/quizzes` (no key)
 What students see: published quizzes of the subject.
 
-### #16 `GET /years` (no key)
-Response `200`: array of `{ "id", "slug", "name", "description", "sort_order", "subject_count" }`.
+### #16 `GET /admin/years`
+Response `200`: array of years, each with `{ "id", "slug", "name", "description", "sort_order", "subject_count", "owner_id", "owner_name", "can_manage", "subjects": [ … ] }`.
+`can_manage: true` = the year belongs to you (or you're an admin): you may add content to its subjects.
+The public `GET /years` and `GET /years/{year_slug}` (no key) show the same years without ownership.
 `GET /years/{year_slug}` returns one year plus its `subjects` array.
 
 ### The quiz object (returned by #4, #6–#12)
@@ -387,6 +395,7 @@ Errors look like `{ "error": { "code": "…", "message": "…" } }`. The `messag
 | 401 | `unauthorized` | Key missing/wrong/expired/revoked → ask the human for a new key. |
 | 403 | `missing_scope` | Key lacks `quizzes:write` → ask for a key with that permission. |
 | 403 | `owner_only` | Only the quiz's owner can do that (e.g. delete a shared quiz). |
+| 403 | `not_your_year` | That subject's year isn't yours → use a subject from a year with `can_manage: true` (#16), or ask the human. |
 | 403 | `api_key_not_allowed` | You called a dashboard-only endpoint; don't. |
 | 404 | `not_found` | Wrong id, or not your quiz. |
 | 409 | `conflict` | Something is still in use / duplicate. |

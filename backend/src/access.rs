@@ -6,6 +6,8 @@
 //! - Only the owner may delete it or change who it is shared with.
 //! - **Admins** have the owner's rights on every item (`access: "admin"`).
 //! - Managers without access get `404` (they don't learn that the item exists).
+//! - **Years** belong to their creator. A manager may only *add* content to (or move content
+//!   into) subjects of years they own (`403 not_your_year`); admins may use every year.
 //!
 //! Students are unaffected: published content is public.
 
@@ -197,4 +199,66 @@ pub async fn accessible(
             ))
         })
         .collect())
+}
+
+// ---------- Years ----------
+
+/// Owner rights on a year (edit/delete it, manage its subjects, add content to them).
+pub fn can_manage_year(actor: Actor, year_owner: Option<i64>) -> bool {
+    actor.is_admin || year_owner == Some(actor.id)
+}
+
+/// Require owner rights on a year (`404` if it doesn't exist, `403 owner_only` otherwise).
+pub async fn require_year(db: &MySqlPool, actor: Actor, year_id: i64, what: &str) -> AppResult<()> {
+    let row: Option<(Option<i64>,)> = sqlx::query_as("SELECT created_by FROM years WHERE id = ?")
+        .bind(year_id)
+        .fetch_optional(db)
+        .await?;
+    let (owner,) = row.ok_or(AppError::NotFound("year"))?;
+    if can_manage_year(actor, owner) {
+        Ok(())
+    } else {
+        Err(AppError::OwnerOnly(what.to_string()))
+    }
+}
+
+/// Content may only be added to (or moved into) subjects of years the actor owns; admins may
+/// use every year. The error lists the actor's own years so an API client knows its options.
+pub async fn check_can_add_to_subject(
+    db: &MySqlPool,
+    actor: Actor,
+    subject_id: i64,
+) -> AppResult<()> {
+    if actor.is_admin {
+        return Ok(());
+    }
+    let row: Option<(Option<i64>, String)> = sqlx::query_as(
+        "SELECT y.created_by, y.name FROM subjects s JOIN years y ON y.id = s.year_id WHERE s.id = ?",
+    )
+    .bind(subject_id)
+    .fetch_optional(db)
+    .await?;
+    let (owner, year_name) = row.ok_or(AppError::NotFound("subject"))?;
+    if owner == Some(actor.id) {
+        return Ok(());
+    }
+    let mine: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM years WHERE created_by = ? ORDER BY sort_order, name")
+            .bind(actor.id)
+            .fetch_all(db)
+            .await?;
+    let mine = if mine.is_empty() {
+        "you don't own any year yet; create one in the dashboard (Years)".to_string()
+    } else {
+        format!(
+            "your years: {}",
+            mine.into_iter()
+                .map(|(n,)| n)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    Err(AppError::NotYourYear(format!(
+        "you can only add content to subjects of years you own; \"{year_name}\" is not yours ({mine})"
+    )))
 }

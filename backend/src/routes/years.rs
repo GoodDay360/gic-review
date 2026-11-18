@@ -1,18 +1,22 @@
 //! Years ("I3", "I4", or any custom name) group subjects. Students pick a year first.
 //!
-//! Public:  `GET /years`, `GET /years/{slug}` (the year and its subjects)
-//! Admin:   `POST /admin/years`, `PUT/DELETE /admin/years/{id}` (dashboard session only)
+//! - Public: `GET /years`, `GET /years/{slug}` (the year and its subjects)
+//! - Editors (session or API key): `GET /admin/years`: every year with its owner, subjects and
+//!   `can_manage` (true = you own it or are an admin: you may add content to its subjects)
+//! - Dashboard only (never with an API key): `POST /admin/years` (the creator becomes the
+//!   owner), `PUT/DELETE /admin/years/{id}` (owner or admin)
 
 use axum::{
     Json, Router,
     extract::{Path, State},
     http::StatusCode,
-    routing::{get, post, put},
+    routing::{get, put},
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    auth::RequireAdmin,
+    access::{self, Actor},
+    auth::{ContentManager, RequireEditor, RequireEditorSession},
     error::{AppError, AppResult},
     extract::AppJson,
     models::{SubjectDto, YearDto, YearRow, year_columns},
@@ -25,7 +29,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/years", get(list_years))
         .route("/years/{slug}", get(get_year))
-        .route("/admin/years", post(create_year))
+        .route("/admin/years", get(list_managed_years).post(create_year))
         .route("/admin/years/{id}", put(update_year).delete(delete_year))
 }
 
@@ -78,6 +82,56 @@ async fn get_year(
     Ok(Json(YearWithSubjects { year, subjects }))
 }
 
+/// A year as seen in the dashboard and by API clients.
+#[derive(Debug, Serialize)]
+struct ManagedYear {
+    #[serde(flatten)]
+    year: YearDto,
+    owner_id: Option<i64>,
+    owner_name: Option<String>,
+    /// You own this year (or are an admin): you may add content to its subjects and edit it.
+    can_manage: bool,
+    subjects: Vec<SubjectDto>,
+}
+
+async fn list_managed_years(
+    RequireEditor(user, _): ContentManager,
+    State(state): State<AppState>,
+) -> AppResult<Json<Vec<ManagedYear>>> {
+    let actor = Actor::of(&user);
+    let owners: Vec<(i64, Option<String>)> = sqlx::query_as(
+        "SELECT y.id, u.display_name FROM years y LEFT JOIN users u ON u.id = y.created_by",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    let subjects = all_subjects(&state).await?;
+    let years = years_with_counts(&state).await?;
+    Ok(Json(
+        years
+            .into_iter()
+            .map(|year| {
+                let owner_id = year.year.created_by;
+                let owner_name = owners
+                    .iter()
+                    .find(|(id, _)| *id == year.year.id)
+                    .and_then(|(_, n)| n.clone());
+                let subjects = subjects
+                    .iter()
+                    .filter(|s| s.year_id == year.year.id)
+                    .cloned()
+                    .collect();
+                ManagedYear {
+                    can_manage: access::can_manage_year(actor, owner_id),
+                    owner_id,
+                    owner_name,
+                    subjects,
+                    year,
+                }
+            })
+            .collect(),
+    ))
+}
+
 #[derive(Debug, Deserialize)]
 struct YearInput {
     name: String,
@@ -116,20 +170,23 @@ async fn load(state: &AppState, id: i64) -> AppResult<YearDto> {
         .ok_or(AppError::NotFound("year"))
 }
 
+/// Any editor (manager or admin) can create a year; they become its owner.
 async fn create_year(
-    _admin: RequireAdmin,
+    RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     AppJson(body): AppJson<YearInput>,
 ) -> AppResult<(StatusCode, Json<YearDto>)> {
     let (name, slug, description, sort_order) = body.normalize()?;
-    let res =
-        sqlx::query("INSERT INTO years (slug, name, description, sort_order) VALUES (?, ?, ?, ?)")
-            .bind(&slug)
-            .bind(&name)
-            .bind(&description)
-            .bind(sort_order)
-            .execute(&state.db)
-            .await?;
+    let res = sqlx::query(
+        "INSERT INTO years (slug, name, description, sort_order, created_by) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(&slug)
+    .bind(&name)
+    .bind(&description)
+    .bind(sort_order)
+    .bind(user.id)
+    .execute(&state.db)
+    .await?;
     Ok((
         StatusCode::CREATED,
         Json(load(&state, res.last_insert_id() as i64).await?),
@@ -137,12 +194,12 @@ async fn create_year(
 }
 
 async fn update_year(
-    _admin: RequireAdmin,
+    RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     AppJson(body): AppJson<YearInput>,
 ) -> AppResult<Json<YearDto>> {
-    load(&state, id).await?;
+    access::require_year(&state.db, Actor::of(&user), id, "change this year").await?;
     let (name, slug, description, sort_order) = body.normalize()?;
     sqlx::query(
         "UPDATE years SET slug = ?, name = ?, description = ?, sort_order = ? WHERE id = ?",
@@ -158,10 +215,11 @@ async fn update_year(
 }
 
 async fn delete_year(
-    _admin: RequireAdmin,
+    RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<StatusCode> {
+    access::require_year(&state.db, Actor::of(&user), id, "delete this year").await?;
     let year = load(&state, id).await?;
     if year.subject_count > 0 {
         return Err(AppError::Conflict(

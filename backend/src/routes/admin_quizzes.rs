@@ -315,6 +315,7 @@ async fn create_quiz(
 ) -> AppResult<(StatusCode, Json<ManagedQuiz>)> {
     let body = body.normalize()?;
     ensure_subject(&state, body.subject_id).await?;
+    access::check_can_add_to_subject(&state.db, Actor::of(&user), body.subject_id).await?;
     // New quizzes always start unpublished.
     let res = sqlx::query(
         "INSERT INTO quizzes (subject_id, title, description, cover_image_key, is_published, created_by) \
@@ -343,6 +344,9 @@ async fn update_quiz(
     let body = body.normalize()?;
     let existing = load_quiz(&state, id, Actor::of(&user)).await?;
     ensure_subject(&state, body.subject_id).await?;
+    if body.subject_id != existing.summary.subject_id {
+        access::check_can_add_to_subject(&state.db, Actor::of(&user), body.subject_id).await?;
+    }
     sqlx::query(
         "UPDATE quizzes SET subject_id = ?, title = ?, description = ?, cover_image_key = ? WHERE id = ?",
     )

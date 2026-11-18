@@ -232,6 +232,7 @@ async fn create_review(
     if exists.is_none() {
         return Err(AppError::Validation("subject_id: subject not found".into()));
     }
+    access::check_can_add_to_subject(&state.db, Actor::of(&user), subject_id).await?;
 
     let key = format!("reviews/{subject_id}/{}.html", uuid::Uuid::new_v4());
     state
@@ -276,6 +277,11 @@ async fn update_review(
     access::require(&state.db, Content::Review, id, Actor::of(&user)).await?;
     let existing = load(&state, id).await?;
     let form = parse_form(&state, multipart).await?;
+    if let Some(subject_id) = form.subject_id
+        && subject_id != existing.subject_id
+    {
+        access::check_can_add_to_subject(&state.db, Actor::of(&user), subject_id).await?;
+    }
 
     if let Some(html) = form.html {
         state

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { api, errorMessage } from '@/api/client'
+import { addableSubjects, loadManagedYears, type ManagedYear } from '@/api/years'
 import type { QuizDetail, QuizSummary, Subject } from '@/api/types'
 import OwnershipBadge from '@/components/admin/OwnershipBadge.vue'
 import ShareDialog from '@/components/admin/ShareDialog.vue'
@@ -19,6 +20,9 @@ const toast = useToastStore()
 
 const subjectFilter = ref<number | ''>('')
 const subjects = ref<Subject[]>([])
+const years = ref<ManagedYear[]>([])
+/** New quizzes may only go into subjects of years you own (admins: any). */
+const addable = computed(() => addableSubjects(years.value))
 const {
   data: quizzes,
   loading,
@@ -32,7 +36,8 @@ const {
 )
 
 onMounted(async () => {
-  subjects.value = await api.get<Subject[]>('/subjects').catch(() => [])
+  years.value = await loadManagedYears().catch(() => [])
+  subjects.value = years.value.flatMap((y) => y.subjects)
   run()
 })
 
@@ -42,7 +47,7 @@ const subjectName = computed(() => new Map(subjects.value.map((s) => [s.id, s.na
 const creating = ref(false)
 const newQuiz = ref({ subject_id: 0, title: '', description: '' })
 function openCreate() {
-  newQuiz.value = { subject_id: subjects.value[0]?.id ?? 0, title: '', description: '' }
+  newQuiz.value = { subject_id: addable.value[0]?.id ?? 0, title: '', description: '' }
   creating.value = true
 }
 async function create() {
@@ -90,7 +95,12 @@ async function confirmDelete() {
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-2xl font-bold text-ctp-text">Quizzes</h1>
       <div class="flex flex-wrap gap-2">
-        <button class="btn-primary" :disabled="!subjects.length" @click="openCreate">
+        <button
+          class="btn-primary"
+          :disabled="!addable.length"
+          :title="addable.length ? '' : 'Create a year and a subject first (Years / Subjects)'"
+          @click="openCreate"
+        >
           <AppIcon name="plus" :size="16" /> New quiz
         </button>
       </div>
@@ -188,7 +198,7 @@ async function confirmDelete() {
         <div>
           <label class="label" for="nq-subject">Subject</label>
           <select id="nq-subject" v-model="newQuiz.subject_id" class="input" required>
-            <option v-for="s in subjects" :key="s.id" :value="s.id">
+            <option v-for="s in addable" :key="s.id" :value="s.id">
               {{ s.year_name }} · {{ s.name }}
             </option>
           </select>

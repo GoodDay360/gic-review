@@ -259,7 +259,9 @@ mod tests {
 
     #[test]
     fn rejects_extension_mismatch_and_resizes() {
-        let img = image::DynamicImage::new_rgb8(2000, 1000);
+        let original_width = 2000;
+        let original_height = 1000;
+        let img = image::DynamicImage::new_rgb8(original_width, original_height);
         let mut buf = Cursor::new(Vec::new());
         img.write_to(&mut buf, ImageFormat::Png).unwrap();
         let bytes = buf.into_inner();
@@ -268,8 +270,11 @@ mod tests {
 
         let out = process(bytes, Some("photo.png")).unwrap();
         let decoded = image::load_from_memory(&out.bytes).unwrap();
+        let expected_height = ((original_height as f64 * MAX_WIDTH as f64 / original_width as f64)
+            .round() as u32)
+            .max(1);
         assert_eq!(decoded.width(), MAX_WIDTH);
-        assert_eq!(decoded.height(), 800);
+        assert_eq!(decoded.height(), expected_height);
     }
 
     #[test]

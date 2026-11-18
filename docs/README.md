@@ -29,14 +29,18 @@ The AI must be able to read the two guides. Either:
 Attach your PDFs (and the two guides), then send:
 
 ```text
-Read the attached PDF files and use them to create a quiz and an interactive review in
-GIC Review. Follow the attached instructions (AI-HOW-ADD-QUIZ.md and
-AI-HOW-ADD-INTERACTIVE-REVIEW.md) exactly.
-
 API base URL: https://gic-review.onrender.com/api
 API key: <your-api-key>
 Year: <year-slug>        (e.g. i4)
 Subject: <subject-slug>  (e.g. hci)
+
+Read the attached PDF files and use them to create a quiz and an interactive review in
+GIC Review. 
+
+Follow the attached instructions from:
+https://github.com/GoodDay360/gic-review/blob/main/docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md
+https://github.com/GoodDay360/gic-review/blob/main/docs/AI-HOW-ADD-QUIZ.md
+
 
 - Write the quiz and the review in English.
 - Keep everything unpublished (draft). I will review it and publish it myself.

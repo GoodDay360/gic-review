@@ -14,8 +14,14 @@ const { data: users, loading, run } = useAsync(() => api.get<User[]>('/admin/use
 onMounted(run)
 
 const creating = ref(false)
+const saving = ref(false)
+const togglingId = ref<number | null>(null)
+const resettingPassword = ref(false)
+const deletingManager = ref(false)
 const form = reactive({ email: '', display_name: '', password: '' })
 async function create() {
+  if (saving.value) return
+  saving.value = true
   try {
     await api.post('/admin/users', { ...form })
     toast.success('Manager account created')
@@ -24,23 +30,30 @@ async function create() {
     run()
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    saving.value = false
   }
 }
 
 async function toggleActive(u: User) {
+  if (togglingId.value !== null) return
+  togglingId.value = u.id
   try {
     await api.patch(`/admin/users/${u.id}`, { is_active: !u.is_active })
     toast.success(u.is_active ? 'Account deactivated' : 'Account reactivated')
     run()
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    togglingId.value = null
   }
 }
 
 const resetting = ref<User | null>(null)
 const newPassword = ref('')
 async function resetPassword() {
-  if (!resetting.value) return
+  if (!resetting.value || resettingPassword.value) return
+  resettingPassword.value = true
   try {
     await api.post(`/admin/users/${resetting.value.id}/reset-password`, {
       password: newPassword.value,
@@ -50,12 +63,15 @@ async function resetPassword() {
     newPassword.value = ''
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    resettingPassword.value = false
   }
 }
 
 const deleting = ref<User | null>(null)
 async function confirmDelete() {
-  if (!deleting.value) return
+  if (!deleting.value || deletingManager.value) return
+  deletingManager.value = true
   try {
     await api.delete(`/admin/users/${deleting.value.id}`)
     toast.success('Manager deleted')
@@ -63,6 +79,8 @@ async function confirmDelete() {
     run()
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    deletingManager.value = false
   }
 }
 </script>
@@ -96,8 +114,12 @@ async function confirmDelete() {
           >Inactive</span
         >
         <template v-if="u.role === 'manager'">
-          <button class="btn-secondary btn-sm" @click="toggleActive(u)">
-            {{ u.is_active ? 'Deactivate' : 'Activate' }}
+          <button
+            class="btn-secondary btn-sm"
+            :disabled="togglingId === u.id"
+            @click="toggleActive(u)"
+          >
+            {{ togglingId === u.id ? 'Working…' : u.is_active ? 'Deactivate' : 'Activate' }}
           </button>
           <button class="btn-secondary btn-sm" @click="resetting = u">Reset password</button>
           <button class="btn-ghost btn-sm text-ctp-red" aria-label="Delete" @click="deleting = u">
@@ -139,7 +161,9 @@ async function confirmDelete() {
       </form>
       <template #footer>
         <button class="btn-ghost" @click="creating = false">Cancel</button>
-        <button class="btn-primary" type="submit" form="new-user">Create manager</button>
+        <button class="btn-primary" type="submit" form="new-user" :disabled="saving">
+          {{ saving ? 'Creating…' : 'Create manager' }}
+        </button>
       </template>
     </BaseModal>
 
@@ -163,7 +187,9 @@ async function confirmDelete() {
       </form>
       <template #footer>
         <button class="btn-ghost" @click="resetting = null">Cancel</button>
-        <button class="btn-primary" type="submit" form="reset-pass">Reset</button>
+        <button class="btn-primary" type="submit" form="reset-pass" :disabled="resettingPassword">
+          {{ resettingPassword ? 'Resetting…' : 'Reset' }}
+        </button>
       </template>
     </BaseModal>
 
@@ -175,7 +201,9 @@ async function confirmDelete() {
       </p>
       <template #footer>
         <button class="btn-ghost" @click="deleting = null">Cancel</button>
-        <button class="btn-danger" @click="confirmDelete">Delete</button>
+        <button class="btn-danger" :disabled="deletingManager" @click="confirmDelete">
+          {{ deletingManager ? 'Deleting…' : 'Delete' }}
+        </button>
       </template>
     </BaseModal>
   </div>

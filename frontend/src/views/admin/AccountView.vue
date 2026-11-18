@@ -28,7 +28,7 @@ const canSubmit = computed(
 )
 
 async function submit() {
-  if (!canSubmit.value) return
+  if (!canSubmit.value || saving.value) return
   saving.value = true
   error.value = null
   try {

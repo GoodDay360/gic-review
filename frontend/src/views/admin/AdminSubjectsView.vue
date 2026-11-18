@@ -28,6 +28,7 @@ const canManage = (s: Subject) => years.value.some((y) => y.id === s.year_id && 
 const sharing = ref<ManagedSubject | null>(null)
 
 const editing = ref<Subject | 'new' | null>(null)
+const saving = ref(false)
 const form = reactive<SubjectInput>({
   year_id: 0,
   name: '',
@@ -71,6 +72,8 @@ function onName() {
 }
 
 async function save() {
+  if (saving.value) return
+  saving.value = true
   const body = { ...form, description: form.description?.trim() || null }
   try {
     if (editing.value === 'new') await api.post('/admin/subjects', body)
@@ -80,12 +83,16 @@ async function save() {
     run()
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    saving.value = false
   }
 }
 
 const deleting = ref<Subject | null>(null)
+const deletingSubject = ref(false)
 async function confirmDelete() {
-  if (!deleting.value) return
+  if (!deleting.value || deletingSubject.value) return
+  deletingSubject.value = true
   try {
     await api.delete(`/admin/subjects/${deleting.value.id}`)
     toast.success('Subject deleted')
@@ -93,12 +100,15 @@ async function confirmDelete() {
     run()
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    deletingSubject.value = false
   }
 }
 
 // Maintenance: remove R2 files that no row references (admin only).
 const cleaning = ref(false)
 async function cleanupOrphans() {
+  if (cleaning.value) return
   cleaning.value = true
   try {
     const res = await api.post<{ scanned: number; deleted: number }>(
@@ -265,7 +275,9 @@ async function cleanupOrphans() {
       </form>
       <template #footer>
         <button class="btn-ghost" @click="editing = null">Cancel</button>
-        <button class="btn-primary" type="submit" form="subject-form">Save</button>
+        <button class="btn-primary" type="submit" form="subject-form" :disabled="saving">
+          {{ saving ? 'Saving…' : 'Save' }}
+        </button>
       </template>
     </BaseModal>
 
@@ -276,7 +288,9 @@ async function cleanupOrphans() {
       </p>
       <template #footer>
         <button class="btn-ghost" @click="deleting = null">Cancel</button>
-        <button class="btn-danger" @click="confirmDelete">Delete</button>
+        <button class="btn-danger" :disabled="deletingSubject" @click="confirmDelete">
+          {{ deletingSubject ? 'Deleting…' : 'Delete' }}
+        </button>
       </template>
     </BaseModal>
   </div>

@@ -44,12 +44,17 @@ const subjectName = computed(() => new Map(subjects.value.map((s) => [s.id, s.na
 
 // ----- create -----
 const creating = ref(false)
+const creatingQuiz = ref(false)
+const publishingId = ref<number | null>(null)
+const deletingQuiz = ref(false)
 const newQuiz = ref({ subject_id: 0, title: '', description: '' })
 function openCreate() {
   newQuiz.value = { subject_id: addable.value[0]?.id ?? 0, title: '', description: '' }
   creating.value = true
 }
 async function create() {
+  if (creatingQuiz.value) return
+  creatingQuiz.value = true
   try {
     const quiz = await api.post<QuizDetail>('/admin/quizzes', {
       ...newQuiz.value,
@@ -61,22 +66,29 @@ async function create() {
     router.push(`/admin/quizzes/${quiz.id}`)
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    creatingQuiz.value = false
   }
 }
 
 async function togglePublish(q: QuizSummary) {
+  if (publishingId.value !== null) return
+  publishingId.value = q.id
   try {
     await api.patch(`/admin/quizzes/${q.id}/publish`, { is_published: !q.is_published })
     toast.success(q.is_published ? 'Quiz unpublished' : 'Quiz published')
     run()
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    publishingId.value = null
   }
 }
 
 const deleting = ref<QuizSummary | null>(null)
 async function confirmDelete() {
-  if (!deleting.value) return
+  if (!deleting.value || deletingQuiz.value) return
+  deletingQuiz.value = true
   try {
     await api.delete(`/admin/quizzes/${deleting.value.id}`)
     toast.success('Quiz deleted')
@@ -84,6 +96,8 @@ async function confirmDelete() {
     run()
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    deletingQuiz.value = false
   }
 }
 </script>
@@ -157,8 +171,12 @@ async function confirmDelete() {
         </span>
         <OwnershipBadge :item="q" />
         <div class="flex gap-1">
-          <button class="btn-secondary btn-sm" @click="togglePublish(q)">
-            {{ q.is_published ? 'Unpublish' : 'Publish' }}
+          <button
+            class="btn-secondary btn-sm"
+            :disabled="publishingId === q.id"
+            @click="togglePublish(q)"
+          >
+            {{ publishingId === q.id ? 'Working…' : q.is_published ? 'Unpublish' : 'Publish' }}
           </button>
           <RouterLink :to="`/admin/quizzes/${q.id}`" class="btn-ghost btn-sm" aria-label="Edit"
             ><AppIcon name="pencil" :size="16"
@@ -196,7 +214,9 @@ async function confirmDelete() {
       </form>
       <template #footer>
         <button class="btn-ghost" @click="creating = false">Cancel</button>
-        <button class="btn-primary" type="submit" form="create-quiz">Create</button>
+        <button class="btn-primary" type="submit" form="create-quiz" :disabled="creatingQuiz">
+          {{ creatingQuiz ? 'Creating…' : 'Create' }}
+        </button>
       </template>
     </BaseModal>
 
@@ -206,7 +226,9 @@ async function confirmDelete() {
       </p>
       <template #footer>
         <button class="btn-ghost" @click="deleting = null">Cancel</button>
-        <button class="btn-danger" @click="confirmDelete">Delete</button>
+        <button class="btn-danger" :disabled="deletingQuiz" @click="confirmDelete">
+          {{ deletingQuiz ? 'Deleting…' : 'Delete' }}
+        </button>
       </template>
     </BaseModal>
   </div>

@@ -31,6 +31,9 @@ const meta = reactive({
 })
 let savedCoverKey: string | null = null
 const savingMeta = ref(false)
+const togglingPublish = ref(false)
+const deletingQuestion = ref(false)
+const reordering = ref(false)
 
 function setQuiz(q: QuizDetail) {
   quiz.value = q
@@ -59,7 +62,7 @@ async function load() {
 onMounted(load)
 
 async function saveMeta() {
-  if (!quiz.value) return
+  if (!quiz.value || savingMeta.value) return
   savingMeta.value = true
   try {
     setQuiz(
@@ -86,7 +89,8 @@ function onCoverUploaded(key: string) {
 let pendingCover: string | null = null
 
 async function togglePublish() {
-  if (!quiz.value) return
+  if (!quiz.value || togglingPublish.value) return
+  togglingPublish.value = true
   try {
     setQuiz(
       await api.patch<QuizDetail>(`/admin/quizzes/${quiz.value.id}/publish`, {
@@ -96,6 +100,8 @@ async function togglePublish() {
     toast.success(quiz.value.is_published ? 'Published' : 'Unpublished')
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    togglingPublish.value = false
   }
 }
 
@@ -110,7 +116,8 @@ function onSaved(q: QuizDetail) {
 }
 
 async function confirmDeleteQuestion() {
-  if (!quiz.value || !deleting.value) return
+  if (!quiz.value || !deleting.value || deletingQuestion.value) return
+  deletingQuestion.value = true
   try {
     setQuiz(
       await api.delete<QuizDetail>(
@@ -122,11 +129,13 @@ async function confirmDeleteQuestion() {
     toast.error(errorMessage(err))
   } finally {
     deleting.value = null
+    deletingQuestion.value = false
   }
 }
 
 async function reorder(ids: number[]) {
-  if (!quiz.value) return
+  if (!quiz.value || reordering.value) return
+  reordering.value = true
   try {
     setQuiz(
       await api.put<QuizDetail>(`/admin/quizzes/${quiz.value.id}/questions/reorder`, {
@@ -135,6 +144,8 @@ async function reorder(ids: number[]) {
     )
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    reordering.value = false
   }
 }
 
@@ -190,8 +201,8 @@ function onDrop(target: number) {
         >
           <AppIcon name="eye" :size="14" /> Play {{ getQuizMode(m)?.label ?? m }}
         </RouterLink>
-        <button class="btn-primary btn-sm" @click="togglePublish">
-          {{ quiz.is_published ? 'Unpublish' : 'Publish' }}
+        <button class="btn-primary btn-sm" :disabled="togglingPublish" @click="togglePublish">
+          {{ togglingPublish ? 'Working…' : quiz.is_published ? 'Unpublish' : 'Publish' }}
         </button>
       </div>
     </div>
@@ -290,7 +301,7 @@ function onDrop(target: number) {
           <div class="flex">
             <button
               class="btn-ghost p-2"
-              :disabled="i === 0"
+              :disabled="i === 0 || reordering"
               aria-label="Move up"
               @click="move(i, -1)"
             >
@@ -298,7 +309,7 @@ function onDrop(target: number) {
             </button>
             <button
               class="btn-ghost p-2"
-              :disabled="i === quiz.questions.length - 1"
+              :disabled="i === quiz.questions.length - 1 || reordering"
               aria-label="Move down"
               @click="move(i, 1)"
             >
@@ -342,7 +353,9 @@ function onDrop(target: number) {
       </p>
       <template #footer>
         <button class="btn-ghost" @click="deleting = null">Cancel</button>
-        <button class="btn-danger" @click="confirmDeleteQuestion">Delete</button>
+        <button class="btn-danger" :disabled="deletingQuestion" @click="confirmDeleteQuestion">
+          {{ deletingQuestion ? 'Deleting…' : 'Delete' }}
+        </button>
       </template>
     </BaseModal>
   </div>

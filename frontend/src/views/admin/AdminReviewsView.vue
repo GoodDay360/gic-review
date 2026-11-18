@@ -46,6 +46,7 @@ const editing = ref<Review | 'new' | null>(null)
 const form = reactive({ subject_id: 0, title: '', slug: '', sort_order: 0, is_published: false })
 const file = ref<File | null>(null)
 const progress = ref<number | null>(null)
+const deletingReview = ref(false)
 
 function openNew() {
   Object.assign(form, {
@@ -80,6 +81,7 @@ function onFile(e: Event) {
 }
 
 async function save() {
+  if (progress.value !== null) return
   const isNew = editing.value === 'new'
   if (isNew && !file.value) {
     toast.error('Choose the .html file to upload')
@@ -113,7 +115,8 @@ async function save() {
 
 const deleting = ref<Review | null>(null)
 async function confirmDelete() {
-  if (!deleting.value) return
+  if (!deleting.value || deletingReview.value) return
+  deletingReview.value = true
   try {
     await api.delete(`/admin/reviews/${deleting.value.id}`)
     toast.success('Review deleted')
@@ -121,6 +124,8 @@ async function confirmDelete() {
     load()
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    deletingReview.value = false
   }
 }
 </script>
@@ -234,7 +239,7 @@ async function confirmDelete() {
       <template #footer>
         <button class="btn-ghost" @click="editing = null">Cancel</button>
         <button class="btn-primary" type="submit" form="review-form" :disabled="progress !== null">
-          Save
+          {{ progress !== null ? 'Saving…' : 'Save' }}
         </button>
       </template>
     </BaseModal>
@@ -245,7 +250,9 @@ async function confirmDelete() {
       </p>
       <template #footer>
         <button class="btn-ghost" @click="deleting = null">Cancel</button>
-        <button class="btn-danger" @click="confirmDelete">Delete</button>
+        <button class="btn-danger" :disabled="deletingReview" @click="confirmDelete">
+          {{ deletingReview ? 'Deleting…' : 'Delete' }}
+        </button>
       </template>
     </BaseModal>
   </div>

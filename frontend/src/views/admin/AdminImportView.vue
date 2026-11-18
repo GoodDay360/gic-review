@@ -27,6 +27,7 @@ async function onFile(e: Event) {
 }
 
 async function submit() {
+  if (importing.value) return
   parseError.value = null
   let body: unknown
   try {

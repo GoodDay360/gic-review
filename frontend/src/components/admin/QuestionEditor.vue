@@ -157,7 +157,7 @@ function discardUnused(keep: Set<string>) {
 let saved = false
 
 async function save() {
-  if (problems.value.length) return
+  if (problems.value.length || saving.value) return
   saving.value = true
   try {
     const quiz = await saveQuestion(props.quizId, q?.id ?? null, input.value)

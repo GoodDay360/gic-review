@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { APP_NAME } from '@/config'
@@ -9,10 +10,17 @@ import ThemePicker from './ThemePicker.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
+const loggingOut = ref(false)
 
 async function logout() {
-  await auth.logout()
-  router.push('/')
+  if (loggingOut.value) return
+  loggingOut.value = true
+  try {
+    await auth.logout()
+    router.push('/')
+  } finally {
+    loggingOut.value = false
+  }
 }
 </script>
 
@@ -34,7 +42,12 @@ async function logout() {
             <AppIcon name="pencil" :size="16" />
             <span class="hidden sm:inline">Dashboard</span>
           </RouterLink>
-          <button class="btn-ghost px-2.5 text-sm" aria-label="Log out" @click="logout">
+          <button
+            class="btn-ghost px-2.5 text-sm"
+            aria-label="Log out"
+            :disabled="loggingOut"
+            @click="logout"
+          >
             <AppIcon name="logout" :size="16" />
           </button>
         </template>

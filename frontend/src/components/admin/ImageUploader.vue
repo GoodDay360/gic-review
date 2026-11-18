@@ -39,6 +39,7 @@ const lightbox = useLightboxStore()
 const uploading = computed(() => progress.value !== null)
 
 async function upload(file: File) {
+  if (uploading.value) return
   error.value = null
   if (!ACCEPT.includes(file.type)) {
     error.value = 'Only PNG, JPEG, WebP or GIF images are allowed.'

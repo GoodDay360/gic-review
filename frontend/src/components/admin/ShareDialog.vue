@@ -54,7 +54,7 @@ watch(
 )
 
 async function add() {
-  if (!email.value.trim()) return
+  if (!email.value.trim() || busy.value) return
   busy.value = true
   try {
     shares.value = await api.post<Shares>(base(), { email: email.value.trim() })
@@ -69,6 +69,7 @@ async function add() {
 }
 
 async function remove(userId: number) {
+  if (busy.value) return
   const leaving = userId === auth.user?.id
   busy.value = true
   try {

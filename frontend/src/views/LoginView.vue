@@ -15,6 +15,7 @@ const submitting = ref(false)
 const error = ref<string | null>(null)
 
 async function submit() {
+  if (submitting.value) return
   submitting.value = true
   error.value = null
   try {

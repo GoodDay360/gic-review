@@ -35,8 +35,10 @@ const shown = computed(() =>
 )
 
 const revoking = ref<ApiKey | null>(null)
+const revokingKey = ref(false)
 async function confirmRevoke() {
-  if (!revoking.value) return
+  if (!revoking.value || revokingKey.value) return
+  revokingKey.value = true
   try {
     await api.delete(`/admin/api-keys/${revoking.value.id}`)
     toast.success(`Revoked ${revoking.value.owner_name}'s key`)
@@ -44,6 +46,8 @@ async function confirmRevoke() {
     run()
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    revokingKey.value = false
   }
 }
 
@@ -130,7 +134,9 @@ const statusClass = {
       </p>
       <template #footer>
         <button class="btn-ghost" @click="revoking = null">Cancel</button>
-        <button class="btn-danger" @click="confirmRevoke">Revoke</button>
+        <button class="btn-danger" :disabled="revokingKey" @click="confirmRevoke">
+          {{ revokingKey ? 'Revoking…' : 'Revoke' }}
+        </button>
       </template>
     </BaseModal>
   </div>

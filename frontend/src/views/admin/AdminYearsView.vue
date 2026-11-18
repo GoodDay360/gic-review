@@ -23,6 +23,7 @@ const { data: years, loading, run } = useAsync(loadManagedYears, [] as ManagedYe
 onMounted(run)
 
 const editing = ref<ManagedYear | 'new' | null>(null)
+const saving = ref(false)
 const form = reactive({ name: '', slug: '', description: '', sort_order: 0 })
 let slugTouched = false
 
@@ -53,6 +54,8 @@ function onName() {
 }
 
 async function save() {
+  if (saving.value) return
+  saving.value = true
   const body = {
     name: form.name,
     slug: form.slug.trim() || null,
@@ -67,13 +70,17 @@ async function save() {
     run()
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    saving.value = false
   }
 }
 
 const deleting = ref<ManagedYear | null>(null)
+const deletingYear = ref(false)
 const sharing = ref<ManagedYear | null>(null)
 async function confirmDelete() {
-  if (!deleting.value) return
+  if (!deleting.value || deletingYear.value) return
+  deletingYear.value = true
   try {
     await api.delete(`/admin/years/${deleting.value.id}`)
     toast.success('Year deleted')
@@ -81,6 +88,8 @@ async function confirmDelete() {
     run()
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    deletingYear.value = false
   }
 }
 </script>
@@ -218,7 +227,9 @@ async function confirmDelete() {
       </form>
       <template #footer>
         <button class="btn-ghost" @click="editing = null">Cancel</button>
-        <button class="btn-primary" type="submit" form="year-form">Save</button>
+        <button class="btn-primary" type="submit" form="year-form" :disabled="saving">
+          {{ saving ? 'Saving…' : 'Save' }}
+        </button>
       </template>
     </BaseModal>
 
@@ -226,7 +237,9 @@ async function confirmDelete() {
       <p class="text-sm text-ctp-subtext1">"{{ deleting?.name }}" will be deleted.</p>
       <template #footer>
         <button class="btn-ghost" @click="deleting = null">Cancel</button>
-        <button class="btn-danger" @click="confirmDelete">Delete</button>
+        <button class="btn-danger" :disabled="deletingYear" @click="confirmDelete">
+          {{ deletingYear ? 'Deleting…' : 'Delete' }}
+        </button>
       </template>
     </BaseModal>
   </div>

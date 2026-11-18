@@ -48,6 +48,7 @@ const form = reactive({
   expiry: 90,
 })
 const saving = ref(false)
+const revokingKey = ref(false)
 const created = ref<string | null>(null)
 
 function openForm(regen: boolean) {
@@ -60,6 +61,7 @@ function openForm(regen: boolean) {
 }
 
 async function submit() {
+  if (saving.value) return
   if (!form.scopes.length) {
     toast.error('Choose at least one permission')
     return
@@ -84,7 +86,8 @@ async function submit() {
 
 const revoking = ref(false)
 async function revoke() {
-  if (!active.value) return
+  if (!active.value || revokingKey.value) return
+  revokingKey.value = true
   try {
     await api.delete(`/admin/api-keys/${active.value.id}`)
     toast.success('API key revoked. It no longer works.')
@@ -92,6 +95,8 @@ async function revoke() {
     run()
   } catch (err) {
     toast.error(errorMessage(err))
+  } finally {
+    revokingKey.value = false
   }
 }
 
@@ -275,7 +280,9 @@ curl -H "Authorization: Bearer ${created.value ?? 'gic_…'}" \\
       </p>
       <template #footer>
         <button class="btn-ghost" @click="revoking = false">Cancel</button>
-        <button class="btn-danger" @click="revoke">Revoke</button>
+        <button class="btn-danger" :disabled="revokingKey" @click="revoke">
+          {{ revokingKey ? 'Revoking…' : 'Revoke' }}
+        </button>
       </template>
     </BaseModal>
   </div>

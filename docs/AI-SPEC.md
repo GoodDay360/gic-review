@@ -240,6 +240,8 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-18: AI quiz guide: "How to create a new quiz" box; `POST /admin/quizzes` (create an empty quiz)
+  added to the endpoint list as #17 (it was missing). Both creation paths verified with an API key.
 - 2026-11-18: Sharing moved to years and subjects (`year_shares`, `subject_shares`, Share buttons on the
   Years/Subjects pages); per-item quiz/review sharing **removed** (tables dropped). Access values now
   `owner`/`admin`/`year_owner`/`shared`; `share_count` removed. Year owners get full rights on content in their years.

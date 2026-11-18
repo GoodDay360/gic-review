@@ -48,7 +48,7 @@ Full URL = `BASE` + path. `{id}` = a review id.
 | 3 | `GET` | `/admin/reviews?subject_id={n}` | yes | list reviews you can manage (avoid duplicates, find ids) |
 | 4 | `GET` | `/admin/reviews/{id}` | yes | read one review (its public `url`, title, status) |
 | 5 | `POST` | `/admin/uploads/image` | yes | upload an image for the page → use the returned `url` in `<img>` |
-| 6 | `POST` | `/admin/reviews` | yes | **upload a new review page** ← main endpoint |
+| 6 | `POST` | `/admin/reviews` | yes | **create a NEW review** (upload its page) ← main endpoint |
 | 7 | `PUT` | `/admin/reviews/{id}` | yes | replace the HTML and/or change title, slug, order, published |
 | 8 | `DELETE` | `/admin/reviews/{id}` | yes | delete a review (owner only; **ask the human first**) |
 | 9 | `GET` | `/subjects/{slug}/reviews` | no | see what students see (published reviews only) |

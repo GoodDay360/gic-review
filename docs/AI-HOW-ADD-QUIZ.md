@@ -37,6 +37,15 @@ curl -H "Authorization: Bearer $KEY" $BASE/auth/me
 
 ## 2. Endpoint list (everything you may call)
 
+> **How to create a new quiz** (yes, your key can):
+> - **Recommended: one call.** `POST /admin/quizzes/import` (#6) creates a **new quiz together with
+>   all its questions**. Despite the name "import", this is the normal way to create a quiz.
+> - **Or step by step.** `POST /admin/quizzes` (#17) creates a **new, empty quiz**, then add questions
+>   one at a time with `POST /admin/quizzes/{id}/questions` (#9).
+>
+> Either way the quiz must go into a subject where you have `"can_add_content": true` (#16), and it
+> starts as an unpublished draft.
+
 Full URL = `BASE` + path. `{id}` = a quiz id, `{qid}` = a question id.
 
 | # | Method | Path | Key? | Use it to… |
@@ -46,7 +55,7 @@ Full URL = `BASE` + path. `{id}` = a quiz id, `{qid}` = a question id.
 | 3 | `GET` | `/admin/quizzes?subject_id={n}` | yes | list quizzes you can manage (to avoid duplicates, find ids) |
 | 4 | `GET` | `/admin/quizzes/{id}` | yes | read one quiz with all its questions and options |
 | 5 | `POST` | `/admin/uploads/image` | yes | upload an image file → get a `key` to use in the quiz |
-| 6 | `POST` | `/admin/quizzes/import` | yes | **create a whole quiz (all questions) in one call** ← main endpoint |
+| 6 | `POST` | `/admin/quizzes/import` | yes | **create a NEW quiz with all its questions in one call** ← main endpoint |
 | 7 | `PATCH` | `/admin/quizzes/{id}/publish` | yes | publish / unpublish (only when the human asks) |
 | 8 | `PUT` | `/admin/quizzes/{id}` | yes | change title, description, subject or cover image |
 | 9 | `POST` | `/admin/quizzes/{id}/questions` | yes | add one question to an existing quiz |
@@ -57,6 +66,7 @@ Full URL = `BASE` + path. `{id}` = a quiz id, `{qid}` = a question id.
 | 14 | `DELETE` | `/admin/uploads/image/{key}` | yes | delete an uploaded image you didn't end up using |
 | 15 | `GET` | `/subjects/{slug}/quizzes` | no | see what students see (published quizzes only) |
 | 16 | `GET` | `/admin/years` | yes | **list years and subjects with `can_add_content`** (where you may add content) |
+| 17 | `POST` | `/admin/quizzes` | yes | create a NEW **empty** quiz (title, description, cover), then add questions with #9 |
 
 **Most jobs only need #1, #16, #3, #5 (if there are images) and #6.**
 
@@ -170,13 +180,34 @@ Response `200`: the **quiz object** (section 4, at the end). `404` if it doesn't
 optionally, `quiz_id`. Response `201`: `{ "key": "…", "url": "https://…" }`. Images are
 resized to max 1600 px wide. `415` = not a supported image.
 
-### #6 `POST /admin/quizzes/import`
+### #6 `POST /admin/quizzes/import` (create a new quiz with all its questions)
 Body: the import JSON (section 5). Max 4 MB, 500 questions. Response `201`: the **quiz object**.
 All-or-nothing: on any error, nothing is created.
 
 ### #7 `PATCH /admin/quizzes/{id}/publish`
 Body `{ "is_published": true }` or `false`. Response `200`: the quiz object. `422` if the quiz
 has no playable mode yet.
+
+### #17 `POST /admin/quizzes` (create an empty quiz)
+Body: `{ "subject_id": 7, "title": "…", "description": "…" | null, "cover_image_key": "…" | null }`
+(`subject_id` from #16; the subject must have `"can_add_content": true`). Response `201`: the
+**quiz object** with `"questions": []` and `"is_published": false`. Then add each question with #9
+(same question object as in section 5, images as `*_key`).
+
+```bash
+curl -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+     -d '{"subject_id": 7, "title": "Fitts law drill", "description": null, "cover_image_key": null}' \
+     $BASE/admin/quizzes
+# 201 → { "id": 18, "title": "Fitts law drill", "question_count": 0, "is_published": false, … }
+
+curl -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+     -d '{"prompt": "…", "answer_text": "…", "explanation": "…",
+          "options": [{"text": "…", "is_correct": true}, {"text": "…"}]}' \
+     $BASE/admin/quizzes/18/questions
+# 201 → the whole quiz, now with 1 question
+```
+
+Use #6 instead when you already have all the questions: it's one call and all-or-nothing.
 
 ### #8 `PUT /admin/quizzes/{id}`
 Body: `{ "subject_id": 1, "title": "…", "description": "…", "cover_image_key": "…" }`.

@@ -2,7 +2,10 @@
 
 **For:** an AI assistant (or script) that creates quizzes in GIC Review **through the REST API
 only**. You have no access to the source code and don't need it. Typical job:
-*"Read this PDF and create a quiz for the HCI subject."*
+*"Read this source file (PDF, DOC/DOCX, CSV, or any other readable format) and create a quiz for the HCI subject."*
+
+The source may be a PDF, Word document, CSV, spreadsheet, text file, Markdown file, or another
+readable file format. Do not limit the workflow to PDFs.
 
 Everything you need is in this file. (Interactive review pages: see `AI-HOW-ADD-INTERACTIVE-REVIEW.md`.)
 
@@ -81,7 +84,7 @@ published but not deleted (`403 owner_only`). An **admin's** key reaches everyth
 
 ---
 
-## 3. Recipe: create a quiz from a PDF
+## 3. Recipe: create a quiz from source files
 
 **Step 1. Check the key** (#1)
 
@@ -123,7 +126,7 @@ curl -H "Authorization: Bearer $KEY" "$BASE/admin/quizzes?subject_id=1"
 ```
 If a quiz on the same topic exists, ask whether to add to it (#9) instead of creating a new one.
 
-**Step 4. Write the questions** from the PDF, following section 6 (writing rules).
+**Step 4. Write the questions** from the source files, following section 6 (writing rules).
 
 **Step 5. Upload images, if any** (#5). One call per image:
 
@@ -408,7 +411,7 @@ The public `GET /years` and `GET /years/{year_slug}` (no key) show the same year
 - No "all/none of the above" (options are shuffled for students).
 - Always add `explanation` (1–3 sentences; you may cite e.g. "(slide 12)") and a short `answer_text`.
 - 10–30 questions per quiz; split long documents into several quizzes (one per chapter).
-- Images: export figures from the PDF as PNG, crop them, upload (step 5), and always set `*_alt`.
+- Images: export figures from source files as PNG, crop them, upload (step 5), and always set `*_alt`.
 
 **Format:**
 

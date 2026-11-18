@@ -2,7 +2,10 @@
 
 **For:** an AI assistant (or script) that publishes interactive review pages to GIC Review
 **through the REST API only**. You have no access to the source code and don't need it.
-Typical job: *"Turn this PDF lecture into an interactive review page for the HCI subject."*
+Typical job: *"Turn this lecture file (PDF, DOC/DOCX, CSV, or any other readable source) into an interactive review page for the HCI subject."*
+
+The source may be a PDF, Word document, CSV, spreadsheet, text file, Markdown file, or another
+readable file format. Do not limit the workflow to PDFs.
 
 An **interactive review** is one self-contained `.html` file (a study guide with sections,
 summaries, diagrams, collapsible parts and small self-checks) attached to a subject. Students
@@ -67,7 +70,7 @@ published but not deleted (`403 owner_only`). An **admin's** key reaches everyth
 
 ---
 
-## 3. Recipe: create a review page from a PDF
+## 3. Recipe: create a review page from source files
 
 **Step 1. Check the key** (#1). Expect `"reviews:write"` in `"api_key_scopes"`.
 
@@ -105,7 +108,7 @@ curl -H "Authorization: Bearer $KEY" "$BASE/admin/reviews?subject_id=1"
 Same topic already there? Ask whether to **update it** (#7) instead of creating a new one.
 
 **Step 4. Upload images, if any** (#5). Small diagrams can be inline `<svg>` or `data:` URIs
-instead. For figures from the PDF (exported as PNG, cropped):
+instead. For figures from the source file (exported as PNG, cropped):
 
 ```bash
 curl -H "Authorization: Bearer $KEY" -F "file=@figure-3.png" $BASE/admin/uploads/image

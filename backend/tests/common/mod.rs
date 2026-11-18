@@ -132,8 +132,8 @@ pub async fn send_auth(
     }
 }
 
-/// Database tests share ONE database: `<DB_NAME>_test` (e.g. `gic_review_test`), built from the
-/// `DB_*` values in `backend/.env` (no `DATABASE_URL`). It must already exist and `DB_USER`
+/// Database tests share ONE database, `DB_TEST_NAME` from `backend/.env` (e.g. `gic_review_test`),
+/// on the server from the other `DB_*` values (no `DATABASE_URL`). It must already exist and `DB_USER`
 /// needs all privileges on it. Each test takes a lock (so they run one at a time), wipes the
 /// tables, and re-applies the migrations. The real `DB_NAME` database is never touched.
 pub struct TestDb {
@@ -155,10 +155,17 @@ pub async fn test_db() -> Option<TestDb> {
         }
     };
     let real_name = options.get_database().expect("DB_NAME is set").to_string();
-    let test_name = format!("{real_name}_test");
+    let test_name = std::env::var("DB_TEST_NAME")
+        .ok()
+        .map(|v| v.split(" #").next().unwrap_or_default().trim().to_string())
+        .filter(|v| !v.is_empty());
+    let Some(test_name) = test_name else {
+        eprintln!("skipping database test: DB_TEST_NAME is empty in backend/.env");
+        return None;
+    };
     assert_ne!(
         test_name, real_name,
-        "the test database must not be DB_NAME"
+        "DB_TEST_NAME must be a different database than DB_NAME (tests wipe it)"
     );
 
     let lock = TEST_DB_LOCK.lock().await;

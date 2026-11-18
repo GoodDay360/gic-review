@@ -380,6 +380,7 @@ FRONTEND_URL=http://localhost:5173   # used for CORS
 DB_HOST=
 DB_PORT=3306
 DB_NAME=gic_review
+DB_TEST_NAME=gic_review_test    # database used by `cargo test` (wiped on every run!) - must differ from DB_NAME
 DB_USER=
 DB_PASSWORD=
 DB_SSL_REQUIRED=true            # true (default) = MySQL connection must use SSL; false = only if the server offers it
@@ -465,7 +466,7 @@ Two parts:
 
 General quality bar:
 - Rust passes `cargo fmt` and `cargo clippy` with no warnings. The frontend passes `bun run build` and ESLint/Prettier (`bun run lint`).
-- Add a few backend integration tests (auth and role checks at minimum). Database tests use one separate database, `<DB_NAME>_test` (e.g. `gic_review_test`), with the same `DB_*` connection values; it is wiped and re-migrated before each test, tests run one at a time, the real `DB_NAME` database is never touched, and the tests are skipped with a message when `DB_*` is empty.
+- Add a few backend integration tests (auth and role checks at minimum). Database tests use one separate database named by `DB_TEST_NAME` in `backend/.env` (e.g. `gic_review_test`, must differ from `DB_NAME`), with the same `DB_*` connection values; it is wiped and re-migrated before each test, tests run one at a time, the real `DB_NAME` database is never touched, and the tests are skipped with a message when `DB_*` or `DB_TEST_NAME` is empty.
 - Do not commit `.env` or any real credentials.
 - When done, print a short summary of what was built, how to run it, and which values I still need to fill in for `frontend/.env` and `backend/.env`.
 

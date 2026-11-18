@@ -196,7 +196,7 @@ async function confirmDelete() {
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="label" for="yr-slug">Link name</label>
+            <label class="label" for="yr-slug">Slug</label>
             <input
               id="yr-slug"
               v-model="form.slug"

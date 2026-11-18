@@ -8,7 +8,7 @@ through the API.
 
 | What | Where to get it |
 |---|---|
-| **API base URL** | The address of the GIC Review API, e.g. `https://api.yourdomain.com/api` (ask the site owner). |
+| **API base URL** | `https://gic-review.onrender.com/api` |
 | **API key** | Dashboard → **API key** → *Create API key*. Tick `quizzes:write` and/or `reviews:write`, and pick a short expiry. It is shown only once, so copy it. |
 | **Year** and **subject** | Dashboard → **Years** / **Subjects**. They must already exist (only humans can create them), and they must be yours or shared with you. Use their *slug* (the short name in the link, e.g. `i4` and `hci`). |
 | **The two guides** | [`AI-HOW-ADD-QUIZ.md`](AI-HOW-ADD-QUIZ.md) and [`AI-HOW-ADD-INTERACTIVE-REVIEW.md`](AI-HOW-ADD-INTERACTIVE-REVIEW.md) in this folder. They tell the AI exactly which API calls to make. |
@@ -33,7 +33,7 @@ Read the attached PDF files and use them to create a quiz and an interactive rev
 GIC Review. Follow the attached instructions (AI-HOW-ADD-QUIZ.md and
 AI-HOW-ADD-INTERACTIVE-REVIEW.md) exactly.
 
-API base URL: https://api.yourdomain.com/api
+API base URL: https://gic-review.onrender.com/api
 API key: <your-api-key>
 Year: <year-slug>        (e.g. i4)
 Subject: <subject-slug>  (e.g. hci)
@@ -45,6 +45,9 @@ Subject: <subject-slug>  (e.g. hci)
 
 Change the last three lines as you like. For example, ask for one quiz per chapter, a
 specific number of questions, another language, or let it publish directly.
+
+Tip: the server can take up to a minute to wake up after being idle (free hosting). If the AI
+reports a timeout on its first request, tell it to simply try again.
 
 ## After the AI is done
 

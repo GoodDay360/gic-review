@@ -43,9 +43,9 @@ Follow the instructions from:
 https://github.com/GoodDay360/gic-review/blob/main/docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md
 https://github.com/GoodDay360/gic-review/blob/main/docs/AI-HOW-ADD-QUIZ.md
 
-- Make sure it cover all the lessons and not too short.
-- For interactive review, add some images and visual explaination to make it easy to repare for exam.
-- Keep everything unpublished (draft). I will review it and publish it myself (if it already public, no need to change it to draft).
+- Make sure it covers all the lessons and is not too short.
+- For interactive review, add some images and visual explanation to make it easy to prepare for the exam.
+- Keep everything unpublished (draft). I will review it and publish it myself (if it is already public, no need to change it to draft).
 - When you are done, tell me the quiz and review IDs and titles.
 ```
 

@@ -132,9 +132,9 @@ If a quiz on the same topic exists, ask whether to add to it (#9) instead of cre
 
 ```bash
 curl -H "Authorization: Bearer $KEY" -F "file=@figure-3.png" $BASE/admin/uploads/image
-# 201 → { "key": "images/2f1c7a8e-….png", "url": "https://files.example.com/images/2f1c7a8e-….png" }
+# 201 → { "key": "images/2f1c7a8e-….avif", "url": "https://files.example.com/images/2f1c7a8e-….avif" }
 ```
-Keep the returned `key`; you put it in the quiz JSON (e.g. `"image_key": "images/2f1c…png"`).
+Keep the returned `key`; you put it in the quiz JSON (e.g. `"image_key": "images/2f1c…avif"`).
 
 **Step 6. Create the quiz in one call** (#6). JSON format in section 5.
 
@@ -181,7 +181,9 @@ Response `200`: the **quiz object** (section 4, at the end). `404` if it doesn't
 ### #5 `POST /admin/uploads/image`
 `multipart/form-data` with field `file` (PNG, JPEG, WebP or GIF; max 5 MB by default) and,
 optionally, `quiz_id`. Response `201`: `{ "key": "…", "url": "https://…" }`. Images are
-resized to max 1600 px wide. `415` = not a supported image.
+resized to max 1600 px wide and compressed: still images are stored as AVIF, animated GIFs as
+animated WebP (animation is kept). Always use the returned `key`/`url`; the file extension
+may differ from what you uploaded. `415` = not a supported image.
 
 ### #6 `POST /admin/quizzes/import` (create a new quiz with all its questions)
 Body: the import JSON (section 5). Max 4 MB, 500 questions. Response `201`: the **quiz object**.
@@ -239,7 +241,7 @@ Deletes the quiz, its questions and images. Response `204`. **Owner only** (`403
 shared quizzes). Never do this without the human's explicit request.
 
 ### #14 `DELETE /admin/uploads/image/{key}`
-`{key}` is the full key, e.g. `/admin/uploads/image/images/2f1c7a8e-….png`. Response `204`.
+`{key}` is the full key, e.g. `/admin/uploads/image/images/2f1c7a8e-….avif`. Response `204`.
 `409` if a quiz still uses it.
 
 ### #15 `GET /categories/{category_slug}/subjects/{subject_slug}/quizzes` (no key)
@@ -368,7 +370,7 @@ The public `GET /categories` and `GET /categories/{category_slug}` (no key) show
   "questions": [
     {
       "prompt": "Which heuristic does this dialog violate?",
-      "image_key": "images/2f1c7a8e-3b5d-4c1e-9f0a-6d2b8e4c7a11.png",
+      "image_key": "images/2f1c7a8e-3b5d-4c1e-9f0a-6d2b8e4c7a11.avif",
       "image_alt": "A dialog with Delete and Save buttons styled identically side by side",
       "answer_text": "Error prevention",
       "explanation": "Destructive actions should be visually distinct and confirmed.",
@@ -391,7 +393,7 @@ The public `GET /categories` and `GET /categories/{category_slug}` (no key) show
     {
       "prompt": "What shape does Fitts's law have (movement time vs. index of difficulty)?",
       "answer_text": "A straight line.",
-      "answer_image_key": "images/9d1e0c55-6a2b-4f3c-8e7d-1a2b3c4d5e6f.png",
+      "answer_image_key": "images/9d1e0c55-6a2b-4f3c-8e7d-1a2b3c4d5e6f.avif",
       "answer_image_alt": "Line chart where movement time rises linearly",
       "options": [
         { "text": "A straight line", "is_correct": true },
@@ -414,7 +416,7 @@ The public `GET /categories` and `GET /categories/{category_slug}` (no key) show
 - No "all/none of the above" (options are shuffled for students).
 - Always add `explanation` (1–3 sentences; you may cite e.g. "(slide 12)") and a short `answer_text`.
 - 10–30 questions per quiz; split long documents into several quizzes (one per chapter).
-- Images: export figures from source files as PNG, crop them, upload (step 5), and always set `*_alt`.
+- Images: export figures from source files as PNG (or GIF for animations), crop them, upload (step 5), and always set `*_alt`.
 
 **Format:**
 

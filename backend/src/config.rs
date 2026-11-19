@@ -40,6 +40,8 @@ pub struct Config {
 
     pub max_image_size_bytes: usize,
     pub max_review_html_size_bytes: usize,
+    /// Image uploads processed at once across all clients; the rest wait in a queue.
+    pub max_concurrent_image_uploads: usize,
 
     /// In-memory response cache size in bytes (0 = disabled).
     pub cache_max_bytes: u64,
@@ -59,6 +61,10 @@ impl fmt::Debug for Config {
             .field("db_ssl_required", &self.db_ssl_required)
             .field("r2_bucket", &self.r2_bucket)
             .field("r2_public_base_url", &self.r2_public_base_url)
+            .field(
+                "max_concurrent_image_uploads",
+                &self.max_concurrent_image_uploads,
+            )
             .finish_non_exhaustive()
     }
 }
@@ -135,6 +141,8 @@ impl Config {
         let r2_public_base_url = req("R2_PUBLIC_BASE_URL");
         let max_img_raw = optional("MAX_IMAGE_SIZE_MB").unwrap_or_else(|| "5".into());
         let max_html_raw = optional("MAX_REVIEW_HTML_SIZE_MB").unwrap_or_else(|| "10".into());
+        let max_uploads_raw =
+            optional("MAX_CONCURRENT_IMAGE_UPLOADS").unwrap_or_else(|| "5".into());
         let cache_mb_raw = optional("CACHE_MAX_MB").unwrap_or_else(|| "32".into());
         let cache_ttl_raw = optional("CACHE_TTL_SECONDS").unwrap_or_else(|| "300".into());
 
@@ -148,6 +156,11 @@ impl Config {
             parse_num::<i64>("JWT_EXPIRES_IN_HOURS", &jwt_hours_raw, &mut errors);
         let max_img_mb = parse_num::<usize>("MAX_IMAGE_SIZE_MB", &max_img_raw, &mut errors);
         let max_html_mb = parse_num::<usize>("MAX_REVIEW_HTML_SIZE_MB", &max_html_raw, &mut errors);
+        let max_uploads =
+            parse_num::<usize>("MAX_CONCURRENT_IMAGE_UPLOADS", &max_uploads_raw, &mut errors);
+        if max_uploads == 0 {
+            errors.push("MAX_CONCURRENT_IMAGE_UPLOADS must be at least 1".into());
+        }
         let cache_max_mb = parse_num::<u64>("CACHE_MAX_MB", &cache_mb_raw, &mut errors);
         let cache_ttl = parse_num::<u64>("CACHE_TTL_SECONDS", &cache_ttl_raw, &mut errors);
         if cache_max_mb > 0 && cache_ttl == 0 {
@@ -204,6 +217,7 @@ impl Config {
             r2_public_base_url: r2_public_base_url.trim_end_matches('/').to_string(),
             max_image_size_bytes: max_img_mb * 1024 * 1024,
             max_review_html_size_bytes: max_html_mb * 1024 * 1024,
+            max_concurrent_image_uploads: max_uploads,
             cache_max_bytes: cache_max_mb * 1024 * 1024,
             cache_ttl_seconds: cache_ttl,
         })

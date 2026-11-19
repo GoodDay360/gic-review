@@ -10,6 +10,7 @@ use gic_review_api::{
     storage::Storage,
 };
 use sqlx::mysql::MySqlPoolOptions;
+use tokio::sync::Semaphore;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -76,11 +77,13 @@ async fn main() -> anyhow::Result<()> {
             "disabled"
         }
     );
+    let image_upload_slots = Arc::new(Semaphore::new(config.max_concurrent_image_uploads));
     let state = AppState {
         db,
         storage: Storage::new(&config),
         config: Arc::new(config),
         login_limiter: RateLimiter::new(5, Duration::from_secs(60)),
+        image_upload_slots,
         cache,
     };
     let app = build_router(state);

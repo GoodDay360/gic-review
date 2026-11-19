@@ -61,7 +61,7 @@ pub fn is_image_key(key: &str) -> bool {
     let Some((stem, ext)) = file.rsplit_once('.') else {
         return false;
     };
-    dir_ok && matches!(ext, "png" | "jpg" | "webp" | "gif") && uuid::Uuid::parse_str(stem).is_ok()
+    dir_ok && matches!(ext, "avif" | "png" | "jpg" | "webp" | "gif") && uuid::Uuid::parse_str(stem).is_ok()
 }
 
 /// Validate an optional image key field.
@@ -104,6 +104,7 @@ mod tests {
         let id = uuid::Uuid::new_v4();
         assert!(is_image_key(&format!("images/{id}.png")));
         assert!(is_image_key(&format!("quizzes/12/{id}.webp")));
+        assert!(is_image_key(&format!("images/{id}.avif")));
         assert!(!is_image_key(&format!("quizzes/x/{id}.png")));
         assert!(!is_image_key(&format!("reviews/1/{id}.html")));
         assert!(!is_image_key("images/../../etc/passwd.png"));

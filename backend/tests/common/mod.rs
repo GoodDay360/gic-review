@@ -20,6 +20,7 @@ use sqlx::{
     MySqlPool,
     mysql::{MySqlConnectOptions, MySqlPoolOptions},
 };
+use tokio::sync::Semaphore;
 use tower::ServiceExt;
 
 pub fn test_config() -> Config {
@@ -46,6 +47,7 @@ pub fn test_config() -> Config {
         r2_public_base_url: "https://files.example.com".into(),
         max_image_size_bytes: 5 * 1024 * 1024,
         max_review_html_size_bytes: 10 * 1024 * 1024,
+        max_concurrent_image_uploads: 5,
         cache_max_bytes: 4 * 1024 * 1024,
         cache_ttl_seconds: 300,
     }
@@ -58,6 +60,7 @@ pub fn app_with_pool(db: MySqlPool) -> Router {
         storage: Storage::new(&config),
         config: Arc::new(config),
         login_limiter: RateLimiter::new(5, Duration::from_secs(60)),
+        image_upload_slots: Arc::new(Semaphore::new(5)),
         // Same cache as production, so tests exercise caching and invalidation.
         cache: ResponseCache::new(4 * 1024 * 1024, Duration::from_secs(300)),
     })

@@ -56,6 +56,13 @@ pub async fn store_image(
             state.config.max_image_size_bytes / 1024 / 1024
         )));
     }
+    // Encoding is CPU- and memory-heavy: process at most N uploads at once (all clients
+    // together); the others wait here in FIFO order.
+    let _slot = state
+        .image_upload_slots
+        .acquire()
+        .await
+        .map_err(|e| AppError::Internal(e.into()))?;
     let processed =
         tokio::task::spawn_blocking(move || images::process(bytes, filename.as_deref()))
             .await

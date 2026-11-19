@@ -108,13 +108,13 @@ curl -H "Authorization: Bearer $KEY" "$BASE/admin/reviews?subject_id=1"
 Same topic already there? Ask whether to **update it** (#7) instead of creating a new one.
 
 **Step 4. Upload images, if any** (#5). Small diagrams can be inline `<svg>` or `data:` URIs
-instead. For figures from the source file (exported as PNG, cropped):
+instead. For figures from the source file (exported as PNG, cropped; GIFs work too and stay animated):
 
 ```bash
 curl -H "Authorization: Bearer $KEY" -F "file=@figure-3.png" $BASE/admin/uploads/image
-# 201 → { "key": "images/2f1c…png", "url": "https://files.example.com/images/2f1c…png" }
+# 201 → { "key": "images/2f1c…avif", "url": "https://files.example.com/images/2f1c…avif" }
 ```
-Use the **`url`** in the page: `<img src="https://files.example.com/images/2f1c…png" alt="…">`.
+Use the **`url`** in the page: `<img src="https://files.example.com/images/2f1c…avif" alt="…">`.
 
 **Step 5. Write the HTML.** Copy the template in section 6, keep its `<style>` and `<script>`
 theme block **unchanged**, and replace the content inside `<main>`. Follow the rules in section 5.
@@ -161,7 +161,9 @@ Response `200`: one review object. `404` if it doesn't exist or isn't yours.
 
 ### #5 `POST /admin/uploads/image`
 `multipart/form-data`, field `file` (PNG, JPEG, WebP or GIF; max 5 MB by default). Response
-`201`: `{ "key", "url" }`. Use `url` in your HTML. Resized to max 1600 px wide.
+`201`: `{ "key", "url" }`. Use `url` in your HTML. Resized to max 1600 px wide and compressed:
+still images are stored as AVIF, animated GIFs as animated WebP (animation is kept), so the
+extension of `url` may differ from your file.
 
 ### #6 `POST /admin/reviews`
 `multipart/form-data`:

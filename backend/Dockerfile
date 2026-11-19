@@ -13,10 +13,10 @@ ARG RUST_VERSION=1.96
 FROM rust:${RUST_VERSION}-slim-bookworm AS build
 WORKDIR /app
 
-# C toolchain for aws-lc-sys / ring, and OpenSSL headers for the MySQL TLS connection
+# C toolchain for aws-lc-sys / ring / libwebp, nasm for the AV1 (AVIF) encoder, and OpenSSL headers for the MySQL TLS connection
 # (native-tls/OpenSSL accepts the X.509 v1 certificates some managed MySQL servers use).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential cmake pkg-config libssl-dev \
+ && apt-get install -y --no-install-recommends build-essential cmake nasm pkg-config libssl-dev \
  && rm -rf /var/lib/apt/lists/*
 
 # 1) Build dependencies only, so they are cached until Cargo.toml/Cargo.lock change.

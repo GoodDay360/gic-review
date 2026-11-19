@@ -127,7 +127,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ In-memory response cache for anonymous public reads (`CACHE_MAX_MB`, `CACHE_TTL_SECONDS`; `x-cache` header); any successful `/api/admin/` write clears it at once (generation-stamped entries), logged-in requests bypass it
 - ✅ Password change / admin reset bumps `session_version`; session JWTs with an older `sv` are rejected (other devices signed out)
 - ✅ Input validation and parameterized SQL only
-- ✅ Uploads: MIME + extension + magic-number checks, size limits from `.env`, random UUID keys, re-encoding strips EXIF
+- ✅ Uploads: MIME + extension + magic-number checks, size limits from `.env`, random UUID keys, re-encoding strips EXIF (at most `MAX_CONCURRENT_IMAGE_UPLOADS` at once, others queue); stills stored as AVIF (`ravif`), animated GIFs as animated WebP (`webp`/libwebp)
 - ✅ CORS limited to `FRONTEND_URL` (credentials + `Authorization` header)
 - ✅ JSON errors `{ "error": { "code", "message" } }` without stack traces or SQL, including malformed/incomplete JSON bodies (`AppJson` extractor)
 - ✅ First admin bootstrapped from `.env`; no API path creates admins; created users are always managers

@@ -304,7 +304,7 @@ Managers can add images to:
 Requirements:
 - **Upload flow:** the image goes to `POST /api/admin/uploads/image` first, which returns `{ key, url }`; the key is then saved on the quiz, question or option.
 - **Validation:** only png, jpg/jpeg, webp and gif are accepted. The backend checks real file bytes (magic numbers), not just the extension, and enforces `MAX_IMAGE_SIZE_MB`.
-- **Re-encoding:** images are optionally re-encoded and resized server-side (for example max 1600px wide, using the `image` crate) to strip EXIF metadata and keep pages fast.
+- **Re-encoding:** images are re-encoded and resized server-side (max 1600px wide) to strip EXIF metadata and save storage: still images become AVIF, animated GIFs become animated WebP (animation kept).
 - **Object keys:** use the form `quizzes/{quiz_id}/{uuid}.{ext}` for quiz images (use an `images/` prefix if the quiz doesn't exist yet).
 - **Cleanup:** when an image is replaced or removed, or its question, option or quiz is deleted, delete the old object from R2 as well. Add an admin-only "clean up orphaned images" action that removes R2 objects no row references.
 - **Alt text:** encourage alt text with an optional field in the editor, used for accessibility.
@@ -447,6 +447,7 @@ R2_PUBLIC_BASE_URL=              # public bucket domain, e.g. https://files.exam
 # ---------- Upload limits ----------
 MAX_IMAGE_SIZE_MB=5
 MAX_REVIEW_HTML_SIZE_MB=10
+MAX_CONCURRENT_IMAGE_UPLOADS=5
 
 # ---------- Cache (spares the database and CPU) ----------
 CACHE_MAX_MB=32                  # RAM for cached public responses (0 = cache off)

@@ -7,7 +7,6 @@ import { computed, onMounted, reactive, ref } from 'vue'
 
 import { api, errorMessage } from '@/api/client'
 import type { ApiKey, ApiScope, CreatedApiKey } from '@/api/types'
-import AppIcon from '@/components/AppIcon.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
 import { API_BASE_URL } from '@/config'
@@ -63,7 +62,7 @@ function openForm(regen: boolean) {
 async function submit() {
   if (saving.value) return
   if (!form.scopes.length) {
-    toast.error('Choose at least one permission')
+    toast.warning('Pick at least one permission for the key.', 'No permissions selected')
     return
   }
   saving.value = true
@@ -105,7 +104,7 @@ async function copy(text: string) {
     await navigator.clipboard.writeText(text)
     toast.success('Copied to clipboard')
   } catch {
-    toast.error('Copy failed; select the text and copy it manually')
+    toast.warning('Select the key and copy it manually.', 'Couldn’t copy')
   }
 }
 
@@ -123,55 +122,68 @@ curl -H "Authorization: Bearer ${created.value ?? 'gic_…'}" \\
 
 <template>
   <div class="space-y-5">
-    <h1 class="text-2xl font-bold text-ctp-text">API key</h1>
-    <p class="max-w-2xl text-sm text-ctp-subtext0">
+    <h1 class="animate__animated animate__fadeInDown text-2xl font-bold text-ctp-text">API key</h1>
+    <v-alert type="info" icon="mdi-robot-outline" class="max-w-3xl text-sm">
       Use an API key to let a script or an AI assistant add quizzes and interactive reviews for you.
       It acts as you, with only the permissions you choose. You can have
       <strong class="text-ctp-text">one active key</strong>; regenerate it if it leaks. Your admin
       can see and revoke it.
-    </p>
+    </v-alert>
 
-    <section v-if="created" class="card space-y-3 border-ctp-green p-5" aria-live="polite">
+    <v-card
+      v-if="created"
+      tag="section"
+      class="animate__animated animate__bounceIn space-y-3 border-ctp-green p-5"
+      aria-live="polite"
+    >
       <h2 class="flex items-center gap-2 font-semibold text-ctp-green">
-        <AppIcon name="key" /> Your new API key
+        <v-icon icon="mdi-key-variant" /> Your new API key
       </h2>
-      <p class="text-sm text-ctp-subtext1">
-        Copy it now. <strong class="text-ctp-text">It will not be shown again.</strong> Store it
-        like a password.
-      </p>
+      <v-alert type="warning" density="compact" icon="mdi-eye-off-outline">
+        Copy it now. <strong>It will not be shown again.</strong> Store it like a password.
+      </v-alert>
       <div class="flex gap-2">
-        <code class="input flex-1 overflow-x-auto font-mono text-xs whitespace-nowrap select-all">{{
-          created
-        }}</code>
-        <button class="btn-primary" @click="copy(created!)">
-          <AppIcon name="copy" :size="16" /> Copy
-        </button>
+        <code
+          class="flex-1 overflow-x-auto rounded-lg border border-ctp-surface1 bg-ctp-surface0 px-3 py-2.5 font-mono text-xs whitespace-nowrap select-all"
+          >{{ created }}</code
+        >
+        <v-btn color="primary" prepend-icon="mdi-content-copy" @click="copy(created!)">Copy </v-btn>
       </div>
       <pre class="overflow-x-auto rounded-lg bg-ctp-crust p-3 text-xs text-ctp-subtext1">{{
         example
       }}</pre>
-      <button class="btn-ghost btn-sm" @click="created = null">I've saved it, hide the key</button>
-    </section>
+      <v-btn variant="text" size="small" prepend-icon="mdi-check" @click="created = null">
+        I've saved it, hide the key
+      </v-btn>
+    </v-card>
 
     <SkeletonBlock v-if="loading" class="h-40" />
-    <section v-else-if="active" class="card space-y-4 p-5">
+    <v-card v-else-if="active" tag="section" class="space-y-4 p-5" data-aos="fade-up">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p class="font-semibold text-ctp-text">{{ active.name }}</p>
           <p class="font-mono text-sm text-ctp-subtext0">{{ active.key_prefix }}…</p>
         </div>
-        <span class="rounded-full bg-ctp-green/15 px-2.5 py-1 text-xs font-medium text-ctp-green"
-          >Active</span
+        <v-chip
+          size="small"
+          color="success"
+          variant="tonal"
+          prepend-icon="mdi-check-circle-outline"
         >
+          Active
+        </v-chip>
       </div>
       <div class="flex flex-wrap gap-2">
-        <span
+        <v-chip
           v-for="s in active.scopes"
           :key="s"
-          class="rounded-full bg-ctp-accent/15 px-2.5 py-1 text-xs font-medium text-ctp-accent"
+          size="small"
+          color="primary"
+          variant="tonal"
+          prepend-icon="mdi-shield-key-outline"
         >
           {{ s }}
-        </span>
+        </v-chip>
       </div>
       <dl class="grid gap-2 text-sm sm:grid-cols-3">
         <div>
@@ -188,20 +200,26 @@ curl -H "Authorization: Bearer ${created.value ?? 'gic_…'}" \\
         </div>
       </dl>
       <div class="flex flex-wrap gap-2">
-        <button class="btn-secondary" @click="openForm(true)">
-          <AppIcon name="refresh" :size="16" /> Regenerate
-        </button>
-        <button class="btn-ghost text-ctp-red" @click="revoking = true">
-          <AppIcon name="trash" :size="16" /> Revoke
-        </button>
+        <v-btn variant="tonal" prepend-icon="mdi-refresh" @click="openForm(true)"
+          >Regenerate
+        </v-btn>
+        <v-btn
+          variant="text"
+          prepend-icon="mdi-delete-outline"
+          color="error"
+          @click="revoking = true"
+          >Revoke
+        </v-btn>
       </div>
-    </section>
-    <section v-else class="card flex flex-col items-start gap-3 p-5">
-      <p class="text-sm text-ctp-subtext1">You don't have an active API key.</p>
-      <button class="btn-primary" @click="openForm(false)">
-        <AppIcon name="key" :size="16" /> Create API key
-      </button>
-    </section>
+    </v-card>
+    <v-card v-else tag="section" class="flex flex-col items-start gap-3 p-5" data-aos="fade-up">
+      <p class="flex items-center gap-2 text-sm text-ctp-subtext1">
+        <v-icon icon="mdi-key-remove" /> You don't have an active API key.
+      </p>
+      <v-btn color="primary" prepend-icon="mdi-key-variant" @click="openForm(false)"
+        >Create API key
+      </v-btn>
+    </v-card>
 
     <section v-if="history.length" class="space-y-2">
       <h2 class="text-sm font-semibold text-ctp-subtext1">Previous keys</h2>
@@ -209,7 +227,8 @@ curl -H "Authorization: Bearer ${created.value ?? 'gic_…'}" \\
         <li
           v-for="k in history"
           :key="k.id"
-          class="flex flex-wrap gap-x-3 rounded-lg bg-ctp-mantle px-3 py-2 text-ctp-subtext0"
+          class="flex flex-wrap gap-x-3 rounded-lg border border-ctp-surface0 bg-ctp-mantle px-3 py-2 text-ctp-subtext0"
+          data-aos="fade-up"
         >
           <span class="font-mono">{{ k.key_prefix }}…</span>
           <span>{{ k.name }}</span>
@@ -226,63 +245,66 @@ curl -H "Authorization: Bearer ${created.value ?? 'gic_…'}" \\
       :description="regenerating ? 'Your current key stops working immediately.' : undefined"
       @close="formOpen = false"
     >
-      <form id="api-key-form" class="space-y-4" @submit.prevent="submit">
-        <div>
-          <label class="label" for="ak-name">Name</label>
-          <input
-            id="ak-name"
-            v-model="form.name"
-            class="input"
-            required
-            maxlength="100"
-            placeholder="e.g. Claude assistant"
-          />
-        </div>
+      <v-form id="api-key-form" class="space-y-4" @submit.prevent="submit">
+        <v-text-field
+          v-model="form.name"
+          label="Name"
+          required
+          maxlength="100"
+          placeholder="e.g. Claude assistant"
+        />
         <fieldset class="space-y-2">
-          <legend class="label">Permissions</legend>
-          <label
+          <legend class="mb-1 text-sm font-medium text-ctp-subtext1">Permissions</legend>
+          <v-card
             v-for="s in SCOPES"
             :key="s.id"
-            class="flex cursor-pointer items-start gap-3 rounded-lg border border-ctp-surface1 p-3"
+            class="px-2 py-1 transition-colors"
+            :class="form.scopes.includes(s.id) ? 'border-ctp-accent/60' : ''"
           >
-            <input
-              v-model="form.scopes"
-              type="checkbox"
-              :value="s.id"
-              class="mt-1 h-4 w-4 accent-ctp-accent"
-            />
-            <span>
-              <span class="block text-sm font-medium text-ctp-text"
-                >{{ s.label }} <code class="text-xs text-ctp-subtext0">{{ s.id }}</code></span
-              >
-              <span class="block text-xs text-ctp-subtext0">{{ s.hint }}</span>
-            </span>
-          </label>
+            <v-checkbox v-model="form.scopes" :value="s.id" density="compact">
+              <template #label>
+                <span class="py-1">
+                  <span class="block text-sm font-medium text-ctp-text"
+                    >{{ s.label }} <code class="text-xs text-ctp-subtext0">{{ s.id }}</code></span
+                  >
+                  <span class="block text-xs text-ctp-subtext0">{{ s.hint }}</span>
+                </span>
+              </template>
+            </v-checkbox>
+          </v-card>
         </fieldset>
-        <div>
-          <label class="label" for="ak-exp">Expires</label>
-          <select id="ak-exp" v-model.number="form.expiry" class="input">
-            <option v-for="e in EXPIRY" :key="e.value" :value="e.value">{{ e.label }}</option>
-          </select>
-        </div>
-      </form>
+        <v-select
+          v-model="form.expiry"
+          :items="EXPIRY"
+          item-title="label"
+          item-value="value"
+          label="Expires"
+          prepend-inner-icon="mdi-calendar-clock"
+        />
+      </v-form>
       <template #footer>
-        <button class="btn-ghost" @click="formOpen = false">Cancel</button>
-        <button class="btn-primary" type="submit" form="api-key-form" :disabled="saving">
-          {{ saving ? 'Creating…' : regenerating ? 'Regenerate key' : 'Create key' }}
-        </button>
+        <v-btn variant="text" @click="formOpen = false">Cancel</v-btn>
+        <v-btn
+          color="primary"
+          type="submit"
+          form="api-key-form"
+          :prepend-icon="regenerating ? 'mdi-refresh' : 'mdi-key-plus'"
+          :loading="saving"
+        >
+          {{ regenerating ? 'Regenerate key' : 'Create key' }}
+        </v-btn>
       </template>
     </BaseModal>
 
     <BaseModal :open="revoking" title="Revoke API key?" size="sm" @close="revoking = false">
-      <p class="text-sm text-ctp-subtext1">
+      <v-alert type="warning" icon="mdi-key-alert-outline">
         Anything using this key (scripts, AI assistants) will stop working immediately.
-      </p>
+      </v-alert>
       <template #footer>
-        <button class="btn-ghost" @click="revoking = false">Cancel</button>
-        <button class="btn-danger" :disabled="revokingKey" @click="revoke">
-          {{ revokingKey ? 'Revoking…' : 'Revoke' }}
-        </button>
+        <v-btn variant="text" @click="revoking = false">Cancel</v-btn>
+        <v-btn color="error" prepend-icon="mdi-key-remove" :loading="revokingKey" @click="revoke"
+          >Revoke</v-btn
+        >
       </template>
     </BaseModal>
   </div>

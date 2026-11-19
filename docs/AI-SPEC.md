@@ -35,9 +35,9 @@ GIC Review is an exam-review website. Students pick a subject, then open its **I
 (a static HTML page in a sandboxed iframe) or practise with **Quizzes** in **QCM** or **Flashcard**
 mode, without logging in. **Managers** create the content in the dashboard or through the API with
 their personal **API key** (how AI assistants add quizzes and reviews). **Admins** have every manager
-permission on all content, plus account, API key, year and subject management and image cleanup.
+permission on all content, plus account, API key, category and subject management and image cleanup.
 
-Stack: Vue 3 + TypeScript + Vite + Tailwind CSS 4 + Pinia + Vue Router (**Bun**) in `frontend/`;
+Stack: Vue 3 + TypeScript + Vite + Vuetify 4 (components, `@mdi/font` icons) + Tailwind CSS 4 (layout/utilities) + AOS + animate.css + Pinia + Vue Router (**Bun**) in `frontend/`;
 Rust + Axum + Tokio + SQLx (MySQL 8) + Cloudflare R2 (`aws-sdk-s3`) in `backend/`.
 
 ## How to run
@@ -68,13 +68,13 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 
 ### Public site
 - ✅ Header with the "GIC Review" name, a small "Staff login" link (Dashboard + logout when logged in), a flavor picker, and an icon-only link to the documentation
-- ✅ Default font Plus Jakarta Sans, self-hosted at build time by `vite-plugin-webfont-dl` (zero config) and set via Tailwind `--font-sans`
+- ✅ Default font Plus Jakarta Sans, self-hosted at build time by `vite-plugin-webfont-dl` (zero config) and set via Tailwind `--font-sans`; Vuetify reads the same font from `--v-font-body` / `--v-font-heading` (`src/styles/main.css`)
 - ✅ Link previews: meta description, Open Graph + Twitter card tags with a 1200×630 preview image, absolute URLs from `VITE_SITE_URL`; favicon.ico/PNG/Apple/Android icons and web manifest
 - ✅ Footer credit "Made by: @GoodDay360" linking to https://github.com/GoodDay360 (new tab)
 - ✅ Home page: subject cards from `GET /api/subjects`, loading skeletons, empty and error states
-- ✅ Year picker first: Home shows year cards (`I3`, `I4`, any custom name) from `GET /api/years`, last opened year highlighted
-- ✅ Year page `/years/:yearSlug` lists that year's subjects; subject pages link back to their year
-- ✅ Only one seeded subject: Human Computer Interaction (`hci`), in the default year "General" (renamable)
+- ✅ Category picker first: Home shows category cards (`I3`, `I4`, any custom name) from `GET /api/categories`, last opened category highlighted
+- ✅ Category page `/categories/:categorySlug` lists that category's subjects; subject pages link back to their category
+- ✅ Only one seeded subject: Human Computer Interaction (`hci`), in the default category "General" (renamable)
 - ✅ Activity modal per subject (Interactive Review / Quiz); review shown disabled with "Coming soon" when there is none
 - ✅ Interactive review page: list when there are several, sandboxed iframe (`sandbox="allow-scripts"`, no `allow-same-origin`) loaded from the R2 domain, back button
 - ✅ Review theme sync via `postMessage({ type: 'gic-theme', flavor, accent })`
@@ -96,8 +96,8 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Role-based dashboard: managers get Quizzes, Bulk import, Interactive reviews, API key; admins get Managers, API keys, Subjects
 - ✅ Admins have every manager permission: create content, own API key, and owner rights on **all** quizzes/reviews (`access: "admin"`, "Owned by …" badge)
 - ✅ Content ownership: quizzes and reviews are private to the manager who created them (others get 404)
-- ✅ Sharing years and subjects by email (Share buttons on the Years and Subjects pages): recipients can add content there and view, edit and publish everything in it, but not delete others' items; the year owner/admin manages access, recipients can leave. No per-item sharing (removed).
-- ✅ Deleting a manager hands each of their years to the person it was first shared with
+- ✅ Sharing categories and subjects by email (Share buttons on the Categories and Subjects pages): recipients can add content there and view, edit and publish everything in it, but not delete others' items; the category owner/admin manages access, recipients can leave. No per-item sharing (removed).
+- ✅ Deleting a manager hands each of their categories to the person it was first shared with
 - ✅ Quizzes (manager): create, edit, delete, publish/unpublish (refused while no mode is available)
 - ✅ Questions (manager): add, edit, delete, reorder (drag & drop and ↑/↓), options add/remove/reorder
 - ✅ `ImageUploader` for every image field (cover, question, options, flashcard back, explanation): browse, drag & drop, Ctrl+V paste, progress bar, preview, alt text, Replace/Remove
@@ -109,10 +109,10 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Manager API key page: create one key (shown once with copy button and curl examples), choose permissions and expiry, last-used time, regenerate, revoke
 - ✅ Managers (admin only): create, reset password, activate/deactivate, delete
 - ✅ API keys overview (admin only): every manager's keys with owner, prefix, scopes, dates and status; filter; revoke
-- ✅ Years belong to their creator: any editor creates years in the dashboard ("Yours" / "Owned by …"), only the owner or an admin edits/deletes them; seeded "General" has no owner (admins only)
-- ✅ Years and subjects can only be created in the dashboard (API keys get `403 api_key_not_allowed`)
-- ✅ New quizzes/reviews only in subjects of years you own or that are shared with you (year or subject); `403 not_your_year` lists where you can add; admins: all; `GET /admin/years` (works with API keys) shows `can_manage`, `shared_with_you` and `can_add_content` per year and subject
-- ✅ Subjects: managers create/edit/delete them in their own years, admins in all (year, name, slug, description, color, order; delete when empty); subject pickers show `Year · Subject` and only offer your own years for new content
+- ✅ Categories belong to their creator: any editor creates categories in the dashboard ("Yours" / "Owned by …"), only the owner or an admin edits/deletes them; seeded "General" has no owner (admins only)
+- ✅ Categories and subjects can only be created in the dashboard (API keys get `403 api_key_not_allowed`)
+- ✅ New quizzes/reviews only in subjects of categories you own or that are shared with you (category or subject); `403 not_your_category` lists where you can add; admins: all; `GET /admin/categories` (works with API keys) shows `can_manage`, `shared_with_you` and `can_add_content` per category and subject
+- ✅ Subjects: managers create/edit/delete them in their own categories, admins in all (category, name, slug, description, color, order; delete when empty); subject pickers show `Category · Subject` and only offer your own categories for new content
 - ✅ "Clean up orphaned images" (admin only, on the Subjects page)
 - ✅ Frontend route guards per role, mirrored by the backend
 
@@ -122,7 +122,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Role and `is_active` re-checked from the DB on every authenticated request (deactivation is immediate, for sessions and API keys)
 - ✅ API keys: `gic_` + 64 hex chars, only SHA-256 hash stored, shown once, Bearer auth, max 1 active per manager, scopes `quizzes:write` / `reviews:write`, optional expiry, revocable by owner or admin
 - ✅ API keys refused on session-only endpoints (users, API key management, sharing, subjects, cleanup), so a leaked key cannot escalate
-- ✅ Access checks on every content endpoint (creator, year owner, admin, or shared year/subject; else 404; delete needs full rights → 403 `owner_only`), also for drafts on `GET /quizzes/:id`
+- ✅ Access checks on every content endpoint (creator, category owner, admin, or shared category/subject; else 404; delete needs full rights → 403 `owner_only`), also for drafts on `GET /quizzes/:id`
 - ✅ Login rate limit (5 attempts / minute / IP)
 - ✅ In-memory response cache for anonymous public reads (`CACHE_MAX_MB`, `CACHE_TTL_SECONDS`; `x-cache` header); any successful `/api/admin/` write clears it at once (generation-stamped entries), logged-in requests bypass it
 - ✅ Password change / admin reset bumps `session_version`; session JWTs with an older `sv` are rejected (other devices signed out)
@@ -136,7 +136,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 ### Infrastructure
 - ✅ Separate `frontend/` and `backend/` projects with their own `.env.example` and `.gitignore`, plus the root `.gitignore`
 - ✅ Frontend uses Bun only (`bun.lock`, `packageManager` field, no npm/yarn/pnpm lockfiles)
-- ✅ Catppuccin theme: Latte, Frappé, Macchiato, Mocha + System, CSS variables generated from `@catppuccin/palette`, Tailwind `ctp-*` colors, `dark:` for dark flavors, saved in `localStorage`, applied before mount
+- ✅ Catppuccin theme: Latte, Frappé, Macchiato, Mocha + System, CSS variables generated from `@catppuccin/palette`, Tailwind `ctp-*` colors, `dark:` for dark flavors, saved in `localStorage`, applied before mount; one Vuetify theme per flavor built from the same palette in `src/plugins/vuetify.ts` (`primary` = chosen accent, `ctp-<color>` theme colors), switched by the theme store
 - ✅ Accent picker with the 14 Catppuccin accents (`--ctp-accent`), readable text on every accent
 - ✅ Accessible modals (focus trap, Esc, backdrop click, aria labels) and error toasts
 - ✅ SQLx migrations for all tables (`users`, `subjects`, `interactive_reviews`, `quizzes`, `questions`, `question_options`, `api_keys`)
@@ -157,9 +157,9 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 ```
 users               id, email UNIQUE, password_hash, session_version, env_password_hash NULL, display_name, role ENUM('admin','manager'),
                     is_active, created_by NULL → users (SET NULL), created_at, updated_at
-years               id, slug UNIQUE, name, description NULL, sort_order, created_by NULL → users (SET NULL)
+categories               id, slug UNIQUE, name, description NULL, sort_order, created_by NULL → users (SET NULL)
                     (owner; NULL = admins only), created_at, updated_at
-subjects            id, year_id → years (RESTRICT), slug UNIQUE, name, description NULL, color (accent name), sort_order,
+subjects            id, category_id → categories (RESTRICT), slug UNIQUE, name, description NULL, color (accent name), sort_order,
                     created_at, updated_at
 interactive_reviews id, subject_id → subjects (RESTRICT), title, slug (UNIQUE per subject), r2_key,
                     sort_order, is_published, created_by NULL → users (SET NULL), created_at, updated_at
@@ -170,8 +170,8 @@ questions           id, quiz_id → quizzes (CASCADE), position, prompt NULL, im
                     explanation NULL, explanation_image_key NULL, multi_select, created_at, updated_at
 question_options    id, question_id → questions (CASCADE), position, text NULL, image_key NULL,
                     image_alt NULL, is_correct
-year_shares         year_id → years (CASCADE), user_id → users (CASCADE), granted_by NULL → users,
-                    created_at, PK (year_id, user_id)
+category_shares         category_id → categories (CASCADE), user_id → users (CASCADE), granted_by NULL → users,
+                    created_at, PK (category_id, user_id)
 subject_shares      subject_id → subjects (CASCADE), user_id → users (CASCADE),
                     granted_by NULL → users, created_at, PK (subject_id, user_id)
 api_keys            id, user_id → users (CASCADE), name, key_prefix, key_hash UNIQUE (sha-256 hex),
@@ -180,8 +180,8 @@ api_keys            id, user_id → users (CASCADE), name, key_prefix, key_hash 
 ```
 
 Migrations: `20261118000001_init_schema.sql`, `20261118000002_seed_hci_subject.sql`,
-`20261118000003_api_keys.sql`, `20261118000004_content_shares.sql`, `20261118000005_years.sql` (creates the default year "General"), `20261118000006_year_owners.sql`, `20261118000007_year_subject_shares.sql` (adds year/subject shares, drops the item share tables),
-`20261118000008_session_version.sql`, `20261118000009_admin_env_password.sql`. R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
+`20261118000003_api_keys.sql`, `20261118000004_content_shares.sql`, `20261118000005_years.sql` (creates the default category "General"), `20261118000006_year_owners.sql`, `20261118000007_year_subject_shares.sql` (adds category/subject shares, drops the item share tables),
+`20261118000008_session_version.sql`, `20261118000009_admin_env_password.sql`, `20261119000001_rename_years_to_categories.sql` (renames years → categories: tables `categories`, `category_shares`, column `subjects.category_id`). R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
 `reviews/{subject_id}/{uuid}.html`.
 
 ## API endpoints (current, prefix `/api`)
@@ -192,8 +192,8 @@ or admin session only, **A-s** = admin session only, **any** = any session or AP
 | Method & path | Auth | Notes |
 |---|---|---|
 | `GET /health` | public | 503 when the DB is down |
-| `GET /years`, `GET /years/:slug` | public | years with `subject_count`; one year with its `subjects` |
-| `GET /subjects[?year=slug]`, `GET /subjects/:slug` | public | `year_id`, `year_slug`, `year_name`, `has_review`, `quiz_count` |
+| `GET /categories`, `GET /categories/:slug` | public | categories with `subject_count`; one category with its `subjects` |
+| `GET /subjects[?category=slug]`, `GET /subjects/:slug` | public | `category_id`, `category_slug`, `category_name`, `has_review`, `quiz_count` |
 | `GET /subjects/:slug/reviews` | public | published reviews with `url` (`?v=` cache-buster) |
 | `GET /subjects/:slug/quizzes` | public | published, with `question_count`, `available_modes` |
 | `GET /quizzes/:id` | public / M | unpublished only for managers |
@@ -206,20 +206,20 @@ or admin session only, **A-s** = admin session only, **any** = any session or AP
 | `POST /admin/quizzes/import` | M `quizzes:write` | one transaction |
 | `POST /admin/uploads/image`, `DELETE /admin/uploads/image/*key` | M `quizzes:write` or `reviews:write` | |
 | `GET/POST /admin/reviews`, `GET/PUT/DELETE /admin/reviews/:id` | M `reviews:write` | multipart `.html`; delete owner-only |
-| `GET/POST /admin/years/:id/shares`, `DELETE …/shares/:user_id` | M-s | view: year owner/admin/recipients; add (`{email}`): year owner or admin; delete: year owner/admin, or yourself to leave |
-| `GET/POST /admin/subjects/:id/shares`, `DELETE …/shares/:user_id` | M-s | same rules (managed by the subject's year owner or an admin) |
+| `GET/POST /admin/categories/:id/shares`, `DELETE …/shares/:user_id` | M-s | view: category owner/admin/recipients; add (`{email}`): category owner or admin; delete: category owner/admin, or yourself to leave |
+| `GET/POST /admin/subjects/:id/shares`, `DELETE …/shares/:user_id` | M-s | same rules (managed by the subject's category owner or an admin) |
 | `GET /admin/api-keys/mine`, `POST /admin/api-keys` | M-s | 409 when an active key exists (unless `replace_existing`) |
 | `DELETE /admin/api-keys/:id` (also `POST …/:id/revoke`) | M-s own / A-s any | |
 | `GET /admin/api-keys[?user_id=]` | A-s | all managers' keys |
 | `GET/POST /admin/users`, `PATCH/DELETE /admin/users/:id`, `POST …/:id/reset-password` | A-s | managers only |
-| `POST /admin/subjects`, `PUT/DELETE /admin/subjects/:id` | M-s | `year_id` required; only in years you own (admins: any) |
-| `GET /admin/years` | M (any scope) | every year with `owner_id`, `owner_name`, `can_manage`, `subjects` |
-| `POST /admin/years`, `PUT/DELETE /admin/years/:id` | M-s | create: you become owner; edit/delete: owner or admin; delete refused (409) while it has subjects |
+| `POST /admin/subjects`, `PUT/DELETE /admin/subjects/:id` | M-s | `category_id` required; only in categories you own (admins: any) |
+| `GET /admin/categories` | M (any scope) | every category with `owner_id`, `owner_name`, `can_manage`, `subjects` |
+| `POST /admin/categories`, `PUT/DELETE /admin/categories/:id` | M-s | create: you become owner; edit/delete: owner or admin; delete refused (409) while it has subjects |
 | `POST /admin/uploads/cleanup-orphans` | A-s | |
 
-All editor content endpoints only reach items the caller created, items in their years, or items in a
-year/subject shared with them (admins: all; 404 otherwise), and return `access`
-(`owner`/`admin`/`year_owner`/`shared`), `owner_id`, `owner_name` (creator).
+All editor content endpoints only reach items the caller created, items in their categories, or items in a
+category/subject shared with them (admins: all; 404 otherwise), and return `access`
+(`owner`/`admin`/`category_owner`/`shared`), `owner_id`, `owner_name` (creator).
 
 Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), `owner_only` (403),
 `api_key_not_allowed` (403), `missing_scope` (403), `conflict` (409), `validation_error` (422),
@@ -251,6 +251,14 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-19: **Vuetify 4 UI.** All buttons, forms, inputs, selects, switches, dialogs, menus, alerts, chips,
+  progress bars and toasts (`v-snackbar-queue`) are Vuetify components; icons are Material Design Icons
+  (`@mdi/font`, `mdi-*` names, `AppIcon.vue` removed). CSS layer order in `main.css` keeps Tailwind utilities
+  above Vuetify's layers. AOS (`data-aos`, init in `main.ts`, off for reduced motion) and animate.css
+  (`animate__*` page/alert/result entrances). Login shows specific messages: wrong email/password (error),
+  too many attempts (warning), server/network errors, empty fields and Caps Lock (warning), "sign in to
+  continue" (info) and a welcome toast (success). Toasts take an optional title.
+- 2026-11-19: **Years renamed to categories** everywhere (UI, API, database). Endpoints `/categories`, `/admin/categories`, `?category=`; fields `category_id`, `category_slug`, `category_name`; access value `category_owner`; error `not_your_category`; route `/categories/:categorySlug`. Migration `20261119000001_rename_years_to_categories`.
 - 2026-11-18: Configurable local quiz-result cap (`VITE_MAX_SAVED_RESULTS`, default 1,000,000) with oldest-first eviction.
 - 2026-11-18: QCM and Flashcard progress: resume one unfinished client-side attempt, confirm before replacing it, retain completed results, and show saved results with a redo action.
 - 2026-11-18: Interactive review progress: save each review's scroll position in browser storage and restore it through the sandbox-safe iframe message protocol; updated the starter HTML and AI review guide.
@@ -265,16 +273,16 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
   `apple-touch-icon.png`, `site.webmanifest`) and `VITE_SITE_URL`; fixed Vite's native-config-loader warning.
 - 2026-11-18: AI quiz guide: "How to create a new quiz" box; `POST /admin/quizzes` (create an empty quiz)
   added to the endpoint list as #17 (it was missing). Both creation paths verified with an API key.
-- 2026-11-18: Sharing moved to years and subjects (`year_shares`, `subject_shares`, Share buttons on the
-  Years/Subjects pages); per-item quiz/review sharing **removed** (tables dropped). Access values now
-  `owner`/`admin`/`year_owner`/`shared`; `share_count` removed. Year owners get full rights on content in their years.
-- 2026-11-18: Years belong to their creator; managers create years and subjects in the dashboard (never via
-  API keys) and can only add content to subjects of their own years (`403 not_your_year`). New
-  `GET /admin/years` (works with API keys) shows `can_manage`. Migration `0006_year_owners`.
+- 2026-11-18: Sharing moved to categories and subjects (`category_shares`, `subject_shares`, Share buttons on the
+  Categories/Subjects pages); per-item quiz/review sharing **removed** (tables dropped). Access values now
+  `owner`/`admin`/`category_owner`/`shared`; `share_count` removed. Category owners get full rights on content in their categories.
+- 2026-11-18: Categories belong to their creator; managers create categories and subjects in the dashboard (never via
+  API keys) and can only add content to subjects of their own categories (`403 not_your_category`). New
+  `GET /admin/categories` (works with API keys) shows `can_manage`. Migration `0006_year_owners`.
 - 2026-11-18: Admins get every manager permission back: content creation, own API key, and owner
   rights on all content (`access: "admin"`). Extractors renamed `RequireEditor*` / `MaybeEditor`.
-- 2026-11-18: Years: students pick a year (I3, I4, custom names) before a subject. `years` table,
-  `subjects.year_id`, default year "General", public `/years` endpoints, admin Years page, year in the
+- 2026-11-18: Categories: students pick a category (I3, I4, custom names) before a subject. `categories` table,
+  `subjects.category_id`, default category "General", public `/categories` endpoints, admin Categories page, category in the
   subject form. Bad JSON bodies now return the standard JSON error.
 - 2026-11-18: MySQL TLS switched from rustls to OpenSSL (native-tls): the cloud MySQL's X.509 v1
   certificate failed with `UnsupportedCertVersion`. Dockerfile installs libssl. All tests pass on the cloud DB.

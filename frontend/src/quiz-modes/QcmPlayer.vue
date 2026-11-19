@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import type { Question, QuestionOption, QuizDetail } from '@/api/types'
-import AppIcon from '@/components/AppIcon.vue'
 import ResultScreen from '@/components/ResultScreen.vue'
 import { useLightboxStore } from '@/stores/lightbox'
 import { useProgressStore, type ModeResult, type QcmProgress } from '@/stores/progress'
@@ -220,29 +219,25 @@ function toggleShuffle() {
         <div class="flex flex-wrap items-center justify-between gap-2 text-sm text-ctp-subtext0">
           <span>Question {{ index + 1 }} / {{ total }}</span>
           <span class="font-medium text-ctp-text">Score: {{ score }} / {{ answeredCount }}</span>
-          <button
-            class="btn-ghost btn-sm"
+          <v-btn
+            :variant="progress.state.shuffleQuestions ? 'tonal' : 'text'"
+            :color="progress.state.shuffleQuestions ? 'primary' : undefined"
+            size="small"
+            prepend-icon="mdi-shuffle-variant"
             :aria-pressed="progress.state.shuffleQuestions"
             title="Shuffle question order (restarts the quiz)"
             @click="toggleShuffle"
-          >
-            <AppIcon name="shuffle" :size="16" />
-            Shuffle questions: {{ progress.state.shuffleQuestions ? 'on' : 'off' }}
-          </button>
+            >Shuffle questions: {{ progress.state.shuffleQuestions ? 'on' : 'off' }}
+          </v-btn>
         </div>
-        <div
-          class="h-2 overflow-hidden rounded-full bg-ctp-surface0"
-          role="progressbar"
-          :aria-valuenow="index + (submitted ? 1 : 0)"
-          aria-valuemin="0"
-          :aria-valuemax="total"
+        <v-progress-linear
+          :model-value="((index + (submitted ? 1 : 0)) / total) * 100"
+          color="primary"
+          bg-color="ctp-surface1"
+          height="8"
+          rounded
           aria-label="Quiz progress"
-        >
-          <div
-            class="h-full rounded-full bg-ctp-accent transition-all duration-300"
-            :style="{ width: `${((index + (submitted ? 1 : 0)) / total) * 100}%` }"
-          />
-        </div>
+        />
       </div>
 
       <QcmQuestionCard
@@ -258,18 +253,25 @@ function toggleShuffle() {
         <p class="hidden text-xs text-ctp-overlay1 sm:block">
           Keys: 1–9 select · Enter submit / next
         </p>
-        <button
+        <v-btn
           v-if="!submitted"
-          class="btn-primary ml-auto"
+          color="primary"
+          class="ml-auto"
           :disabled="selected.length === 0"
+          prepend-icon="mdi-check"
           @click="submit"
         >
           Submit answer
-        </button>
-        <button v-else class="btn-primary ml-auto" @click="next">
+        </v-btn>
+        <v-btn
+          v-else
+          color="primary"
+          class="ml-auto"
+          :append-icon="index + 1 >= total ? 'mdi-flag-checkered' : 'mdi-chevron-right'"
+          @click="next"
+        >
           {{ index + 1 >= total ? 'See results' : 'Next' }}
-          <AppIcon name="chevron-right" :size="16" />
-        </button>
+        </v-btn>
       </div>
     </template>
 
@@ -303,12 +305,15 @@ function toggleShuffle() {
         </ul>
       </div>
       <template #actions>
-        <button class="btn-primary" @click="start()">
-          <AppIcon name="refresh" :size="16" /> Redo quiz
-        </button>
-        <button v-if="displayMissed.length" class="btn-secondary" @click="start(displayMissed)">
+        <v-btn color="primary" prepend-icon="mdi-refresh" @click="start()">Redo quiz </v-btn>
+        <v-btn
+          v-if="displayMissed.length"
+          variant="tonal"
+          prepend-icon="mdi-target"
+          @click="start(displayMissed)"
+        >
           Retry missed only
-        </button>
+        </v-btn>
       </template>
     </ResultScreen>
   </div>

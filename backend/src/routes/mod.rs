@@ -10,7 +10,7 @@ pub mod shares;
 pub mod subjects;
 pub mod uploads;
 pub mod users;
-pub mod years;
+pub mod categories;
 
 use axum::Router;
 
@@ -26,7 +26,7 @@ pub fn api(config: &Config) -> Router<AppState> {
         .merge(reviews::router(config))
         .merge(users::router())
         .merge(subjects::router())
-        .merge(years::router())
+        .merge(categories::router())
         .merge(api_keys::router())
         .merge(shares::router())
 }

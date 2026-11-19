@@ -6,7 +6,6 @@ import { useRouter } from 'vue-router'
 import type { QuizSummary } from '@/api/types'
 import { availableModes } from '@/quiz-modes/registry'
 
-import AppIcon from './AppIcon.vue'
 import BaseModal from './BaseModal.vue'
 
 const props = defineProps<{ quiz: QuizSummary | null }>()
@@ -31,18 +30,21 @@ function choose(modeId: string) {
     @close="emit('close')"
   >
     <div v-if="modes.length" class="grid gap-3 sm:grid-cols-2">
-      <button
+      <v-card
         v-for="m in modes"
         :key="m.id"
-        class="card flex flex-col items-start gap-2 p-5 text-left transition hover:border-ctp-accent"
+        tag="button"
+        type="button"
+        hover
+        class="w-full card-lift flex flex-col items-start gap-2 p-5 text-left"
         @click="choose(m.id)"
       >
-        <span class="rounded-lg bg-ctp-surface0 p-2 text-ctp-accent"
-          ><AppIcon :name="m.icon"
-        /></span>
+        <v-avatar color="primary" variant="tonal" rounded="lg">
+          <v-icon :icon="m.icon" />
+        </v-avatar>
         <span class="font-semibold text-ctp-text">{{ m.label }}</span>
         <span class="text-sm text-ctp-subtext0">{{ m.description }}</span>
-      </button>
+      </v-card>
     </div>
     <p v-else class="text-sm text-ctp-subtext0">This quiz has no playable mode yet.</p>
   </BaseModal>

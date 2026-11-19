@@ -16,8 +16,8 @@ use crate::{
     auth::MaybeEditor,
     error::{AppError, AppResult},
     models::{
-        Page, PageQuery, ReviewDto, ReviewRow, SubjectDto, SubjectRow, YearRow, review_columns,
-        subject_columns, year_columns,
+        Page, PageQuery, ReviewDto, ReviewRow, SubjectDto, SubjectRow, CategoryRow, review_columns,
+        subject_columns, category_columns,
     },
     repo,
     state::AppState,
@@ -68,17 +68,17 @@ async fn subject_stats(state: &AppState) -> AppResult<Vec<SubjectStats>> {
     .await?)
 }
 
-pub async fn all_years(state: &AppState) -> AppResult<Vec<YearRow>> {
+pub async fn all_categories(state: &AppState) -> AppResult<Vec<CategoryRow>> {
     Ok(sqlx::query_as(concat!(
         "SELECT ",
-        year_columns!(),
-        " FROM years ORDER BY sort_order, name"
+        category_columns!(),
+        " FROM categories ORDER BY sort_order, name"
     ))
     .fetch_all(&state.db)
     .await?)
 }
 
-/// All subjects (ordered by year, then subject order), with their year and stats.
+/// All subjects (ordered by category, then subject order), with their category and stats.
 pub async fn all_subjects(state: &AppState) -> AppResult<Vec<SubjectDto>> {
     let rows: Vec<SubjectRow> = sqlx::query_as(concat!(
         "SELECT ",
@@ -91,41 +91,41 @@ pub async fn all_subjects(state: &AppState) -> AppResult<Vec<SubjectDto>> {
 }
 
 async fn subjects_from_rows(state: &AppState, rows: Vec<SubjectRow>) -> AppResult<Vec<SubjectDto>> {
-    let years = all_years(state).await?;
+    let categories = all_categories(state).await?;
     let stats = subject_stats(state).await?;
     let mut subjects: Vec<(usize, SubjectDto)> = rows
         .into_iter()
         .filter_map(|r| {
-            let (pos, year) = years.iter().enumerate().find(|(_, y)| y.id == r.year_id)?;
+            let (pos, category) = categories.iter().enumerate().find(|(_, y)| y.id == r.category_id)?;
             let s = stats.iter().find(|s| s.id == r.id);
             Some((
                 pos,
                 SubjectDto::from_row(
                     r,
-                    year,
+                    category,
                     s.is_some_and(|s| s.has_review > 0),
                     s.map_or(0, |s| s.quiz_count),
                 ),
             ))
         })
         .collect();
-    subjects.sort_by_key(|(pos, _)| *pos); // stable: keeps subject order inside a year
+    subjects.sort_by_key(|(pos, _)| *pos); // stable: keeps subject order inside a category
     Ok(subjects.into_iter().map(|(_, s)| s).collect())
 }
 
-pub async fn subjects_for_year(
+pub async fn subjects_for_category(
     state: &AppState,
-    year_slug: &str,
+    category_slug: &str,
     search: Option<String>,
     limit: Option<i64>,
     offset: i64,
 ) -> AppResult<(Vec<SubjectDto>, bool)> {
     let mut query = QueryBuilder::<sqlx::MySql>::new(concat!(
-        "SELECT s.id, s.year_id, s.slug, s.name, s.description, s.color, s.sort_order, \
-         s.created_at, s.updated_at FROM subjects s JOIN years y ON y.id = s.year_id \
+        "SELECT s.id, s.category_id, s.slug, s.name, s.description, s.color, s.sort_order, \
+         s.created_at, s.updated_at FROM subjects s JOIN categories y ON y.id = s.category_id \
          WHERE y.slug = "
     ));
-    query.push_bind(year_slug);
+    query.push_bind(category_slug);
     if let Some(search) = search {
         let pattern = format!("%{search}%");
         query
@@ -155,8 +155,8 @@ pub async fn subjects_for_year(
 
 #[derive(Debug, Deserialize)]
 struct SubjectsQuery {
-    /// Only subjects of this year (year slug).
-    year: Option<String>,
+    /// Only subjects of this category (category slug).
+    category: Option<String>,
 }
 
 async fn list_subjects(
@@ -164,10 +164,10 @@ async fn list_subjects(
     Query(q): Query<SubjectsQuery>,
 ) -> AppResult<Json<Vec<SubjectDto>>> {
     let subjects = all_subjects(&state).await?;
-    Ok(Json(match q.year {
-        Some(year) => subjects
+    Ok(Json(match q.category {
+        Some(category) => subjects
             .into_iter()
-            .filter(|s| s.year_slug == year)
+            .filter(|s| s.category_slug == category)
             .collect(),
         None => subjects,
     }))

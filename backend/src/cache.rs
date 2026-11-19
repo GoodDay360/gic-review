@@ -1,6 +1,6 @@
 //! In-memory response cache for the public read API, to spare the database (and CPU).
 //!
-//! - Caches successful `GET` responses of `/api/years…`, `/api/subjects…` and `/api/quizzes/…`
+//! - Caches successful `GET` responses of `/api/categories…`, `/api/subjects…` and `/api/quizzes/…`
 //!   for **anonymous** requests only (no session cookie, no `Authorization` header): logged-in
 //!   editors and API keys can see drafts, so they always get fresh data.
 //! - Any successful write through the editor API (`POST/PUT/PATCH/DELETE /api/admin/…`) clears
@@ -31,7 +31,7 @@ use moka::future::Cache;
 use crate::{auth::SESSION_COOKIE, state::AppState};
 
 /// Paths whose anonymous GET responses may be cached.
-const CACHEABLE_PREFIXES: &[&str] = &["/api/years", "/api/subjects", "/api/quizzes/"];
+const CACHEABLE_PREFIXES: &[&str] = &["/api/categories", "/api/subjects", "/api/quizzes/"];
 
 #[derive(Clone)]
 struct Entry {

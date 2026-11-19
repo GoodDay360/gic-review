@@ -1,12 +1,12 @@
-//! Sharing a year, or one subject of a year, with other users (dashboard session only).
+//! Sharing a category, or one subject of a category, with other users (dashboard session only).
 //!
-//! - `GET    /admin/{years|subjects}/{id}/shares`            year owner, admins, and the people it
+//! - `GET    /admin/{categories|subjects}/{id}/shares`            category owner, admins, and the people it
 //!   is shared with can view
-//! - `POST   /admin/{years|subjects}/{id}/shares` `{email}`  year owner or admin
-//! - `DELETE /admin/{years|subjects}/{id}/shares/{user_id}`  year owner or admin, or a recipient
+//! - `POST   /admin/{categories|subjects}/{id}/shares` `{email}`  category owner or admin
+//! - `DELETE /admin/{categories|subjects}/{id}/shares/{user_id}`  category owner or admin, or a recipient
 //!   removing themselves ("leave")
 //!
-//! A shared year gives access to every subject in it; a shared subject to that subject only.
+//! A shared category gives access to every subject in it; a shared subject to that subject only.
 //! Either way the recipient can add content there and view, edit and publish all content in it.
 //! API keys cannot change sharing, so a leaked key can't grant anyone access.
 
@@ -29,12 +29,12 @@ use crate::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route(
-            "/admin/years/{id}/shares",
-            get(list_year_shares).post(add_year_share),
+            "/admin/categories/{id}/shares",
+            get(list_category_shares).post(add_category_share),
         )
         .route(
-            "/admin/years/{id}/shares/{user_id}",
-            delete(remove_year_share),
+            "/admin/categories/{id}/shares/{user_id}",
+            delete(remove_category_share),
         )
         .route(
             "/admin/subjects/{id}/shares",
@@ -48,7 +48,7 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
-    Year,
+    Category,
     Subject,
 }
 
@@ -69,12 +69,12 @@ pub struct SharedWith {
 
 #[derive(Debug, Serialize)]
 pub struct Shares {
-    /// The year's owner (for a subject: the owner of its year).
+    /// The category's owner (for a subject: the owner of its category).
     owner: Option<Person>,
     shared_with: Vec<SharedWith>,
-    /// Whether the caller owns the year.
+    /// Whether the caller owns the category.
     you_are_owner: bool,
-    /// Whether the caller may add/remove people (year owner or admin).
+    /// Whether the caller may add/remove people (category owner or admin).
     can_manage: bool,
 }
 
@@ -83,18 +83,18 @@ struct AddShare {
     email: String,
 }
 
-/// (year id, year owner) of the target; `404` if it doesn't exist.
-async fn year_of(state: &AppState, target: Target, id: i64) -> AppResult<(i64, Option<i64>)> {
+/// (category id, category owner) of the target; `404` if it doesn't exist.
+async fn category_of(state: &AppState, target: Target, id: i64) -> AppResult<(i64, Option<i64>)> {
     let row: Option<(i64, Option<i64>)> = match target {
-        Target::Year => {
-            sqlx::query_as("SELECT id, created_by FROM years WHERE id = ?")
+        Target::Category => {
+            sqlx::query_as("SELECT id, created_by FROM categories WHERE id = ?")
                 .bind(id)
                 .fetch_optional(&state.db)
                 .await?
         }
         Target::Subject => {
             sqlx::query_as(
-                "SELECT y.id, y.created_by FROM subjects s JOIN years y ON y.id = s.year_id WHERE s.id = ?",
+                "SELECT y.id, y.created_by FROM subjects s JOIN categories y ON y.id = s.category_id WHERE s.id = ?",
             )
             .bind(id)
             .fetch_optional(&state.db)
@@ -102,21 +102,21 @@ async fn year_of(state: &AppState, target: Target, id: i64) -> AppResult<(i64, O
         }
     };
     row.ok_or(AppError::NotFound(match target {
-        Target::Year => "year",
+        Target::Category => "category",
         Target::Subject => "subject",
     }))
 }
 
 async fn list(state: &AppState, target: Target, id: i64, actor: Actor) -> AppResult<Shares> {
-    let (year_id, owner_id) = year_of(state, target, id).await?;
-    let can_manage = access::can_manage_year(actor, owner_id);
+    let (category_id, owner_id) = category_of(state, target, id).await?;
+    let can_manage = access::can_manage_category(actor, owner_id);
     if !can_manage {
         // Recipients may see who else has access (a subject's list is visible to people the
-        // subject or its whole year is shared with).
+        // subject or its whole category is shared with).
         let mine = access::shared_with(&state.db, actor.id).await?;
         let allowed = match target {
-            Target::Year => mine.years.contains(&id),
-            Target::Subject => mine.subjects.contains(&id) || mine.years.contains(&year_id),
+            Target::Category => mine.categories.contains(&id),
+            Target::Subject => mine.subjects.contains(&id) || mine.categories.contains(&category_id),
         };
         if !allowed {
             return Err(AppError::OwnerOnly("see who this is shared with".into()));
@@ -132,11 +132,11 @@ async fn list(state: &AppState, target: Target, id: i64, actor: Actor) -> AppRes
         None => None,
     };
     let shared_with: Vec<SharedWith> = match target {
-        Target::Year => {
+        Target::Category => {
             sqlx::query_as(
                 "SELECT u.id AS user_id, u.email, u.display_name, s.created_at AS shared_at \
-                 FROM year_shares s JOIN users u ON u.id = s.user_id \
-                 WHERE s.year_id = ? ORDER BY s.created_at, u.display_name",
+                 FROM category_shares s JOIN users u ON u.id = s.user_id \
+                 WHERE s.category_id = ? ORDER BY s.created_at, u.display_name",
             )
             .bind(id)
             .fetch_all(&state.db)
@@ -168,8 +168,8 @@ async fn add(
     actor: Actor,
     email: &str,
 ) -> AppResult<Shares> {
-    let (_, owner_id) = year_of(state, target, id).await?;
-    if !access::can_manage_year(actor, owner_id) {
+    let (_, owner_id) = category_of(state, target, id).await?;
+    if !access::can_manage_category(actor, owner_id) {
         return Err(AppError::OwnerOnly("share this".into()));
     }
     let email = email.trim().to_lowercase();
@@ -189,7 +189,7 @@ async fn add(
     })?;
     if Some(target_id) == owner_id {
         return Err(AppError::Validation(
-            "that account already owns this year".into(),
+            "that account already owns this category".into(),
         ));
     }
     if target_id == actor.id {
@@ -198,9 +198,9 @@ async fn add(
         ));
     }
     let res = match target {
-        Target::Year => {
+        Target::Category => {
             sqlx::query(
-                "INSERT IGNORE INTO year_shares (year_id, user_id, granted_by) VALUES (?, ?, ?)",
+                "INSERT IGNORE INTO category_shares (category_id, user_id, granted_by) VALUES (?, ?, ?)",
             )
             .bind(id)
             .bind(target_id)
@@ -231,15 +231,15 @@ async fn remove(
     actor: Actor,
     target_id: i64,
 ) -> AppResult<Shares> {
-    let (_, owner_id) = year_of(state, target, id).await?;
-    let can_manage = access::can_manage_year(actor, owner_id);
+    let (_, owner_id) = category_of(state, target, id).await?;
+    let can_manage = access::can_manage_category(actor, owner_id);
     let leaving = target_id == actor.id;
     if !leaving && !can_manage {
         return Err(AppError::OwnerOnly("remove other people".into()));
     }
     match target {
-        Target::Year => {
-            sqlx::query("DELETE FROM year_shares WHERE year_id = ? AND user_id = ?")
+        Target::Category => {
+            sqlx::query("DELETE FROM category_shares WHERE category_id = ? AND user_id = ?")
                 .bind(id)
                 .bind(target_id)
                 .execute(&state.db)
@@ -265,34 +265,34 @@ async fn remove(
     list(state, target, id, actor).await
 }
 
-async fn list_year_shares(
+async fn list_category_shares(
     RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<Json<Shares>> {
     Ok(Json(
-        list(&state, Target::Year, id, Actor::of(&user)).await?,
+        list(&state, Target::Category, id, Actor::of(&user)).await?,
     ))
 }
 
-async fn add_year_share(
+async fn add_category_share(
     RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     AppJson(body): AppJson<AddShare>,
 ) -> AppResult<Json<Shares>> {
     Ok(Json(
-        add(&state, Target::Year, id, Actor::of(&user), &body.email).await?,
+        add(&state, Target::Category, id, Actor::of(&user), &body.email).await?,
     ))
 }
 
-async fn remove_year_share(
+async fn remove_category_share(
     RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     Path((id, target)): Path<(i64, i64)>,
 ) -> AppResult<Json<Shares>> {
     Ok(Json(
-        remove(&state, Target::Year, id, Actor::of(&user), target).await?,
+        remove(&state, Target::Category, id, Actor::of(&user), target).await?,
     ))
 }
 

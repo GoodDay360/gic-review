@@ -1,3 +1,9 @@
+/* Cascade layer order. Vuetify 4 ships all its CSS in `vuetify-*` layers; Tailwind's base sits
+   below Vuetify, and Tailwind utilities sit above Vuetify's components/utilities so classes like
+   `mt-4` or `text-ctp-subtext0` on a Vuetify component always win. */
+@layer theme, base, vuetify-core, vuetify-components, vuetify-overrides, components,
+  vuetify-utilities, utilities, vuetify-final;
+
 @import 'tailwindcss';
 
 /* `dark:` applies for the dark flavors; Latte counts as light. */
@@ -46,6 +52,12 @@
   --color-ctp-on-accent: var(--ctp-on-accent);
 }
 
+:root {
+  /* Vuetify reads its font from these: same self-hosted Plus Jakarta Sans as the rest. */
+  --v-font-body: var(--font-sans);
+  --v-font-heading: var(--font-sans);
+}
+
 @layer base {
   html,
   body {
@@ -66,43 +78,52 @@
   }
 }
 
-/* Reusable building blocks (usable in markup and in @apply). */
-@utility btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+/* Cards that lift on hover (Vuetify v-card + Tailwind). */
+@utility card-lift {
+  @apply transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-1 hover:border-ctp-accent/50 hover:shadow-lg;
 }
 
-@utility btn-primary {
-  @apply btn bg-ctp-accent text-ctp-on-accent hover:brightness-110;
+/* Soft accent glow behind the home hero. */
+.hero {
+  background:
+    radial-gradient(
+      60rem 20rem at 0% 0%,
+      color-mix(in srgb, var(--ctp-accent) 16%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      40rem 18rem at 100% 100%,
+      color-mix(in srgb, var(--ctp-teal) 12%, transparent),
+      transparent 60%
+    ),
+    var(--ctp-mantle);
 }
 
-@utility btn-secondary {
-  @apply btn border border-ctp-surface1 bg-ctp-surface0 text-ctp-text hover:bg-ctp-surface1;
+/* AOS hides elements before they animate; keep them visible when motion is reduced. */
+@media (prefers-reduced-motion: reduce) {
+  [data-aos] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
 
-@utility btn-ghost {
-  @apply btn text-ctp-subtext1 hover:bg-ctp-surface0 hover:text-ctp-text;
+/* Monospace JSON editor (Bulk import). */
+.json-input textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
 }
 
-@utility btn-danger {
-  @apply btn bg-ctp-red text-ctp-base hover:brightness-110;
+/* Vuetify's alert title defaults to a large headline; keep alerts compact. */
+.v-alert-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.v-alert__content {
+  font-size: 0.875rem;
 }
 
-@utility btn-sm {
-  @apply px-3 py-1.5 text-xs;
-}
-
-@utility card {
-  @apply rounded-xl border border-ctp-surface0 bg-ctp-mantle;
-}
-
-@utility input {
-  @apply w-full rounded-lg border border-ctp-surface1 bg-ctp-surface0 px-3 py-2 text-sm text-ctp-text placeholder:text-ctp-overlay1 focus:border-ctp-accent focus:outline-none;
-}
-
-@utility label {
-  @apply mb-1 block text-sm font-medium text-ctp-subtext1;
-}
-
-@utility link {
-  @apply text-ctp-accent underline-offset-2 hover:underline;
+.v-snackbar__title {
+  font-weight: 600;
 }

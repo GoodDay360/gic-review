@@ -24,9 +24,9 @@ const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: HomeView },
     {
-      path: '/years/:yearSlug',
-      name: 'year',
-      component: () => import('@/views/YearView.vue'),
+      path: '/categories/:categorySlug',
+      name: 'category',
+      component: () => import('@/views/CategoryView.vue'),
       props: true,
       meta: { title: 'Subjects' },
     },
@@ -116,10 +116,10 @@ const router = createRouter({
           meta: { requiresAdmin: true, title: 'Managers' },
         },
         {
-          path: 'years',
-          name: 'admin-years',
-          component: () => import('@/views/admin/AdminYearsView.vue'),
-          meta: { requiresEditor: true, title: 'Years' },
+          path: 'categories',
+          name: 'admin-categories',
+          component: () => import('@/views/admin/AdminCategoriesView.vue'),
+          meta: { requiresEditor: true, title: 'Categories' },
         },
         {
           path: 'subjects',

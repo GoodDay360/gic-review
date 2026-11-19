@@ -1,26 +1,27 @@
 <script setup lang="ts">
 import type { Subject } from '@/api/types'
 
-import AppIcon from './AppIcon.vue'
-
 defineProps<{ subject: Subject }>()
 defineEmits<{ select: [subject: Subject] }>()
 </script>
 
 <template>
-  <button
-    class="card group flex h-full flex-col gap-3 p-5 text-left transition hover:-translate-y-0.5 hover:border-ctp-surface2 hover:shadow-lg"
+  <v-card
+    tag="button"
+    type="button"
+    hover
+    class="w-full card-lift group flex h-full flex-col gap-3 p-5 text-left"
     :aria-label="`Open ${subject.name}`"
     @click="$emit('select', subject)"
   >
     <span
-      class="flex h-11 w-11 items-center justify-center rounded-xl"
+      class="flex h-11 w-11 items-center justify-center rounded-xl transition-transform group-hover:scale-110 group-hover:-rotate-6"
       :style="{
         color: `var(--ctp-${subject.color})`,
         backgroundColor: `color-mix(in srgb, var(--ctp-${subject.color}) 18%, transparent)`,
       }"
     >
-      <AppIcon name="book" :size="22" />
+      <v-icon icon="mdi-book-open-page-variant-outline" size="24" />
     </span>
     <span class="text-lg font-semibold text-ctp-text group-hover:text-ctp-accent">{{
       subject.name
@@ -28,13 +29,18 @@ defineEmits<{ select: [subject: Subject] }>()
     <span v-if="subject.description" class="line-clamp-3 text-sm text-ctp-subtext0">
       {{ subject.description }}
     </span>
-    <span class="mt-auto flex flex-wrap gap-2 pt-2 text-xs text-ctp-subtext1">
-      <span class="rounded-full bg-ctp-surface0 px-2.5 py-1">
+    <span class="mt-auto flex flex-wrap gap-2 pt-2">
+      <v-chip size="small" variant="tonal" prepend-icon="mdi-format-list-checks">
         {{ subject.quiz_count }} quiz{{ subject.quiz_count === 1 ? '' : 'zes' }}
-      </span>
-      <span v-if="subject.has_review" class="rounded-full bg-ctp-surface0 px-2.5 py-1">
+      </v-chip>
+      <v-chip
+        v-if="subject.has_review"
+        size="small"
+        variant="tonal"
+        prepend-icon="mdi-book-open-variant"
+      >
         Interactive review
-      </span>
+      </v-chip>
     </span>
-  </button>
+  </v-card>
 </template>

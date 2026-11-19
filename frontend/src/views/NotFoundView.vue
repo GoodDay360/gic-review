@@ -7,9 +7,9 @@ import EmptyState from '@/components/EmptyState.vue'
     <EmptyState
       title="Page not found"
       message="The page you're looking for doesn't exist."
-      icon="warning"
+      icon="mdi-map-marker-question-outline"
     >
-      <RouterLink to="/" class="btn-primary">Go home</RouterLink>
+      <v-btn to="/" color="primary" prepend-icon="mdi-home-outline">Go home</v-btn>
     </EmptyState>
   </div>
 </template>

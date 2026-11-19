@@ -3,7 +3,6 @@ import { onMounted, ref, watch } from 'vue'
 
 import { api } from '@/api/client'
 import type { Page, QuizSummary, Subject } from '@/api/types'
-import AppIcon from '@/components/AppIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import InfiniteScrollSentinel from '@/components/InfiniteScrollSentinel.vue'
 import QuizCard from '@/components/QuizCard.vue'
@@ -54,11 +53,14 @@ onMounted(run)
 
 <template>
   <div class="mx-auto max-w-6xl px-4 py-8">
-    <RouterLink :to="subject ? `/years/${subject.year_slug}` : '/'" class="btn-ghost -ml-3 mb-4"
-      ><AppIcon name="arrow-left" :size="16" />
-      {{ subject ? `${subject.year_name} subjects` : 'Home' }}</RouterLink
+    <v-btn
+      variant="text"
+      prepend-icon="mdi-arrow-left"
+      :to="subject ? `/categories/${subject.category_slug}` : '/'"
+      class="-ml-3 mb-4"
+      >{{ subject ? `${subject.category_name} subjects` : 'Home' }}</v-btn
     >
-    <h1 class="text-2xl font-bold text-ctp-text sm:text-3xl">
+    <h1 class="animate__animated animate__fadeInDown text-2xl font-bold text-ctp-text sm:text-3xl">
       {{ subject?.name ?? 'Quizzes' }}
       <span class="font-normal text-ctp-subtext0">· Quizzes</span>
     </h1>
@@ -77,9 +79,11 @@ onMounted(run)
         v-else-if="error && !subject"
         title="Couldn't load quizzes"
         :message="error"
-        icon="warning"
+        icon="mdi-alert-outline"
       >
-        <button class="btn-secondary" @click="run">Try again</button>
+        <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" @click="run"
+          >Try again</v-btn
+        >
       </EmptyState>
       <div
         v-else-if="quizzesLoading && quizzes.length === 0"
@@ -91,19 +95,28 @@ onMounted(run)
         v-else-if="quizzesError && quizzes.length === 0"
         title="Couldn't load quizzes"
         :message="quizzesError"
-        icon="warning"
+        icon="mdi-alert-outline"
       >
-        <button class="btn-secondary" @click="retry">Try again</button>
+        <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" @click="retry"
+          >Try again</v-btn
+        >
       </EmptyState>
       <EmptyState
         v-else-if="quizzes.length === 0"
         :title="search ? 'No matching quizzes' : 'No quizzes yet for this subject'"
         :message="search ? 'Try another search.' : 'Check back soon, new quizzes are on the way.'"
-        icon="list-check"
+        icon="mdi-format-list-checks"
       />
       <template v-else>
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <QuizCard v-for="q in quizzes" :key="q.id" :quiz="q" @select="selected = $event" />
+          <QuizCard
+            v-for="(q, i) in quizzes"
+            :key="q.id"
+            :quiz="q"
+            data-aos="fade-up"
+            :data-aos-delay="(i % 3) * 70"
+            @select="selected = $event"
+          />
         </div>
         <InfiniteScrollSentinel
           :has-more="hasMore"

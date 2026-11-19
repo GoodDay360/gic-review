@@ -5,16 +5,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::{quiz_modes::QuizMode, storage::Storage};
 
-// ---------- Years ----------
+// ---------- Categories ----------
 
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
-pub struct YearRow {
+pub struct CategoryRow {
     pub id: i64,
     pub slug: String,
     pub name: String,
     pub description: Option<String>,
     pub sort_order: i32,
-    /// Owner (creator) of the year; not exposed publicly.
+    /// Owner (creator) of the category; not exposed publicly.
     #[serde(skip)]
     pub created_by: Option<i64>,
     pub created_at: NaiveDateTime,
@@ -22,18 +22,18 @@ pub struct YearRow {
 }
 
 /// Column list for SELECTs (a macro so queries stay `&'static str` literals).
-macro_rules! year_columns {
+macro_rules! category_columns {
     () => {
         "id, slug, name, description, sort_order, created_by, created_at, updated_at"
     };
 }
-pub(crate) use year_columns;
+pub(crate) use category_columns;
 
 #[derive(Debug, Serialize)]
-pub struct YearDto {
+pub struct CategoryDto {
     #[serde(flatten)]
-    pub year: YearRow,
-    /// Number of subjects in this year.
+    pub category: CategoryRow,
+    /// Number of subjects in this category.
     pub subject_count: i64,
 }
 
@@ -74,7 +74,7 @@ pub struct Page<T> {
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct SubjectRow {
     pub id: i64,
-    pub year_id: i64,
+    pub category_id: i64,
     pub slug: String,
     pub name: String,
     pub description: Option<String>,
@@ -87,7 +87,7 @@ pub struct SubjectRow {
 /// Column list for SELECTs (a macro so queries stay `&'static str` literals).
 macro_rules! subject_columns {
     () => {
-        "id, year_id, slug, name, description, color, sort_order, created_at, updated_at"
+        "id, category_id, slug, name, description, color, sort_order, created_at, updated_at"
     };
 }
 pub(crate) use subject_columns;
@@ -95,9 +95,9 @@ pub(crate) use subject_columns;
 #[derive(Debug, Clone, Serialize)]
 pub struct SubjectDto {
     pub id: i64,
-    pub year_id: i64,
-    pub year_slug: String,
-    pub year_name: String,
+    pub category_id: i64,
+    pub category_slug: String,
+    pub category_name: String,
     pub slug: String,
     pub name: String,
     pub description: Option<String>,
@@ -110,12 +110,12 @@ pub struct SubjectDto {
 }
 
 impl SubjectDto {
-    pub fn from_row(r: SubjectRow, year: &YearRow, has_review: bool, quiz_count: i64) -> Self {
+    pub fn from_row(r: SubjectRow, category: &CategoryRow, has_review: bool, quiz_count: i64) -> Self {
         Self {
             id: r.id,
-            year_id: r.year_id,
-            year_slug: year.slug.clone(),
-            year_name: year.name.clone(),
+            category_id: r.category_id,
+            category_slug: category.slug.clone(),
+            category_name: category.name.clone(),
             slug: r.slug,
             name: r.name,
             description: r.description,

@@ -5,7 +5,6 @@ import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { discardUpload, questionKeys, saveQuestion } from '@/api/admin'
 import { errorMessage } from '@/api/client'
 import type { Question, QuestionInput, QuizDetail } from '@/api/types'
-import AppIcon from '@/components/AppIcon.vue'
 import { useToastStore } from '@/stores/toast'
 
 import ImageUploader from './ImageUploader.vue'
@@ -183,19 +182,18 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <form class="space-y-6" @submit.prevent="save">
+  <v-form class="space-y-6" @submit.prevent="save">
     <section class="space-y-3">
-      <h3 class="font-semibold text-ctp-text">Question (QCM question / flashcard front)</h3>
-      <div>
-        <label class="label" for="q-prompt">Prompt</label>
-        <textarea
-          id="q-prompt"
-          v-model="form.prompt"
-          rows="3"
-          class="input"
-          placeholder="Leave empty for an image-only question"
-        />
-      </div>
+      <h3 class="flex items-center gap-2 font-semibold text-ctp-text">
+        <v-icon icon="mdi-help-circle-outline" color="primary" size="20" /> Question (QCM question /
+        flashcard front)
+      </h3>
+      <v-textarea
+        v-model="form.prompt"
+        label="Prompt"
+        rows="3"
+        placeholder="Leave empty for an image-only question"
+      />
       <ImageUploader
         v-model:image-key="form.image.key"
         v-model:image-url="form.image.url"
@@ -208,11 +206,14 @@ onBeforeUnmount(() => {
 
     <section class="space-y-3">
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <h3 class="font-semibold text-ctp-text">Options (QCM)</h3>
-        <label class="flex items-center gap-2 text-sm text-ctp-subtext1">
-          <input v-model="form.multi_select" type="checkbox" class="h-4 w-4 accent-ctp-accent" />
-          Multiple correct answers
-        </label>
+        <h3 class="flex items-center gap-2 font-semibold text-ctp-text">
+          <v-icon icon="mdi-format-list-checks" color="primary" size="20" /> Options (QCM)
+        </h3>
+        <v-switch
+          v-model="form.multi_select"
+          label="Multiple correct answers"
+          class="flex-grow-0"
+        />
       </div>
       <p class="text-xs text-ctp-subtext0">
         QCM needs at least 2 options and 1 correct option. Options can be text, an image, or both.
@@ -221,55 +222,63 @@ onBeforeUnmount(() => {
         <li
           v-for="(o, i) in form.options"
           :key="o.uid"
-          class="rounded-lg border border-ctp-surface1 p-3"
+          class="animate__animated animate__fadeIn rounded-lg border p-3 transition-colors"
+          :class="o.is_correct ? 'border-ctp-green/60 bg-ctp-green/5' : 'border-ctp-surface1'"
         >
           <div class="flex items-start gap-2">
-            <label
-              class="mt-2 flex items-center gap-1.5 text-xs font-medium"
-              :class="o.is_correct ? 'text-ctp-green' : 'text-ctp-subtext0'"
+            <v-btn
+              type="button"
+              size="small"
+              :variant="o.is_correct ? 'flat' : 'tonal'"
+              :color="o.is_correct ? 'success' : undefined"
+              :prepend-icon="
+                o.is_correct
+                  ? 'mdi-check-circle'
+                  : form.multi_select
+                    ? 'mdi-checkbox-blank-outline'
+                    : 'mdi-radiobox-blank'
+              "
+              :role="form.multi_select ? 'checkbox' : 'radio'"
+              :aria-checked="o.is_correct"
+              class="mt-2"
+              @click="setCorrect(i, form.multi_select ? !o.is_correct : true)"
             >
-              <input
-                :type="form.multi_select ? 'checkbox' : 'radio'"
-                :name="`correct-${quizId}`"
-                :checked="o.is_correct"
-                class="h-4 w-4 accent-ctp-green"
-                @change="setCorrect(i, ($event.target as HTMLInputElement).checked)"
-              />
               Correct
-            </label>
-            <input
+            </v-btn>
+            <v-text-field
               v-model="o.text"
-              class="input flex-1"
-              :placeholder="`Option ${i + 1} text`"
-              :aria-label="`Option ${i + 1} text`"
+              class="flex-1"
+              :label="`Option ${i + 1} text`"
+              hide-details
             />
             <div class="flex">
-              <button
+              <v-btn
+                variant="text"
+                size="small"
+                icon="mdi-arrow-up"
                 type="button"
-                class="btn-ghost p-2"
                 :disabled="i === 0"
                 aria-label="Move option up"
                 @click="moveOption(i, -1)"
-              >
-                <AppIcon name="arrow-up" :size="16" />
-              </button>
-              <button
+              />
+              <v-btn
+                variant="text"
+                size="small"
+                icon="mdi-arrow-down"
                 type="button"
-                class="btn-ghost p-2"
                 :disabled="i === form.options.length - 1"
                 aria-label="Move option down"
                 @click="moveOption(i, 1)"
-              >
-                <AppIcon name="arrow-down" :size="16" />
-              </button>
-              <button
+              />
+              <v-btn
+                variant="text"
+                size="small"
+                color="error"
+                icon="mdi-delete-outline"
                 type="button"
-                class="btn-ghost p-2 text-ctp-red"
                 aria-label="Remove option"
                 @click="removeOption(i)"
-              >
-                <AppIcon name="trash" :size="16" />
-              </button>
+              />
             </div>
           </div>
           <div class="mt-2">
@@ -285,25 +294,26 @@ onBeforeUnmount(() => {
           </div>
         </li>
       </ul>
-      <button
+      <v-btn
+        variant="tonal"
+        color="primary"
+        size="small"
+        prepend-icon="mdi-plus"
         type="button"
-        class="btn-secondary btn-sm"
         :disabled="form.options.length >= 12"
         @click="addOption"
-      >
-        <AppIcon name="plus" :size="14" /> Add option
-      </button>
+        >Add option
+      </v-btn>
     </section>
 
     <section class="space-y-3">
-      <h3 class="font-semibold text-ctp-text">Flashcard back</h3>
+      <h3 class="flex items-center gap-2 font-semibold text-ctp-text">
+        <v-icon icon="mdi-cards-outline" color="primary" size="20" /> Flashcard back
+      </h3>
       <p class="text-xs text-ctp-subtext0">
         Optional. If empty, the back shows the correct option(s).
       </p>
-      <div>
-        <label class="label" for="q-answer">Answer text</label>
-        <textarea id="q-answer" v-model="form.answer_text" rows="2" class="input" />
-      </div>
+      <v-textarea v-model="form.answer_text" label="Answer text" rows="2" />
       <ImageUploader
         v-model:image-key="form.answer_image.key"
         v-model:image-url="form.answer_image.url"
@@ -315,8 +325,11 @@ onBeforeUnmount(() => {
     </section>
 
     <section class="space-y-3">
-      <h3 class="font-semibold text-ctp-text">Explanation (shown after answering)</h3>
-      <textarea v-model="form.explanation" rows="3" class="input" aria-label="Explanation" />
+      <h3 class="flex items-center gap-2 font-semibold text-ctp-text">
+        <v-icon icon="mdi-lightbulb-on-outline" color="primary" size="20" /> Explanation (shown
+        after answering)
+      </h3>
+      <v-textarea v-model="form.explanation" rows="3" label="Explanation" />
       <ImageUploader
         v-model:image-key="form.explanation_image.key"
         v-model:image-url="form.explanation_image.url"
@@ -327,26 +340,43 @@ onBeforeUnmount(() => {
       />
     </section>
 
-    <ul
-      v-if="problems.length"
-      class="space-y-1 rounded-lg bg-ctp-yellow/15 p-3 text-sm text-ctp-yellow"
-      role="alert"
-    >
-      <li v-for="p in problems" :key="p">{{ p }}</li>
-    </ul>
+    <v-expand-transition>
+      <v-alert
+        v-if="problems.length"
+        type="warning"
+        title="Before you can save"
+        density="compact"
+        role="alert"
+      >
+        <ul class="mt-1 list-disc space-y-0.5 pl-4">
+          <li v-for="p in problems" :key="p">{{ p }}</li>
+        </ul>
+      </v-alert>
+    </v-expand-transition>
 
     <div
       class="sticky bottom-0 -mx-5 -mb-5 flex flex-wrap justify-end gap-2 border-t border-ctp-surface0 bg-ctp-base p-4"
     >
-      <button type="button" class="btn-secondary mr-auto" @click="previewing = asQuestion()">
-        <AppIcon name="eye" :size="16" /> Preview
-      </button>
-      <button type="button" class="btn-ghost" @click="cancel">Cancel</button>
-      <button type="submit" class="btn-primary" :disabled="saving || problems.length > 0">
-        {{ saving ? 'Saving…' : 'Save question' }}
-      </button>
+      <v-btn
+        variant="tonal"
+        prepend-icon="mdi-eye-outline"
+        type="button"
+        class="mr-auto"
+        @click="previewing = asQuestion()"
+        >Preview
+      </v-btn>
+      <v-btn variant="text" type="button" @click="cancel">Cancel</v-btn>
+      <v-btn
+        color="primary"
+        type="submit"
+        prepend-icon="mdi-content-save-outline"
+        :loading="saving"
+        :disabled="problems.length > 0"
+      >
+        Save question
+      </v-btn>
     </div>
 
     <QuestionPreview :question="previewing" @close="previewing = null" />
-  </form>
+  </v-form>
 </template>

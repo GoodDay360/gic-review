@@ -38,9 +38,9 @@ const STAFF_ENDPOINTS: &[(&str, &str)] = &[
     ("DELETE", "/api/admin/users/2"),
     ("POST", "/api/admin/subjects"),
     ("PUT", "/api/admin/subjects/1"),
-    ("POST", "/api/admin/years"),
-    ("PUT", "/api/admin/years/1"),
-    ("DELETE", "/api/admin/years/1"),
+    ("POST", "/api/admin/categories"),
+    ("PUT", "/api/admin/categories/1"),
+    ("DELETE", "/api/admin/categories/1"),
     ("DELETE", "/api/admin/subjects/1"),
     ("GET", "/api/auth/me"),
     ("POST", "/api/auth/change-password"),
@@ -216,19 +216,19 @@ async fn insert_manager(db: &MySqlPool, email: &str, password: &str, active: boo
     .last_insert_id() as i64
 }
 
-/// Create a year + subject owned by the logged-in editor (dashboard session); returns the subject id.
+/// Create a category + subject owned by the logged-in editor (dashboard session); returns the subject id.
 async fn own_subject(app: &axum::Router, cookie: &str, tag: &str) -> i64 {
     let y = send(
         app,
         "POST",
-        "/api/admin/years",
+        "/api/admin/categories",
         Some(cookie),
-        Some(json!({ "name": format!("Year {tag}") })),
+        Some(json!({ "name": format!("Category {tag}") })),
     )
     .await;
-    assert_eq!(y.status, StatusCode::CREATED, "create year: {:?}", y.json);
+    assert_eq!(y.status, StatusCode::CREATED, "create category: {:?}", y.json);
     let s = send(app, "POST", "/api/admin/subjects", Some(cookie),
-        Some(json!({ "year_id": y.json["id"], "name": format!("Subject {tag}"), "slug": format!("subject-{tag}") }))).await;
+        Some(json!({ "category_id": y.json["id"], "name": format!("Subject {tag}"), "slug": format!("subject-{tag}") }))).await;
     assert_eq!(
         s.status,
         StatusCode::CREATED,
@@ -497,7 +497,7 @@ async fn db_manager_api_key_lifecycle() {
     let second = create_key(&app, &manager, &["quizzes:write"], false).await;
     assert_eq!(second.status, StatusCode::CONFLICT);
 
-    // The key works for quiz content in the manager's own year…
+    // The key works for quiz content in the manager's own category…
     let sid = own_subject(&app, &manager, "lifecycle").await;
     let me = send_key(&app, "GET", "/api/auth/me", &key, None).await;
     assert_eq!(me.json["auth_method"], "api_key");
@@ -612,7 +612,7 @@ async fn db_deactivating_a_manager_disables_their_api_key() {
 }
 
 #[tokio::test]
-async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
+async fn db_sharing_a_category_or_subject_gives_access_to_its_content() {
     let Some(tdb) = common::test_db().await else {
         return;
     };
@@ -641,11 +641,11 @@ async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
     );
     let quiz = |sid: i64, title: &str| json!({ "subject_id": sid, "title": title, "description": null, "cover_image_key": null });
 
-    // A owns year "Year a" with subjects s1 and s2, and a quiz in each.
+    // A owns category "Category a" with subjects s1 and s2, and a quiz in each.
     let s1 = own_subject(&app, &a, "a").await;
-    let year: i64 = send(&app, "GET", "/api/subjects/subject-a", None, None)
+    let category: i64 = send(&app, "GET", "/api/subjects/subject-a", None, None)
         .await
-        .json["year_id"]
+        .json["category_id"]
         .as_i64()
         .unwrap();
     let s2 = send(
@@ -653,7 +653,7 @@ async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
         "POST",
         "/api/admin/subjects",
         Some(&a),
-        Some(json!({ "year_id": year, "name": "Second", "slug": "second-a" })),
+        Some(json!({ "category_id": category, "name": "Second", "slug": "second-a" })),
     )
     .await
     .json["id"]
@@ -712,7 +712,7 @@ async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
         Some(quiz(s1, "B in s1")),
     )
     .await;
-    assert_eq!(r.json["error"]["code"], "not_your_year");
+    assert_eq!(r.json["error"]["code"], "not_your_category");
 
     // A shares subject s1 with B (by email).
     let s1_shares = format!("/api/admin/subjects/{s1}/shares");
@@ -792,7 +792,7 @@ async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
         )
         .await
         .json["error"]["code"],
-        "not_your_year"
+        "not_your_category"
     );
     assert_eq!(
         send(
@@ -807,7 +807,7 @@ async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
         StatusCode::NOT_FOUND
     );
 
-    // Shared users can't delete others' content, manage the year/subjects, or re-share.
+    // Shared users can't delete others' content, manage the category/subjects, or re-share.
     let r = send(
         &app,
         "DELETE",
@@ -835,13 +835,13 @@ async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
             "PUT",
             &format!("/api/admin/subjects/{s1}"),
             Some(&b),
-            Some(json!({ "year_id": year, "name": "x", "slug": "x" }))
+            Some(json!({ "category_id": category, "name": "x", "slug": "x" }))
         )
         .await
         .json["error"]["code"],
         "owner_only"
     );
-    // The year's owner has full rights on content others add to their year.
+    // The category's owner has full rights on content others add to their category.
     let r = send(
         &app,
         "GET",
@@ -850,16 +850,16 @@ async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
         None,
     )
     .await;
-    assert_eq!(r.json["access"], "year_owner");
+    assert_eq!(r.json["access"], "category_owner");
 
-    // GET /admin/years tells B where they can add content.
-    let years = send(&app, "GET", "/api/admin/years", Some(&b), None).await;
-    let y = years
+    // GET /admin/categories tells B where they can add content.
+    let categories = send(&app, "GET", "/api/admin/categories", Some(&b), None).await;
+    let y = categories
         .json
         .as_array()
         .unwrap()
         .iter()
-        .find(|y| y["id"] == year)
+        .find(|y| y["id"] == category)
         .unwrap();
     assert_eq!(y["can_manage"], false);
     assert_eq!(y["shared_with_you"], false);
@@ -876,13 +876,13 @@ async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
     assert_eq!(subj(s1)["shared_with_you"], true);
     assert_eq!(subj(s2)["can_add_content"], false);
 
-    // Sharing the whole year opens every subject.
-    let year_shares = format!("/api/admin/years/{year}/shares");
+    // Sharing the whole category opens every subject.
+    let category_shares = format!("/api/admin/categories/{category}/shares");
     assert_eq!(
         send(
             &app,
             "POST",
-            &year_shares,
+            &category_shares,
             Some(&a),
             Some(json!({ "email": "editor-b@example.com" }))
         )
@@ -915,12 +915,12 @@ async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
         StatusCode::CREATED
     );
 
-    // B leaves the year and the subject: access is gone.
+    // B leaves the category and the subject: access is gone.
     assert_eq!(
         send(
             &app,
             "DELETE",
-            &format!("{year_shares}/{b_id}"),
+            &format!("{category_shares}/{b_id}"),
             Some(&b),
             None
         )
@@ -965,7 +965,7 @@ async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
         StatusCode::NOT_FOUND
     );
 
-    // Admins see everything and can manage any year's sharing; an API key can't share.
+    // Admins see everything and can manage any category's sharing; an API key can't share.
     let r = send(
         &app,
         "GET",
@@ -975,7 +975,7 @@ async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
     )
     .await;
     assert_eq!(r.json["access"], "admin");
-    let r = send(&app, "GET", &year_shares, Some(&admin), None).await;
+    let r = send(&app, "GET", &category_shares, Some(&admin), None).await;
     assert_eq!(r.json["can_manage"], true);
     let key = send(
         &app,
@@ -992,18 +992,18 @@ async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
     let r = send_key(
         &app,
         "POST",
-        &year_shares,
+        &category_shares,
         &key,
         Some(json!({ "email": "editor-b@example.com" })),
     )
     .await;
     assert_eq!(r.json["error"]["code"], "api_key_not_allowed");
 
-    // Deleting A hands A's year to the person it was first shared with.
+    // Deleting A hands A's category to the person it was first shared with.
     send(
         &app,
         "POST",
-        &year_shares,
+        &category_shares,
         Some(&a),
         Some(json!({ "email": "editor-b@example.com" })),
     )
@@ -1020,13 +1020,13 @@ async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
         .status,
         StatusCode::NO_CONTENT
     );
-    let years = send(&app, "GET", "/api/admin/years", Some(&b), None).await;
-    let y = years
+    let categories = send(&app, "GET", "/api/admin/categories", Some(&b), None).await;
+    let y = categories
         .json
         .as_array()
         .unwrap()
         .iter()
-        .find(|y| y["id"] == year)
+        .find(|y| y["id"] == category)
         .unwrap();
     assert_eq!(y["owner_id"], b_id);
     assert_eq!(y["can_manage"], true);
@@ -1034,37 +1034,37 @@ async fn db_sharing_a_year_or_subject_gives_access_to_its_content() {
 }
 
 #[tokio::test]
-async fn db_years_group_subjects() {
+async fn db_categories_group_subjects() {
     let Some(tdb) = common::test_db().await else {
         return;
     };
     let db = tdb.pool.clone();
     bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
-    insert_manager(&db, "m-years@example.com", "manager-pass-y", true).await;
+    insert_manager(&db, "m-categories@example.com", "manager-pass-y", true).await;
     let app = app_with_pool(db);
 
-    // The migration put the seeded HCI subject into a default "General" year.
-    let years = send(&app, "GET", "/api/years", None, None).await;
-    assert_eq!(years.status, StatusCode::OK);
-    assert_eq!(years.json[0]["slug"], "general");
-    assert_eq!(years.json[0]["subject_count"], 1);
-    let year_page = send(
+    // The migration put the seeded HCI subject into a default "General" category.
+    let categories = send(&app, "GET", "/api/categories", None, None).await;
+    assert_eq!(categories.status, StatusCode::OK);
+    assert_eq!(categories.json[0]["slug"], "general");
+    assert_eq!(categories.json[0]["subject_count"], 1);
+    let category_page = send(
         &app,
         "GET",
-        "/api/years?search=General&limit=20&offset=0",
+        "/api/categories?search=General&limit=20&offset=0",
         None,
         None,
     )
     .await;
-    assert_eq!(year_page.json["items"][0]["slug"], "general");
-    assert_eq!(year_page.json["has_more"], false);
-    let general = send(&app, "GET", "/api/years/general", None, None).await;
+    assert_eq!(category_page.json["items"][0]["slug"], "general");
+    assert_eq!(category_page.json["has_more"], false);
+    let general = send(&app, "GET", "/api/categories/general", None, None).await;
     assert_eq!(general.json["subjects"][0]["slug"], "hci");
-    assert_eq!(general.json["subjects"][0]["year_name"], "General");
+    assert_eq!(general.json["subjects"][0]["category_name"], "General");
     let subject_page = send(
         &app,
         "GET",
-        "/api/years/general?search=Human&limit=20&offset=0",
+        "/api/categories/general?search=Human&limit=20&offset=0",
         None,
         None,
     )
@@ -1081,7 +1081,7 @@ async fn db_years_group_subjects() {
     .await;
     assert_eq!(review_page.json["items"].as_array().unwrap().len(), 0);
 
-    // Admin creates a custom-named year and a subject in it.
+    // Admin creates a custom-named category and a subject in it.
     let admin = cookie_from(
         &login(&app, "admin@example.com", "admin-password-123")
             .await
@@ -1091,32 +1091,32 @@ async fn db_years_group_subjects() {
     let y = send(
         &app,
         "POST",
-        "/api/admin/years",
+        "/api/admin/categories",
         Some(&admin),
-        Some(json!({ "name": "Very Cool Year", "sort_order": 1 })),
+        Some(json!({ "name": "Very Cool Category", "sort_order": 1 })),
     )
     .await;
     assert_eq!(y.status, StatusCode::CREATED);
-    assert_eq!(y.json["slug"], "very-cool-year");
-    let year_id = y.json["id"].as_i64().unwrap();
+    assert_eq!(y.json["slug"], "very-cool-category");
+    let category_id = y.json["id"].as_i64().unwrap();
     let subj = send(&app, "POST", "/api/admin/subjects", Some(&admin),
-        Some(json!({ "year_id": year_id, "name": "Internet Programming", "slug": "ip", "color": "blue" }))).await;
+        Some(json!({ "category_id": category_id, "name": "Internet Programming", "slug": "ip", "color": "blue" }))).await;
     assert_eq!(subj.status, StatusCode::CREATED);
-    assert_eq!(subj.json["year_slug"], "very-cool-year");
+    assert_eq!(subj.json["category_slug"], "very-cool-category");
 
-    let mine = send(&app, "GET", "/api/years/very-cool-year", None, None).await;
+    let mine = send(&app, "GET", "/api/categories/very-cool-category", None, None).await;
     assert_eq!(mine.json["subject_count"], 1);
     assert_eq!(mine.json["subjects"][0]["slug"], "ip");
-    let filtered = send(&app, "GET", "/api/subjects?year=very-cool-year", None, None).await;
+    let filtered = send(&app, "GET", "/api/subjects?category=very-cool-category", None, None).await;
     assert_eq!(filtered.json.as_array().unwrap().len(), 1);
 
-    // A subject needs a year; a year with subjects can't be deleted.
+    // A subject needs a category; a category with subjects can't be deleted.
     let r = send(
         &app,
         "POST",
         "/api/admin/subjects",
         Some(&admin),
-        Some(json!({ "name": "No year", "slug": "no-year" })),
+        Some(json!({ "name": "No category", "slug": "no-category" })),
     )
     .await;
     assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY);
@@ -1124,7 +1124,7 @@ async fn db_years_group_subjects() {
     let r = send(
         &app,
         "DELETE",
-        &format!("/api/admin/years/{year_id}"),
+        &format!("/api/admin/categories/{category_id}"),
         Some(&admin),
         None,
     )
@@ -1135,20 +1135,20 @@ async fn db_years_group_subjects() {
     let r = send(
         &app,
         "PUT",
-        "/api/admin/years/1",
+        "/api/admin/categories/1",
         Some(&admin),
         Some(json!({ "name": "I4", "slug": "i4", "sort_order": 0 })),
     )
     .await;
     assert_eq!(r.status, StatusCode::OK);
     assert_eq!(
-        send(&app, "GET", "/api/years/i4", None, None).await.json["subjects"][0]["slug"],
+        send(&app, "GET", "/api/categories/i4", None, None).await.json["subjects"][0]["slug"],
         "hci"
     );
 
-    // Managers can create their own years, but not change someone else's.
+    // Managers can create their own categories, but not change someone else's.
     let m = cookie_from(
-        &login(&app, "m-years@example.com", "manager-pass-y")
+        &login(&app, "m-categories@example.com", "manager-pass-y")
             .await
             .set_cookie
             .unwrap(),
@@ -1156,7 +1156,7 @@ async fn db_years_group_subjects() {
     let r = send(
         &app,
         "POST",
-        "/api/admin/years",
+        "/api/admin/categories",
         Some(&m),
         Some(json!({ "name": "X" })),
     )
@@ -1165,7 +1165,7 @@ async fn db_years_group_subjects() {
     let r = send(
         &app,
         "PUT",
-        "/api/admin/years/1",
+        "/api/admin/categories/1",
         Some(&m),
         Some(json!({ "name": "Hijack" })),
     )
@@ -1176,7 +1176,7 @@ async fn db_years_group_subjects() {
 }
 
 #[tokio::test]
-async fn db_years_belong_to_their_creator() {
+async fn db_categories_belong_to_their_creator() {
     let Some(tdb) = common::test_db().await else {
         return;
     };
@@ -1204,7 +1204,7 @@ async fn db_years_belong_to_their_creator() {
             .unwrap(),
     );
 
-    // A creates year "I4" with subject "a-hci" in the dashboard.
+    // A creates category "I4" with subject "a-hci" in the dashboard.
     let a_sid = own_subject(&app, &a, "a").await;
     let a_key = send(&app, "POST", "/api/admin/api-keys", Some(&a),
         Some(json!({ "name": "A's AI", "scopes": ["quizzes:write", "reviews:write"], "expires_in_days": 1 }))).await
@@ -1216,10 +1216,10 @@ async fn db_years_belong_to_their_creator() {
         })
     };
 
-    // The key sees which years it may use…
-    let years = send_key(&app, "GET", "/api/admin/years", &a_key, None).await;
-    assert_eq!(years.status, StatusCode::OK);
-    let mine: Vec<&serde_json::Value> = years
+    // The key sees which categories it may use…
+    let categories = send_key(&app, "GET", "/api/admin/categories", &a_key, None).await;
+    assert_eq!(categories.status, StatusCode::OK);
+    let mine: Vec<&serde_json::Value> = categories
         .json
         .as_array()
         .unwrap()
@@ -1229,7 +1229,7 @@ async fn db_years_belong_to_their_creator() {
     assert_eq!(mine.len(), 1);
     assert_eq!(mine[0]["subjects"][0]["id"], a_sid);
 
-    // …adds content to A's own year…
+    // …adds content to A's own category…
     let r = send_key(
         &app,
         "POST",
@@ -1239,7 +1239,7 @@ async fn db_years_belong_to_their_creator() {
     )
     .await;
     assert_eq!(r.status, StatusCode::CREATED);
-    // …but not to a year A doesn't own (the admin-owned "General" with hci).
+    // …but not to a category A doesn't own (the admin-owned "General" with hci).
     let r = send_key(
         &app,
         "POST",
@@ -1249,21 +1249,21 @@ async fn db_years_belong_to_their_creator() {
     )
     .await;
     assert_eq!(r.status, StatusCode::FORBIDDEN);
-    assert_eq!(r.json["error"]["code"], "not_your_year");
+    assert_eq!(r.json["error"]["code"], "not_your_category");
     assert!(
         r.json["error"]["message"]
             .as_str()
             .unwrap()
-            .contains("Year a")
+            .contains("Category a")
     );
 
-    // The AI can't create years or subjects, only a human in the dashboard.
+    // The AI can't create categories or subjects, only a human in the dashboard.
     let r = send_key(
         &app,
         "POST",
-        "/api/admin/years",
+        "/api/admin/categories",
         &a_key,
-        Some(json!({ "name": "AI year" })),
+        Some(json!({ "name": "AI category" })),
     )
     .await;
     assert_eq!(r.json["error"]["code"], "api_key_not_allowed");
@@ -1272,43 +1272,43 @@ async fn db_years_belong_to_their_creator() {
         "POST",
         "/api/admin/subjects",
         &a_key,
-        Some(json!({ "year_id": 1, "name": "x", "slug": "x" })),
+        Some(json!({ "category_id": 1, "name": "x", "slug": "x" })),
     )
     .await;
     assert_eq!(r.json["error"]["code"], "api_key_not_allowed");
 
-    // B can't add content or subjects to A's year, nor change it.
-    let a_year = mine[0]["id"].as_i64().unwrap();
+    // B can't add content or subjects to A's category, nor change it.
+    let a_category = mine[0]["id"].as_i64().unwrap();
     let r = send(&app, "POST", "/api/admin/quizzes", Some(&b),
-        Some(json!({ "subject_id": a_sid, "title": "B in A's year", "description": null, "cover_image_key": null }))).await;
-    assert_eq!(r.json["error"]["code"], "not_your_year");
+        Some(json!({ "subject_id": a_sid, "title": "B in A's category", "description": null, "cover_image_key": null }))).await;
+    assert_eq!(r.json["error"]["code"], "not_your_category");
     let r = send(
         &app,
         "POST",
         "/api/admin/subjects",
         Some(&b),
-        Some(json!({ "year_id": a_year, "name": "B subject", "slug": "b-subject" })),
+        Some(json!({ "category_id": a_category, "name": "B subject", "slug": "b-subject" })),
     )
     .await;
     assert_eq!(r.json["error"]["code"], "owner_only");
     let r = send(
         &app,
         "DELETE",
-        &format!("/api/admin/years/{a_year}"),
+        &format!("/api/admin/categories/{a_category}"),
         Some(&b),
         None,
     )
     .await;
     assert_eq!(r.json["error"]["code"], "owner_only");
 
-    // Admins may use and manage every year.
+    // Admins may use and manage every category.
     let r = send(&app, "POST", "/api/admin/quizzes", Some(&admin),
-        Some(json!({ "subject_id": a_sid, "title": "Admin in A's year", "description": null, "cover_image_key": null }))).await;
+        Some(json!({ "subject_id": a_sid, "title": "Admin in A's category", "description": null, "cover_image_key": null }))).await;
     assert_eq!(r.status, StatusCode::CREATED);
     let r = send(
         &app,
         "PUT",
-        &format!("/api/admin/years/{a_year}"),
+        &format!("/api/admin/categories/{a_category}"),
         Some(&admin),
         Some(json!({ "name": "I4" })),
     )
@@ -1709,9 +1709,9 @@ async fn db_cache_serves_students_but_never_outlives_an_update() {
     assert_eq!(list.json.as_array().unwrap().len(), 0);
 
     // A failed write does not clear the cache (nothing changed).
-    send(&app, "GET", "/api/years", None, None).await;
+    send(&app, "GET", "/api/categories", None, None).await;
     assert_eq!(
-        send(&app, "GET", "/api/years", None, None)
+        send(&app, "GET", "/api/categories", None, None)
             .await
             .x_cache
             .as_deref(),
@@ -1727,7 +1727,7 @@ async fn db_cache_serves_students_but_never_outlives_an_update() {
     .await;
     assert!(!r.status.is_success());
     assert_eq!(
-        send(&app, "GET", "/api/years", None, None)
+        send(&app, "GET", "/api/categories", None, None)
             .await
             .x_cache
             .as_deref(),

@@ -3,13 +3,12 @@ import { onMounted, reactive, ref } from 'vue'
 
 import { discardUpload } from '@/api/admin'
 import { api, errorMessage } from '@/api/client'
-import { loadManagedYears, subjectsForEdit } from '@/api/years'
+import { loadManagedCategories, subjectsForEdit } from '@/api/categories'
 import type { Question, QuizDetail, Subject } from '@/api/types'
 import ImageUploader from '@/components/admin/ImageUploader.vue'
 import QuestionEditor from '@/components/admin/QuestionEditor.vue'
 import QuestionPreview from '@/components/admin/QuestionPreview.vue'
 import OwnershipBadge from '@/components/admin/OwnershipBadge.vue'
-import AppIcon from '@/components/AppIcon.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
@@ -49,7 +48,7 @@ async function load() {
   try {
     const [q, s] = await Promise.all([
       api.get<QuizDetail>(`/admin/quizzes/${props.id}`),
-      loadManagedYears(),
+      loadManagedCategories(),
     ])
     subjects.value = subjectsForEdit(s, q.subject_id)
     setQuiz(q)
@@ -174,59 +173,62 @@ function onDrop(target: number) {
   <div v-if="loading" class="space-y-3">
     <SkeletonBlock class="h-10 w-1/2" /><SkeletonBlock class="h-64" />
   </div>
-  <EmptyState v-else-if="!quiz" title="Quiz not found" icon="warning">
-    <RouterLink to="/admin/quizzes" class="btn-secondary">Back to quizzes</RouterLink>
+  <EmptyState v-else-if="!quiz" title="Quiz not found" icon="mdi-alert-outline">
+    <v-btn variant="tonal" prepend-icon="mdi-arrow-left" to="/admin/quizzes">Back to quizzes</v-btn>
   </EmptyState>
   <div v-else class="space-y-6">
     <div class="flex flex-wrap items-center gap-2">
-      <RouterLink to="/admin/quizzes" class="btn-ghost -ml-3"
-        ><AppIcon name="arrow-left" :size="16" /> Quizzes</RouterLink
+      <v-btn variant="text" prepend-icon="mdi-arrow-left" to="/admin/quizzes" class="-ml-3"
+        >Quizzes</v-btn
       >
-      <span
-        class="rounded-full px-2.5 py-1 text-xs font-medium"
-        :class="
-          quiz.is_published ? 'bg-ctp-green/15 text-ctp-green' : 'bg-ctp-surface0 text-ctp-subtext0'
-        "
+      <v-chip
+        size="small"
+        :color="quiz.is_published ? 'success' : undefined"
+        variant="tonal"
+        :prepend-icon="quiz.is_published ? 'mdi-earth' : 'mdi-file-edit-outline'"
       >
         {{ quiz.is_published ? 'Published' : 'Draft' }}
-      </span>
+      </v-chip>
       <OwnershipBadge :item="quiz" />
       <div class="ml-auto flex flex-wrap gap-2">
-        <RouterLink
+        <v-btn
           v-for="m in quiz.available_modes"
           :key="m"
+          variant="tonal"
+          size="small"
+          prepend-icon="mdi-play-circle-outline"
           :to="{ path: `/quizzes/${quiz.id}/play`, query: { mode: m } }"
-          class="btn-secondary btn-sm"
           target="_blank"
+          >Play {{ getQuizMode(m)?.label ?? m }}
+        </v-btn>
+        <v-btn
+          :color="quiz.is_published ? undefined : 'success'"
+          :variant="quiz.is_published ? 'tonal' : 'flat'"
+          size="small"
+          :prepend-icon="quiz.is_published ? 'mdi-eye-off-outline' : 'mdi-publish'"
+          :loading="togglingPublish"
+          @click="togglePublish"
         >
-          <AppIcon name="eye" :size="14" /> Play {{ getQuizMode(m)?.label ?? m }}
-        </RouterLink>
-        <button class="btn-primary btn-sm" :disabled="togglingPublish" @click="togglePublish">
-          {{ togglingPublish ? 'Working…' : quiz.is_published ? 'Unpublish' : 'Publish' }}
-        </button>
+          {{ quiz.is_published ? 'Unpublish' : 'Publish' }}
+        </v-btn>
       </div>
     </div>
 
-    <form class="card space-y-4 p-5" @submit.prevent="saveMeta">
-      <h1 class="text-xl font-bold text-ctp-text">Quiz details</h1>
+    <v-card tag="form" class="space-y-4 p-5" data-aos="fade-up" @submit.prevent="saveMeta">
+      <h1 class="flex items-center gap-2 text-xl font-bold text-ctp-text">
+        <v-icon icon="mdi-clipboard-text-outline" color="primary" /> Quiz details
+      </h1>
       <div class="grid gap-4 md:grid-cols-2">
         <div class="space-y-4">
-          <div>
-            <label class="label" for="qe-title">Title</label>
-            <input id="qe-title" v-model="meta.title" class="input" required maxlength="200" />
-          </div>
-          <div>
-            <label class="label" for="qe-subject">Subject</label>
-            <select id="qe-subject" v-model="meta.subject_id" class="input">
-              <option v-for="s in subjects" :key="s.id" :value="s.id">
-                {{ s.year_name }} · {{ s.name }}
-              </option>
-            </select>
-          </div>
-          <div>
-            <label class="label" for="qe-desc">Description</label>
-            <textarea id="qe-desc" v-model="meta.description" class="input" rows="3" />
-          </div>
+          <v-text-field v-model="meta.title" label="Title" required maxlength="200" />
+          <v-select
+            v-model="meta.subject_id"
+            :items="subjects"
+            :item-title="(s) => `${s.category_name} · ${s.name}`"
+            item-value="id"
+            label="Subject"
+          />
+          <v-textarea v-model="meta.description" label="Description" rows="3" />
         </div>
         <ImageUploader
           v-model:image-key="meta.cover.key"
@@ -242,36 +244,45 @@ function onDrop(target: number) {
         <strong v-if="quiz.available_modes.length" class="text-ctp-text">
           {{ quiz.available_modes.map((m) => getQuizMode(m)?.label ?? m).join(', ') }}
         </strong>
-        <span v-else class="text-ctp-yellow"
+        <span v-else class="text-ctp-peach"
           >none yet: add questions with options (QCM) or answers (Flashcard).</span
         >
       </p>
       <div class="flex justify-end">
-        <button class="btn-primary" type="submit" :disabled="savingMeta">
-          {{ savingMeta ? 'Saving…' : 'Save details' }}
-        </button>
+        <v-btn
+          color="primary"
+          type="submit"
+          prepend-icon="mdi-content-save-outline"
+          :loading="savingMeta"
+          >Save details</v-btn
+        >
       </div>
-    </form>
+    </v-card>
 
-    <section class="space-y-3">
+    <section class="space-y-3" data-aos="fade-up">
       <div class="flex items-center justify-between">
         <h2 class="text-lg font-semibold text-ctp-text">Questions ({{ quiz.questions.length }})</h2>
-        <button class="btn-primary btn-sm" @click="editing = { question: null }">
-          <AppIcon name="plus" :size="14" /> Add question
-        </button>
+        <v-btn
+          color="primary"
+          size="small"
+          prepend-icon="mdi-plus"
+          @click="editing = { question: null }"
+          >Add question
+        </v-btn>
       </div>
       <EmptyState
         v-if="!quiz.questions.length"
         title="No questions yet"
         message="Add your first question."
-        icon="list-check"
+        icon="mdi-format-list-checks"
       />
       <ol v-else class="space-y-2">
-        <li
+        <v-card
           v-for="(q, i) in quiz.questions"
           :key="q.id"
+          tag="li"
           draggable="true"
-          class="card flex items-center gap-3 p-3 transition"
+          class="card-lift flex items-center gap-3 p-3"
           :class="dragIndex === i ? 'opacity-50' : ''"
           @dragstart="dragIndex = i"
           @dragend="dragIndex = null"
@@ -279,7 +290,7 @@ function onDrop(target: number) {
           @drop.prevent="onDrop(i)"
         >
           <span class="cursor-grab text-ctp-overlay1" aria-hidden="true"
-            ><AppIcon name="grip" :size="18"
+            ><v-icon icon="mdi-drag" size="18"
           /></span>
           <span class="w-6 text-sm text-ctp-subtext0">{{ i + 1 }}.</span>
           <img
@@ -299,33 +310,46 @@ function onDrop(target: number) {
             </p>
           </div>
           <div class="flex">
-            <button
-              class="btn-ghost p-2"
+            <v-btn
+              variant="text"
+              size="small"
+              icon="mdi-arrow-up"
               :disabled="i === 0 || reordering"
               aria-label="Move up"
               @click="move(i, -1)"
-            >
-              <AppIcon name="arrow-up" :size="16" />
-            </button>
-            <button
-              class="btn-ghost p-2"
+            />
+            <v-btn
+              variant="text"
+              size="small"
+              icon="mdi-arrow-down"
               :disabled="i === quiz.questions.length - 1 || reordering"
               aria-label="Move down"
               @click="move(i, 1)"
-            >
-              <AppIcon name="arrow-down" :size="16" />
-            </button>
-            <button class="btn-ghost p-2" aria-label="Preview" @click="previewing = q">
-              <AppIcon name="eye" :size="16" />
-            </button>
-            <button class="btn-ghost p-2" aria-label="Edit" @click="editing = { question: q }">
-              <AppIcon name="pencil" :size="16" />
-            </button>
-            <button class="btn-ghost p-2 text-ctp-red" aria-label="Delete" @click="deleting = q">
-              <AppIcon name="trash" :size="16" />
-            </button>
+            />
+            <v-btn
+              variant="text"
+              size="small"
+              icon="mdi-eye-outline"
+              aria-label="Preview"
+              @click="previewing = q"
+            />
+            <v-btn
+              variant="text"
+              size="small"
+              icon="mdi-pencil-outline"
+              aria-label="Edit"
+              @click="editing = { question: q }"
+            />
+            <v-btn
+              variant="text"
+              size="small"
+              color="error"
+              icon="mdi-delete-outline"
+              aria-label="Delete"
+              @click="deleting = q"
+            />
           </div>
-        </li>
+        </v-card>
       </ol>
     </section>
 
@@ -348,14 +372,18 @@ function onDrop(target: number) {
     <QuestionPreview :question="previewing" @close="previewing = null" />
 
     <BaseModal :open="!!deleting" title="Delete question?" size="sm" @close="deleting = null">
-      <p class="text-sm text-ctp-subtext1">
+      <v-alert type="error" icon="mdi-delete-alert-outline">
         The question, its options and its images will be permanently deleted.
-      </p>
+      </v-alert>
       <template #footer>
-        <button class="btn-ghost" @click="deleting = null">Cancel</button>
-        <button class="btn-danger" :disabled="deletingQuestion" @click="confirmDeleteQuestion">
-          {{ deletingQuestion ? 'Deleting…' : 'Delete' }}
-        </button>
+        <v-btn variant="text" @click="deleting = null">Cancel</v-btn>
+        <v-btn
+          color="error"
+          prepend-icon="mdi-delete-outline"
+          :loading="deletingQuestion"
+          @click="confirmDeleteQuestion"
+          >Delete</v-btn
+        >
       </template>
     </BaseModal>
   </div>

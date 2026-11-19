@@ -7,7 +7,6 @@ import { computed, ref, useId } from 'vue'
 
 import { errorMessage, uploadWithProgress } from '@/api/client'
 import type { UploadedImage } from '@/api/types'
-import AppIcon from '@/components/AppIcon.vue'
 import { useLightboxStore } from '@/stores/lightbox'
 
 const props = withDefaults(
@@ -100,7 +99,7 @@ function browse() {
 
 <template>
   <div class="space-y-2" @paste="onPaste">
-    <label :for="inputId" class="label">{{ label }}</label>
+    <label :for="inputId" class="block text-sm font-medium text-ctp-subtext1">{{ label }}</label>
     <input
       :id="inputId"
       ref="fileInput"
@@ -112,7 +111,7 @@ function browse() {
 
     <div
       v-if="url"
-      class="flex items-start gap-3 rounded-lg border border-ctp-surface1 bg-ctp-surface0 p-2"
+      class="animate__animated animate__fadeIn flex items-start gap-3 rounded-lg border border-ctp-surface1 bg-ctp-surface0 p-2"
     >
       <button
         type="button"
@@ -128,26 +127,36 @@ function browse() {
         />
       </button>
       <div class="flex flex-1 flex-col gap-2">
-        <input
+        <v-text-field
           v-if="withAlt"
           v-model="alt"
-          class="input"
-          placeholder="Alt text (describe the image for screen readers)"
+          label="Alt text"
+          placeholder="Describe the image for screen readers"
           maxlength="255"
-          :aria-label="`${label} alt text`"
+          density="compact"
+          prepend-inner-icon="mdi-text-short"
+          hide-details
         />
         <div class="flex gap-2">
-          <button type="button" class="btn-secondary btn-sm" :disabled="uploading" @click="browse">
-            <AppIcon name="upload" :size="14" /> Replace
-          </button>
-          <button
+          <v-btn
+            variant="tonal"
+            size="small"
+            prepend-icon="mdi-upload"
             type="button"
-            class="btn-ghost btn-sm text-ctp-red"
+            :disabled="uploading"
+            @click="browse"
+            >Replace
+          </v-btn>
+          <v-btn
+            variant="text"
+            size="small"
+            prepend-icon="mdi-delete-outline"
+            type="button"
+            color="error"
             :disabled="uploading"
             @click="remove"
-          >
-            <AppIcon name="trash" :size="14" /> Remove
-          </button>
+            >Remove
+          </v-btn>
         </div>
       </div>
     </div>
@@ -171,7 +180,11 @@ function browse() {
       @dragleave.prevent="dragging = false"
       @drop.prevent="onDrop"
     >
-      <AppIcon name="image" class="text-ctp-overlay1" />
+      <v-icon
+        :icon="dragging ? 'mdi-image-move' : 'mdi-image-plus-outline'"
+        :size="compact ? 22 : 30"
+        :class="dragging ? 'text-ctp-accent' : 'text-ctp-overlay1'"
+      />
       <span class="text-ctp-subtext1">
         <span class="font-medium text-ctp-accent">Browse</span>, drag & drop, or click here and
         press Ctrl+V
@@ -179,19 +192,15 @@ function browse() {
       <span v-if="!compact" class="text-xs text-ctp-overlay1">PNG, JPG, WebP or GIF</span>
     </div>
 
-    <div
+    <v-progress-linear
       v-if="uploading"
-      class="h-1.5 overflow-hidden rounded-full bg-ctp-surface0"
-      role="progressbar"
-      :aria-valuenow="Math.round((progress ?? 0) * 100)"
-      aria-valuemin="0"
-      aria-valuemax="100"
-    >
-      <div
-        class="h-full bg-ctp-accent transition-all"
-        :style="{ width: `${(progress ?? 0) * 100}%` }"
-      />
-    </div>
-    <p v-if="error" role="alert" class="text-xs text-ctp-red">{{ error }}</p>
+      :model-value="(progress ?? 0) * 100"
+      color="primary"
+      height="6"
+      rounded
+      striped
+      aria-label="Upload progress"
+    />
+    <v-alert v-if="error" type="error" density="compact" role="alert" :text="error" />
   </div>
 </template>

@@ -8,11 +8,11 @@ Work in the phases listed at the bottom. At the end of every phase the project m
 
 ## 1. Product overview
 
-**GIC Review** is a study website where students first choose their **year** (e.g. `I3`, `I4`, or any custom name like "Very Cool Year"), then a **subject** of that year, and then either:
+**GIC Review** is a study website where students first choose their **category** (e.g. `I3`, `I4`, or any custom name like "Very Cool Category"), then a **subject** of that category, and then either:
 - open an **Interactive Review**: a static HTML review page made for that subject, or
 - take a **Quiz**: pick a quiz made by an admin/manager, then choose how to study it (**QCM** or **Flashcard**).
 
-Anyone can browse and do quizzes **without logging in**. Only staff accounts can log in: **managers** create content (in the dashboard, or through the API with their personal **API key**, which is how AI assistants add quizzes and reviews); **admins** can do everything a manager can (on **all** content) and also manage manager accounts, API keys, years and subjects.
+Anyone can browse and do quizzes **without logging in**. Only staff accounts can log in: **managers** create content (in the dashboard, or through the API with their personal **API key**, which is how AI assistants add quizzes and reviews); **admins** can do everything a manager can (on **all** content) and also manage manager accounts, API keys, categories and subjects.
 
 ---
 
@@ -20,7 +20,7 @@ Anyone can browse and do quizzes **without logging in**. Only staff accounts can
 
 | Layer | Technology |
 |---|---|
-| Frontend | Vue 3 (Composition API, `<script setup>`), TypeScript, Vite, Tailwind CSS, Vue Router, Pinia. **Package manager and runtime: Bun** (not npm, yarn or pnpm) |
+| Frontend | Vue 3 (Composition API, `<script setup>`), TypeScript, Vite, **Vuetify 4** (UI components) with **Material Design Icons** (`@mdi/font`), Tailwind CSS (layout and utilities), **AOS** (animate on scroll), **animate.css**, Vue Router, Pinia. **Package manager and runtime: Bun** (not npm, yarn or pnpm) |
 | Backend | Rust (stable), **Axum**, **Tokio**, **SQLx** (MySQL, compile-time-checked queries where practical), `serde`, `tower-http` (CORS, tracing, limits), `argon2` (password hashing), `jsonwebtoken` (JWT), `validator`, `thiserror`/`anyhow`, `tracing` |
 | Database | MySQL 8, with SQLx migrations (files in `backend/migrations/`), applied automatically on server start or with `cargo run -- migrate` |
 | File storage | **Cloudflare R2** (S3-compatible) for Interactive Review HTML files and images, used through `aws-sdk-s3` with a custom endpoint |
@@ -130,16 +130,16 @@ Before the first commit, run `git status` and confirm that no `.env`, `node_modu
 
 ## 3. User flow and pages
 
-### 3.1 Home page `/`: select a year
+### 3.1 Home page `/`: select a category
 - Header shows the site name **"GIC Review"** (logo text), a small "Staff login" link, a flavor picker, and an icon-only documentation link that opens `docs/README.md` in a new tab.
 - Footer (every page) shows the credit **"Made by: @GoodDay360"**, linking to https://github.com/GoodDay360 (opens in a new tab).
 - **Link previews and icons:** `index.html` has a meta description, `theme-color`, canonical URL, Open Graph tags (`og:title`, `og:description`, `og:url`, `og:image` 1200×630 with alt text) and Twitter `summary_large_image` tags, so links shared in Telegram, Discord, WhatsApp, Facebook or X show a title, description and image. Absolute URLs come from **`VITE_SITE_URL`** in `frontend/.env` (the site's public address). Icons: `favicon.ico`, `favicon.svg`, 32px PNG, `apple-touch-icon.png` (180px), 192/512px PNGs and `site.webmanifest`. The preview image (`public/og-image.png`) is a Catppuccin Mocha card. All pages share the same preview (no server-side rendering).
-- Shows a grid of **year cards** loaded from `GET /api/years` (name, optional description, number of subjects), ordered by the admin's sort order. A year's name is free text: `I3`, `I4`, `Very Cool Year`, …
-- Clicking a year navigates to `/years/:yearSlug`. The last year this browser opened is highlighted ("Last opened", stored in `localStorage`).
-- **Seed only ONE subject:** `Human Computer Interaction` (slug `hci`). Do NOT create other subjects (Internet Programming, etc.); they will be added later through the admin panel. The years migration creates one default year, **"General"** (slug `general`), and puts existing subjects in it; admins rename it (e.g. to `I4`) or add more years.
+- Shows a grid of **category cards** loaded from `GET /api/categories` (name, optional description, number of subjects), ordered by the admin's sort order. A category's name is free text: `I3`, `I4`, `Very Cool Category`, …
+- Clicking a category navigates to `/categories/:categorySlug`. The last category this browser opened is highlighted ("Last opened", stored in `localStorage`).
+- **Seed only ONE subject:** `Human Computer Interaction` (slug `hci`). Do NOT create other subjects (Internet Programming, etc.); they will be added later through the admin panel. The categories migration creates one default category, **"General"** (slug `general`), and puts existing subjects in it; admins rename it (e.g. to `I4`) or add more categories.
 
-### 3.1b Year page `/years/:yearSlug`: select a subject
-- Shows the year's name/description, an "All years" back link, and a grid of that year's **subject cards** (`GET /api/years/:slug` returns the year with its subjects).
+### 3.1b Category page `/categories/:categorySlug`: select a subject
+- Shows the category's name/description, an "All categories" back link, and a grid of that category's **subject cards** (`GET /api/categories/:slug` returns the category with its subjects).
 - Clicking a subject opens a **modal popup** (no navigation) titled with the subject name, with two choices:
   1. **Interactive Review**: navigates to `/subjects/:subjectSlug/review`
   2. **Quiz**: navigates to `/subjects/:subjectSlug/quizzes`
@@ -192,21 +192,21 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 ### 3.5 Staff area
 - `/login`: email + password login for admin/manager only. There is no public sign-up.
 - `/admin/account` (**My account**, every manager and admin): shows the user's name, email and role, and a **change password** form: current password (required and verified first), new password (min 8, different from the current one), confirmation, and a "show passwords" toggle. After a change the user stays signed in on this browser and **every other session is signed out**.
-- `/admin` is the dashboard. Everyone gets Quizzes, Bulk import, Interactive reviews, Years, Subjects and API key; admins additionally get Managers and All API keys.
+- `/admin` is the dashboard. Everyone gets Quizzes, Bulk import, Interactive reviews, Categories, Subjects and API key; admins additionally get Managers and All API keys.
 - Content dashboard (**managers and admins**; admins see and manage everyone's content):
   - **Quizzes**: create, edit, delete, publish/unpublish quizzes; add, edit and reorder questions and options.
   - **Image inputs**: every image field (quiz cover, question, each option, flashcard back, explanation) uses a reusable `ImageUploader` component. It supports click-to-browse, **drag & drop**, and **paste from clipboard (Ctrl+V)**, which is handy for screenshots. It shows an upload progress bar, a preview thumbnail, an alt-text field, and Replace/Remove buttons.
   - **Preview**: a "Preview" button shows the question exactly as students will see it in QCM and Flashcard mode, images included.
   - **Interactive Reviews**: upload an `.html` file for a subject, set title and order, replace or delete it.
   - **Bulk import**: paste or upload JSON in the format defined in `docs/AI-HOW-ADD-QUIZ.md` to create a whole quiz at once.
-  - **Sharing (years and subjects only)**: the Years page has a **Share** button per year and the Subjects page per subject. The year's owner (or an admin) types another manager's/admin's email to give them access, sees who has access, and can remove people; a recipient sees "Shared with you", can open the list and **leave**. There is **no per-item sharing**: access to a year or subject covers every quiz and review in it. Content lists show "Shared · by <creator>" / "By <creator>" badges, and the delete button only appears for users with full rights.
+  - **Sharing (categories and subjects only)**: the Categories page has a **Share** button per category and the Subjects page per subject. The category's owner (or an admin) types another manager's/admin's email to give them access, sees who has access, and can remove people; a recipient sees "Shared with you", can open the list and **leave**. There is **no per-item sharing**: access to a category or subject covers every quiz and review in it. Content lists show "Shared · by <creator>" / "By <creator>" badges, and the delete button only appears for users with full rights.
   - **API key** (`/admin/api-key`): a manager can create **one** personal API key (shown once, with a copy button and curl examples), choose its permissions (`quizzes:write`, `reviews:write`) and expiry (30/90/365 days or never), see when it was last used, **regenerate** it (the old key stops working immediately) or revoke it. Scripts and AI assistants send it as `Authorization: Bearer gic_…` to add quizzes and interactive reviews through the API.
 - `/admin/users` (**admin only**): create manager accounts, reset a manager's password, deactivate or delete managers.
 - `/admin/api-keys` (**admin only**): see every manager's API keys (owner, name, prefix, permissions, created/last used/expiry, status), filter by manager or status, and revoke any key. Admins cannot create API keys.
-- `/admin/years` (**managers and admins**): every editor can create years and **owns** the years they create ("Yours" badge; others show "Owned by …"). Only the owner (or an admin) can rename, reorder or delete a year (name, link name/slug, description, order); a year can only be deleted when it has no subjects. The seeded "General" year has no owner, so only admins manage it.
-- `/admin/subjects` (**managers and admins**): create and edit subjects (**year**, name, slug, description, icon/color, order) **in years you own** (admins: any year); other subjects are listed as "Not your year". The "clean up orphaned images" maintenance action is admin only.
-- **Years and subjects are created only in the dashboard**, by a human. There is no API path for API keys to create, edit or delete them (`403 api_key_not_allowed`), so an AI must ask the human to create a missing year or subject.
-- **New content only where you have access:** a manager (in the dashboard or with their API key) can only create quizzes/reviews in, or move them into, subjects of **years they own**, **years shared with them**, or **subjects shared with them** (`403 not_your_year`; the message lists where they can add content). Admins can use every year. Dashboard subject pickers for new content only offer those subjects.
+- `/admin/categories` (**managers and admins**): every editor can create categories and **owns** the categories they create ("Yours" badge; others show "Owned by …"). Only the owner (or an admin) can rename, reorder or delete a category (name, link name/slug, description, order); a category can only be deleted when it has no subjects. The seeded "General" category has no owner, so only admins manage it.
+- `/admin/subjects` (**managers and admins**): create and edit subjects (**category**, name, slug, description, icon/color, order) **in categories you own** (admins: any category); other subjects are listed as "Not your category". The "clean up orphaned images" maintenance action is admin only.
+- **Categories and subjects are created only in the dashboard**, by a human. There is no API path for API keys to create, edit or delete them (`403 api_key_not_allowed`), so an AI must ask the human to create a missing category or subject.
+- **New content only where you have access:** a manager (in the dashboard or with their API key) can only create quizzes/reviews in, or move them into, subjects of **categories they own**, **categories shared with them**, or **subjects shared with them** (`403 not_your_category`; the message lists where they can add content). Admins can use every category. Dashboard subject pickers for new content only offer those subjects.
 - Route guards hide staff pages from users without the role, AND the backend enforces the same rules (never trust the frontend).
 
 ---
@@ -217,20 +217,20 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 |---|---|---|---|
 | View subjects, reviews, quizzes; play quizzes | ✅ | ✅ | ✅ |
 | Create quizzes and interactive reviews (dashboard or API key) | ❌ | ✅ | ✅ |
-| Edit/publish **own** content and all content in **their years** or in years/subjects **shared with them** | ❌ | ✅ | ✅ |
+| Edit/publish **own** content and all content in **their categories** or in categories/subjects **shared with them** | ❌ | ✅ | ✅ |
 | Edit/publish/delete **anyone's** content | ❌ | ❌ | ✅ |
-| Delete content (own, or anything in their own years) | ❌ | ✅ | ✅ (all) |
-| Share a year or a subject (by email) and manage who has access | ❌ | own years | ✅ (all) |
-| See content outside their years and shares | ❌ | ❌ | ✅ |
+| Delete content (own, or anything in their own categories) | ❌ | ✅ | ✅ (all) |
+| Share a category or a subject (by email) and manage who has access | ❌ | own categories | ✅ (all) |
+| See content outside their categories and shares | ❌ | ❌ | ✅ |
 | Preview unpublished quizzes they can manage | ❌ | ✅ | ✅ |
 | Create/regenerate/revoke **own** API key (max 1 active) | ❌ | ✅ | ✅ |
 | See and revoke **anyone's** API keys | ❌ | ❌ | ✅ |
-| Create years (becomes owner); create/edit subjects in **own** years (dashboard only) | ❌ | ✅ | ✅ (all years) |
-| Add new quizzes/reviews to subjects of **own** years (others: `403 not_your_year`) | ❌ | ✅ | ✅ (all years) |
+| Create categories (becomes owner); create/edit subjects in **own** categories (dashboard only) | ❌ | ✅ | ✅ (all categories) |
+| Add new quizzes/reviews to subjects of **own** categories (others: `403 not_your_category`) | ❌ | ✅ | ✅ (all categories) |
 | Clean up orphaned images | ❌ | ❌ | ✅ |
 | Create/manage manager accounts | ❌ | ❌ | ✅ |
 
-- **Content access and sharing (years and subjects):** a quiz/review's creator is `created_by`. A manager reaches an item when they created it (`access: "owner"`), it is in a year they own (`"year_owner"`), or its **year or subject is shared with them** (`"shared"`); admins reach everything (`"admin"`). Others get `404`. `owner`, `year_owner` and `admin` have full rights (edit, publish, delete); `shared` can view, edit and publish, and add new content there, but not delete. The year's owner (or an admin) shares a whole year or a single subject with other active managers/admins **by email** and can remove them; recipients can leave. Sharing is dashboard-only (API keys get `403 api_key_not_allowed`). **There is no per-item sharing** (removed 2026-11-18). When a manager is deleted, each of their years goes to the person it was first shared with (never-shared years keep no owner: admins only); content they created stays in place. Students are unaffected: published content is public.
+- **Content access and sharing (categories and subjects):** a quiz/review's creator is `created_by`. A manager reaches an item when they created it (`access: "owner"`), it is in a category they own (`"category_owner"`), or its **category or subject is shared with them** (`"shared"`); admins reach everything (`"admin"`). Others get `404`. `owner`, `category_owner` and `admin` have full rights (edit, publish, delete); `shared` can view, edit and publish, and add new content there, but not delete. The category's owner (or an admin) shares a whole category or a single subject with other active managers/admins **by email** and can remove them; recipients can leave. Sharing is dashboard-only (API keys get `403 api_key_not_allowed`). **There is no per-item sharing** (removed 2026-11-18). When a manager is deleted, each of their categories goes to the person it was first shared with (never-shared categories keep no owner: admins only); content they created stays in place. Students are unaffected: published content is public.
 - **Admins have every manager permission**, on **all** content: they see every quiz and review (`access: "admin"`, with owner rights: edit, publish, delete, manage sharing), create content (owned by them), and can create their own API key (max 1 active; like every key it never reaches session-only endpoints). Items show "Owned by …" so admins know whose content they're editing.
 
 - **Admin from `.env`, synced on every start:** the account with `ADMIN_EMAIL` is created as an admin if it doesn't exist. If `ADMIN_PASSWORD` in `backend/.env` **changed** since it was last applied, the admin's password is updated to it and the admin's sessions are signed out. If it did **not** change, the account is left alone, so a password changed in the dashboard (My account) survives restarts. The last applied value is tracked as an Argon2 hash in `users.env_password_hash`. If `ADMIN_EMAIL` belongs to a manager, nothing is changed (warning logged). Log a warning whenever the admin is created or its password is updated. Never log the password itself.
@@ -247,7 +247,7 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
   - Scopes: `quizzes:write` (quizzes, questions, reorder, publish, import, image uploads) and `reviews:write` (interactive reviews, image uploads). A key without the needed scope gets `403 missing_scope`.
   - Keys never work on session-only endpoints (users, API key management, subjects, orphan cleanup): `403 api_key_not_allowed`. So a leaked key cannot create more keys or escalate.
   - Optional expiry (1–365 days), `last_used_at` tracking, revocation by the owner or any admin. Deleting a manager deletes their keys; deactivating them disables the keys.
-- **Response cache (small servers, 200–500 MB RAM):** successful anonymous `GET` responses of `/api/years…`, `/api/subjects…` and `/api/quizzes/…` are kept in an in-memory cache (moka) limited by `CACHE_MAX_MB` (0 = off) and `CACHE_TTL_SECONDS`. Requests with a session cookie or API key always bypass it (they can see drafts). **Any successful write under `/api/admin/`** (quizzes, questions, publish, import, uploads, reviews, years, subjects, sharing) clears the whole cache immediately, and entries carry a generation number so a response computed before a write is never served after it. Responses carry `x-cache: hit|miss` and `Cache-Control: no-cache` (browsers always revalidate). A single backend instance is assumed; with several instances each has its own cache (stale for at most `CACHE_TTL_SECONDS` on the others).
+- **Response cache (small servers, 200–500 MB RAM):** successful anonymous `GET` responses of `/api/categories…`, `/api/subjects…` and `/api/quizzes/…` are kept in an in-memory cache (moka) limited by `CACHE_MAX_MB` (0 = off) and `CACHE_TTL_SECONDS`. Requests with a session cookie or API key always bypass it (they can see drafts). **Any successful write under `/api/admin/`** (quizzes, questions, publish, import, uploads, reviews, categories, subjects, sharing) clears the whole cache immediately, and entries carry a generation number so a response computed before a write is never served after it. Responses carry `x-cache: hit|miss` and `Cache-Control: no-cache` (browsers always revalidate). A single backend instance is assumed; with several instances each has its own cache (stale for at most `CACHE_TTL_SECONDS` on the others).
 - Rate-limit `POST /api/auth/login` (for example 5 attempts per minute per IP).
 - **Password changes:** `POST /api/auth/change-password` (`{ current_password, new_password }`, dashboard session only, never with an API key) verifies the current password with Argon2 before anything else, is rate-limited (5 attempts per minute per user), and bumps `users.session_version`. Session JWTs carry the version they were issued with (`sv`), and tokens with an older version are rejected, so the change signs out every other device (this browser gets a fresh cookie). An admin's reset of a manager's password also bumps the version. API keys are not affected.
 - Validate every input. Use parameterized SQLx queries only, never string-concatenated SQL.
@@ -260,9 +260,9 @@ Progress for anonymous users is kept only in the browser (Pinia + `localStorage`
 ```
 users              (id, email UNIQUE, password_hash, session_version INT DEFAULT 0, env_password_hash NULL, display_name, role ENUM('admin','manager'),
                     is_active BOOL, created_by NULL FK users, created_at, updated_at)
-years              (id, slug UNIQUE, name, description NULL, sort_order, created_by NULL FK users ON DELETE SET NULL
+categories              (id, slug UNIQUE, name, description NULL, sort_order, created_by NULL FK users ON DELETE SET NULL
                     (= owner; NULL: admins only), created_at, updated_at)
-subjects           (id, year_id FK years ON DELETE RESTRICT, slug UNIQUE, name, description, color, sort_order,
+subjects           (id, category_id FK categories ON DELETE RESTRICT, slug UNIQUE, name, description, color, sort_order,
                     created_at, updated_at)
 interactive_reviews(id, subject_id FK, title, slug, r2_key, sort_order, is_published,
                     created_by FK users, created_at, updated_at)
@@ -278,8 +278,8 @@ questions          (id, quiz_id FK ON DELETE CASCADE, position,
                     explanation_image_key VARCHAR NULL,  -- e.g. a diagram shown after answering
                     multi_select BOOL DEFAULT false,
                     created_at, updated_at)
-year_shares        (year_id FK ON DELETE CASCADE, user_id FK users ON DELETE CASCADE, granted_by NULL FK users,
-                    created_at, PRIMARY KEY (year_id, user_id))
+category_shares        (category_id FK ON DELETE CASCADE, user_id FK users ON DELETE CASCADE, granted_by NULL FK users,
+                    created_at, PRIMARY KEY (category_id, user_id))
 subject_shares     (subject_id FK ON DELETE CASCADE, user_id FK users ON DELETE CASCADE, granted_by NULL FK users,
                     created_at, PRIMARY KEY (subject_id, user_id))
 api_keys           (id, user_id FK users ON DELETE CASCADE, name, key_prefix, key_hash UNIQUE (sha-256 hex),
@@ -322,8 +322,8 @@ Seed migration: insert only the subject `Human Computer Interaction` (slug `hci`
 ## 5. API (REST, JSON, prefix `/api`)
 
 Public:
-- `GET  /years` (with `subject_count`), `GET /years/:slug` (the year plus its `subjects`)
-- `GET  /subjects[?year=<year slug>]`: every subject includes `year_id`, `year_slug`, `year_name`
+- `GET  /categories` (with `subject_count`), `GET /categories/:slug` (the category plus its `subjects`)
+- `GET  /subjects[?category=<category slug>]`: every subject includes `category_id`, `category_slug`, `category_name`
 - `GET  /subjects/:slug`, which includes a `has_review` flag
 - `GET  /subjects/:slug/reviews`, which returns published reviews with their `url` (public R2 URL)
 - `GET  /subjects/:slug/quizzes`, which returns published quizzes with `question_count` and `available_modes`
@@ -340,14 +340,14 @@ Managers and admins ("editors"), via session cookie **or** API key (`Authorizati
 - `POST /admin/uploads/image` (multipart, optional `quiz_id`), which returns `{ key, url }` (`quizzes:write` or `reviews:write`)
 - `DELETE /admin/uploads/image/:key` (`quizzes:write` or `reviews:write`)
 - `GET /admin/reviews[?subject_id=]`, `GET /admin/reviews/:id`, `POST/PUT/DELETE /admin/reviews[/:id]` (multipart `.html` upload) (`reviews:write`)
-- `GET /admin/years` (any scope): every year with `owner_id`, `owner_name`, `can_manage` (year owner/admin), `shared_with_you`, `can_add_content`, and its `subjects` (each with `can_add_content`, `shared_with_you`), so API clients know where they may add content
-- Creating content, or moving it to another subject, requires owning that subject's year or having the year/subject shared with you (`403 not_your_year`; admins: any year)
-- All of the above only for content the user can reach (created it, in their year, or in a year/subject shared with them; `404` otherwise; admins reach all content); `DELETE` of a quiz or review needs full rights (`403 owner_only` for `shared`). List endpoints return `access` (`owner`/`admin`/`year_owner`/`shared`), `owner_id`, `owner_name` (the creator).
+- `GET /admin/categories` (any scope): every category with `owner_id`, `owner_name`, `can_manage` (category owner/admin), `shared_with_you`, `can_add_content`, and its `subjects` (each with `can_add_content`, `shared_with_you`), so API clients know where they may add content
+- Creating content, or moving it to another subject, requires owning that subject's category or having the category/subject shared with you (`403 not_your_category`; admins: any category)
+- All of the above only for content the user can reach (created it, in their category, or in a category/subject shared with them; `404` otherwise; admins reach all content); `DELETE` of a quiz or review needs full rights (`403 owner_only` for `shared`). List endpoints return `access` (`owner`/`admin`/`category_owner`/`shared`), `owner_id`, `owner_name` (the creator).
 
 Managers and admins, dashboard session only (never with an API key):
-- `GET /admin/years/:id/shares`, `POST /admin/years/:id/shares` (`{ email }`, year owner or admin), `DELETE /admin/years/:id/shares/:user_id` (year owner or admin, or yourself to leave); the same three under `/admin/subjects/:id/shares` (managed by the subject's year owner or an admin)
-- `POST /admin/years` (creator = owner), `PUT/DELETE /admin/years/:id` (owner or admin; `{ name, slug?, description?, sort_order }`; slug derived from the name when empty; a year with subjects can't be deleted → 409)
-- `POST/PUT/DELETE /admin/subjects[/:id]` (subjects require `year_id`; owner of the year, or admin)
+- `GET /admin/categories/:id/shares`, `POST /admin/categories/:id/shares` (`{ email }`, category owner or admin), `DELETE /admin/categories/:id/shares/:user_id` (category owner or admin, or yourself to leave); the same three under `/admin/subjects/:id/shares` (managed by the subject's category owner or an admin)
+- `POST /admin/categories` (creator = owner), `PUT/DELETE /admin/categories/:id` (owner or admin; `{ name, slug?, description?, sort_order }`; slug derived from the name when empty; a category with subjects can't be deleted → 409)
+- `POST/PUT/DELETE /admin/subjects[/:id]` (subjects require `category_id`; owner of the category, or admin)
 - `GET /admin/api-keys/mine`, `POST /admin/api-keys` (`{ name, scopes, expires_in_days | null, replace_existing }` → `{ key, api_key }`, the key is shown only in this response), `DELETE /admin/api-keys/:id` (own key)
 
 Admin only, dashboard session only:
@@ -389,8 +389,8 @@ Implementation requirements:
 - Check that text has readable contrast in all 4 flavors, especially Latte.
 
 ### 7.2 General UI
-- Use Tailwind with a clean, modern, mobile-first design.
-- **Default font: Plus Jakarta Sans** (Google Fonts, all weights 200–800 + italics). Keep Google's `<link>` snippet in `index.html`; **`vite-plugin-webfont-dl`** (`webfontDownload()` in `vite.config.ts`, zero config) downloads and self-hosts the font at build time (no requests to Google, non-render-blocking). Tailwind's `--font-sans` theme variable makes it the site-wide default, with system fonts as fallback.
+- Build the UI with **Vuetify components** (`v-btn`, `v-form`, `v-text-field`, `v-select`, `v-dialog`, `v-alert`, `v-snackbar-queue`, …) and `mdi-*` icons; use Tailwind for layout and spacing, with a CSS layer order that keeps Tailwind utilities above Vuetify. Generate one Vuetify theme per Catppuccin flavor from `@catppuccin/palette` (accent = `primary`). Add motion with AOS (`data-aos` on cards/lists) and animate.css (entrances, alert shakes), disabled for `prefers-reduced-motion`. Clean, modern, mobile-first design.
+- **Default font: Plus Jakarta Sans** (Google Fonts, all weights 200–800 + italics). Keep Google's `<link>` snippet in `index.html`; **`vite-plugin-webfont-dl`** (`webfontDownload()` in `vite.config.ts`, zero config) downloads and self-hosts the font at build time (no requests to Google, non-render-blocking). Tailwind's `--font-sans` theme variable makes it the site-wide default, with system fonts as fallback; Vuetify uses it through `--v-font-body` / `--v-font-heading`.
 - Popups are accessible modals: focus trap, close on Esc or backdrop click, and `aria` labels.
 - Show loading skeletons, empty states ("No quizzes yet for this subject") and error toasts.
 - Keep components small: `SubjectCard`, `ActivityModal`, `QuizCard`, `QuizModeModal`, `QcmPlayer`, `FlashcardPlayer`, `ResultScreen`, plus admin forms.
@@ -466,7 +466,7 @@ Two audiences:
 
 ### `docs/AI-HOW-ADD-QUIZ.md` (external API guide)
 - What the client needs (base URL, a manager's API key with `quizzes:write`), `Authorization: Bearer` usage, keeping the key secret.
-- What the key can and cannot do: acts as its owner; only quizzes in that person's years or in years/subjects shared with them (and items they created); with `shared` access they can edit and publish but not delete; years, subjects, sharing, users and keys are dashboard-only; ask the human when a year or subject is missing or not accessible.
+- What the key can and cannot do: acts as its owner; only quizzes in that person's categories or in categories/subjects shared with them (and items they created); with `shared` access they can edit and publish but not delete; categories, subjects, sharing, users and keys are dashboard-only; ask the human when a category or subject is missing or not accessible.
 - A recommended workflow from source material (e.g. a PDF): check the key → pick the subject → plan questions → upload images → one import call → check `available_modes` → report back and publish only when asked → fix with question endpoints, avoid duplicates.
 - Question-writing guidance (facts only from the source, same language, one concept per question, plausible distractors, explanations, `answer_text`, sensible quiz size) and the format rules (`is_correct`, `multi_select`, what makes QCM and Flashcard available, limits, image types/sizes, alt text).
 - The full import JSON schema plus a text-only example and an example using every image field (cover, question image, image options, flashcard answer image, explanation image), with both ways to supply images (upload and use the returned `key`, or a public `*_url`).
@@ -534,7 +534,7 @@ These refine the requirements above; they do not remove any of them.
 - **Subjects API** also returns `quiz_count` (published quizzes). Subject `color` is one of the 14 Catppuccin accent names.
 - **Publishing** a quiz is refused while it has no available mode.
 - **Deleting** a subject is refused (409) while it still has quizzes or reviews. Deleting a manager keeps their content (`created_by` becomes NULL, so `created_by` columns are nullable with `ON DELETE SET NULL`).
-- **Roles (2026-11-18, revised):** admins first lost content permissions, then got them back: admins now have every manager permission on all content, plus account, API key, year and subject management.
+- **Roles (2026-11-18, revised):** admins first lost content permissions, then got them back: admins now have every manager permission on all content, plus account, API key, category and subject management.
 - **Uploads:** `DELETE /admin/uploads/image/:key` only deletes images no row references (409 otherwise). The question editor deletes images uploaded during an edit session that end up unused (cancel/close/replace). Orphan cleanup skips files younger than one hour.
 - **Bulk import:** unknown JSON fields are rejected; `*_url` images must be public http(s) URLs (no private IPs, no redirects); the admin import page has a "Load HCI sample" button (`docs/examples/hci-sample-quiz.json`, text-only, playable in QCM and Flashcard).
 - **Interactive reviews:** replacing the file overwrites the same R2 key; the API returns the URL with a `?v=<updated_at>` cache-buster. The viewer refuses to render a review URL on the site's own origin.
@@ -542,5 +542,5 @@ These refine the requirements above; they do not remove any of them.
 - **No `DATABASE_URL` (2026-11-18):** replaced by `cargo run -- migrate` and `DB_*`-based test databases; the `.env` template no longer has it.
 - **Docker deployment:** `backend/Dockerfile` (multi-stage build, slim non-root runtime, migrations embedded) and `backend/.dockerignore` (never ship `.env` or `target/`) so the API can be deployed to Render, Railway or any Docker host. The server listens on `PORT` when the platform sets it (else `BACKEND_PORT`), and the image sets `BACKEND_HOST=0.0.0.0`, `APP_ENV=production`.
 - **JSON errors for bad request bodies:** a body that isn't valid JSON or misses/mistypes a field returns the standard `{ "error": { "code": "validation_error" | "bad_request", "message" } }` (never Axum's plain-text rejection).
-- **Dashboard subject pickers** show `Year · Subject`, since two years can have subjects with similar names. Back links on subject pages lead to the subject's year page.
+- **Dashboard subject pickers** show `Category · Subject`, since two categories can have subjects with similar names. Back links on subject pages lead to the subject's category page.
 - **SQL:** queries are parameterized `&'static str` SQL (sqlx 0.9 rejects dynamic SQL strings). Compile-time `query!` macros and a committed `.sqlx/` directory are planned once a development database is available.

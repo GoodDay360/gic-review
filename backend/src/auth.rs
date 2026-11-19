@@ -2,7 +2,7 @@
 //! `RequireEditor<Scope>`, `RequireEditorSession`, `RequireAdmin`, `RequireAuth`, `MaybeEditor`.
 //!
 //! Roles: managers create content (dashboard or API key); admins can do everything managers
-//! can, plus manage accounts, API keys, years, subjects and orphan cleanup (dashboard only).
+//! can, plus manage accounts, API keys, categories, subjects and orphan cleanup (dashboard only).
 //!
 //! Every authenticated request re-reads the user's role and `is_active` flag from the database,
 //! so deactivating a manager takes effect immediately even if their JWT is still valid.

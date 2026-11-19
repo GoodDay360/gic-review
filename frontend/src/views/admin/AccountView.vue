@@ -3,7 +3,6 @@
 import { computed, reactive, ref } from 'vue'
 
 import { api, errorMessage } from '@/api/client'
-import AppIcon from '@/components/AppIcon.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 
@@ -37,7 +36,7 @@ async function submit() {
       new_password: form.next,
     })
     Object.assign(form, { current: '', next: '', confirm: '' })
-    toast.success('Password changed. Your other devices have been signed out.')
+    toast.success('Your other devices have been signed out.', 'Password changed')
   } catch (err) {
     error.value = errorMessage(err).replace(/^current_password: /, 'Current password ')
   } finally {
@@ -48,22 +47,31 @@ async function submit() {
 
 <template>
   <div class="max-w-xl space-y-6">
-    <h1 class="text-2xl font-bold text-ctp-text">My account</h1>
+    <h1 class="animate__animated animate__fadeInDown text-2xl font-bold text-ctp-text">
+      My account
+    </h1>
 
-    <section class="card space-y-1 p-5">
-      <p class="font-semibold text-ctp-text">{{ auth.user?.display_name }}</p>
-      <p class="text-sm text-ctp-subtext0">{{ auth.user?.email }}</p>
-      <p>
-        <span class="rounded bg-ctp-surface0 px-1.5 py-0.5 text-[11px] uppercase text-ctp-subtext1">
-          {{ auth.user?.role }}
-        </span>
-      </p>
-    </section>
+    <v-card tag="section" class="flex items-center gap-4 p-5" data-aos="fade-up">
+      <v-avatar color="primary" size="56" class="text-xl font-bold">
+        {{ auth.user?.display_name?.slice(0, 1).toUpperCase() }}
+      </v-avatar>
+      <div class="min-w-0 space-y-1">
+        <p class="font-semibold text-ctp-text">{{ auth.user?.display_name }}</p>
+        <p class="truncate text-sm text-ctp-subtext0">{{ auth.user?.email }}</p>
+        <v-chip size="x-small" variant="tonal" class="uppercase">{{ auth.user?.role }}</v-chip>
+      </div>
+    </v-card>
 
-    <form class="card space-y-4 p-5" @submit.prevent="submit">
+    <v-card
+      tag="form"
+      class="space-y-4 p-5"
+      data-aos="fade-up"
+      data-aos-delay="80"
+      @submit.prevent="submit"
+    >
       <div>
         <h2 class="flex items-center gap-2 font-semibold text-ctp-text">
-          <AppIcon name="key" :size="18" /> Change password
+          <v-icon icon="mdi-key-variant" size="18" /> Change password
         </h2>
         <p class="mt-1 text-sm text-ctp-subtext0">
           Enter your current password to confirm it's you. After changing it, you stay signed in
@@ -80,56 +88,62 @@ async function submit() {
         aria-hidden="true"
         readonly
       />
-      <div>
-        <label class="label" for="pw-current">Current password</label>
-        <input
-          id="pw-current"
-          v-model="form.current"
-          :type="show ? 'text' : 'password'"
-          class="input"
-          autocomplete="current-password"
-          required
-        />
-      </div>
-      <div>
-        <label class="label" for="pw-new">New password (min 8 characters)</label>
-        <input
-          id="pw-new"
-          v-model="form.next"
-          :type="show ? 'text' : 'password'"
-          class="input"
-          autocomplete="new-password"
-          minlength="8"
-          required
-        />
-      </div>
-      <div>
-        <label class="label" for="pw-confirm">Confirm new password</label>
-        <input
-          id="pw-confirm"
-          v-model="form.confirm"
-          :type="show ? 'text' : 'password'"
-          class="input"
-          autocomplete="new-password"
-          required
-        />
-      </div>
-      <label class="flex items-center gap-2 text-sm text-ctp-subtext1">
-        <input v-model="show" type="checkbox" class="h-4 w-4 accent-ctp-accent" /> Show passwords
-      </label>
+      <v-text-field
+        v-model="form.current"
+        label="Current password"
+        prepend-inner-icon="mdi-lock-outline"
+        :type="show ? 'text' : 'password'"
+        autocomplete="current-password"
+        required
+      />
+      <v-text-field
+        v-model="form.next"
+        label="New password (min 8 characters)"
+        prepend-inner-icon="mdi-lock-plus-outline"
+        :type="show ? 'text' : 'password'"
+        autocomplete="new-password"
+        minlength="8"
+        required
+      />
+      <v-text-field
+        v-model="form.confirm"
+        label="Confirm new password"
+        prepend-inner-icon="mdi-lock-check-outline"
+        :type="show ? 'text' : 'password'"
+        autocomplete="new-password"
+        required
+      />
+      <v-checkbox v-model="show" label="Show passwords" />
 
-      <ul v-if="problems.length" class="space-y-1 text-sm text-ctp-yellow" role="alert">
-        <li v-for="p in problems" :key="p">{{ p }}</li>
-      </ul>
-      <p v-if="error" role="alert" class="rounded-lg bg-ctp-red/10 p-3 text-sm text-ctp-red">
-        {{ error }}
-      </p>
+      <v-expand-transition>
+        <v-alert v-if="problems.length" type="warning" density="compact" role="alert">
+          <ul class="space-y-0.5">
+            <li v-for="p in problems" :key="p">{{ p }}</li>
+          </ul>
+        </v-alert>
+      </v-expand-transition>
+      <v-alert
+        v-if="error"
+        type="error"
+        title="Password not changed"
+        :text="error"
+        role="alert"
+        class="animate__animated animate__headShake"
+        closable
+        @click:close="error = null"
+      />
 
       <div class="flex justify-end">
-        <button class="btn-primary" type="submit" :disabled="saving || !canSubmit">
-          {{ saving ? 'Changing…' : 'Change password' }}
-        </button>
+        <v-btn
+          color="primary"
+          type="submit"
+          prepend-icon="mdi-lock-check-outline"
+          :loading="saving"
+          :disabled="!canSubmit"
+        >
+          Change password
+        </v-btn>
       </div>
-    </form>
+    </v-card>
   </div>
 </template>

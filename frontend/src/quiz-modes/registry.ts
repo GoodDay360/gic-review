@@ -15,7 +15,7 @@ export interface QuizModeDefinition {
   id: QuizModeId
   label: string
   description: string
-  /** Icon name from components/AppIcon.vue */
+  /** Material Design Icons name, e.g. `mdi-cards-outline` */
   icon: string
   /** Player component; receives `quiz: QuizDetail` as a prop. */
   component: Component
@@ -31,7 +31,7 @@ export const QUIZ_MODES: QuizModeDefinition[] = [
     id: 'qcm',
     label: 'QCM',
     description: 'Multiple choice: pick the right answer(s) and see the explanation.',
-    icon: 'list-check',
+    icon: 'mdi-format-list-checks',
     component: defineAsyncComponent(() => import('./QcmPlayer.vue')),
     isAvailable: fromBackend('qcm'),
   },
@@ -39,7 +39,7 @@ export const QUIZ_MODES: QuizModeDefinition[] = [
     id: 'flashcard',
     label: 'Flashcard',
     description: 'Flip cards, mark what you knew, and review the rest.',
-    icon: 'cards',
+    icon: 'mdi-cards-outline',
     component: defineAsyncComponent(() => import('./FlashcardPlayer.vue')),
     isAvailable: fromBackend('flashcard'),
   },

@@ -51,24 +51,15 @@ function toggle(id: number) {
 <template>
   <BaseModal :open="!!question" title="Student preview" size="lg" @close="emit('close')">
     <div v-if="question" class="space-y-4">
-      <div class="flex gap-1 rounded-lg bg-ctp-surface0 p-1" role="tablist">
-        <button
-          v-for="t in ['qcm', 'flashcard'] as const"
-          :key="t"
-          role="tab"
-          :aria-selected="tab === t"
-          class="flex-1 rounded-md px-3 py-1.5 text-sm"
-          :class="tab === t ? 'bg-ctp-base font-medium text-ctp-text shadow' : 'text-ctp-subtext0'"
-          @click="tab = t"
-        >
-          {{ t === 'qcm' ? 'QCM' : 'Flashcard' }}
-        </button>
-      </div>
+      <v-tabs v-model="tab" color="primary" grow density="comfortable">
+        <v-tab value="qcm" prepend-icon="mdi-format-list-checks">QCM</v-tab>
+        <v-tab value="flashcard" prepend-icon="mdi-cards-outline">Flashcard</v-tab>
+      </v-tabs>
 
       <template v-if="tab === 'qcm'">
-        <p v-if="!qcmReady" class="rounded-lg bg-ctp-yellow/15 p-3 text-sm text-ctp-yellow">
+        <v-alert v-if="!qcmReady" type="warning" density="compact">
           Not playable as QCM yet: it needs at least 2 options and 1 correct option.
-        </p>
+        </v-alert>
         <QcmQuestionCard
           :question="question"
           :options="question.options"
@@ -77,22 +68,29 @@ function toggle(id: number) {
           @toggle="toggle"
         />
         <div class="flex justify-end gap-2">
-          <button class="btn-secondary btn-sm" @click="((selected = []), (submitted = false))">
+          <v-btn
+            variant="tonal"
+            size="small"
+            prepend-icon="mdi-restart"
+            @click="((selected = []), (submitted = false))"
+          >
             Reset
-          </button>
-          <button
-            class="btn-primary btn-sm"
+          </v-btn>
+          <v-btn
+            color="primary"
+            size="small"
+            prepend-icon="mdi-check"
             :disabled="submitted || !selected.length"
             @click="submitted = true"
           >
             Submit
-          </button>
+          </v-btn>
         </div>
       </template>
       <template v-else>
-        <p v-if="!flashReady" class="rounded-lg bg-ctp-yellow/15 p-3 text-sm text-ctp-yellow">
+        <v-alert v-if="!flashReady" type="warning" density="compact">
           Not playable as a flashcard yet: add an answer (text or image) or mark a correct option.
-        </p>
+        </v-alert>
         <FlashcardCard :question="question" :flipped="flipped" @flip="flipped = !flipped" />
       </template>
     </div>

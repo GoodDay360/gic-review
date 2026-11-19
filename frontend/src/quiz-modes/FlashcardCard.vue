@@ -19,7 +19,7 @@ const fallbackOptions = computed(() =>
 </script>
 
 <template>
-  <div class="[perspective:1600px]">
+  <div class="animate__animated animate__zoomIn animate__faster [perspective:1600px]">
     <div
       role="button"
       tabindex="0"
@@ -33,8 +33,9 @@ const fallbackOptions = computed(() =>
       @keydown.enter.prevent="emit('flip')"
     >
       <!-- Front -->
-      <section
-        class="card absolute inset-0 flex flex-col items-center justify-center gap-4 overflow-auto p-6 [backface-visibility:hidden]"
+      <v-card
+        tag="section"
+        class="absolute inset-0 flex flex-col items-center justify-center gap-4 overflow-auto p-6 [backface-visibility:hidden]"
         :aria-hidden="flipped"
       >
         <span
@@ -57,11 +58,12 @@ const fallbackOptions = computed(() =>
         <span class="absolute bottom-3 text-xs text-ctp-overlay1"
           >Click or press Space to flip</span
         >
-      </section>
+      </v-card>
 
       <!-- Back -->
-      <section
-        class="card absolute inset-0 flex flex-col items-center justify-center gap-4 overflow-auto border-ctp-accent/50 p-6 [backface-visibility:hidden] [transform:rotateY(180deg)]"
+      <v-card
+        tag="section"
+        class="absolute inset-0 flex flex-col items-center justify-center gap-4 overflow-auto border-ctp-accent/50 p-6 [backface-visibility:hidden] [transform:rotateY(180deg)]"
         :aria-hidden="!flipped"
       >
         <span
@@ -115,7 +117,7 @@ const fallbackOptions = computed(() =>
             img-class="mx-auto mt-2 max-h-40 w-full object-contain"
           />
         </div>
-      </section>
+      </v-card>
     </div>
   </div>
 </template>

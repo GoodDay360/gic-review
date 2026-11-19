@@ -1,10 +1,10 @@
-//! Years ("I3", "I4", or any custom name) group subjects. Students pick a year first.
+//! Categories ("I3", "I4", or any custom name) group subjects. Students pick a category first.
 //!
-//! - Public: `GET /years`, `GET /years/{slug}` (the year and its subjects)
-//! - Editors (session or API key): `GET /admin/years`: every year with its owner, its subjects,
-//!   `can_manage` (owner/admin), `shared_with_you` and `can_add_content` (per year and subject)
-//! - Dashboard only (never with an API key): `POST /admin/years` (the creator becomes the
-//!   owner), `PUT/DELETE /admin/years/{id}` (owner or admin)
+//! - Public: `GET /categories`, `GET /categories/{slug}` (the category and its subjects)
+//! - Editors (session or API key): `GET /admin/categories`: every category with its owner, its subjects,
+//!   `can_manage` (owner/admin), `shared_with_you` and `can_add_content` (per category and subject)
+//! - Dashboard only (never with an API key): `POST /admin/categories` (the creator becomes the
+//!   owner), `PUT/DELETE /admin/categories/{id}` (owner or admin)
 
 use axum::{
     Json, Router,
@@ -20,35 +20,35 @@ use crate::{
     auth::{ContentManager, RequireEditor, RequireEditorSession},
     error::{AppError, AppResult},
     extract::AppJson,
-    models::{Page, PageQuery, SubjectDto, YearDto, YearRow, year_columns},
-    routes::public::{all_subjects, all_years},
+    models::{Page, PageQuery, SubjectDto, CategoryDto, CategoryRow, category_columns},
+    routes::public::{all_subjects, all_categories},
     state::AppState,
     validation::{check_len, clean, is_slug, slugify},
 };
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/years", get(list_years))
-        .route("/years/{slug}", get(get_year))
-        .route("/admin/years", get(list_managed_years).post(create_year))
-        .route("/admin/years/{id}", put(update_year).delete(delete_year))
+        .route("/categories", get(list_categories))
+        .route("/categories/{slug}", get(get_category))
+        .route("/admin/categories", get(list_managed_categories).post(create_category))
+        .route("/admin/categories/{id}", put(update_category).delete(delete_category))
 }
 
-async fn years_with_counts(state: &AppState) -> AppResult<Vec<YearDto>> {
-    let years = all_years(state).await?;
+async fn categories_with_counts(state: &AppState) -> AppResult<Vec<CategoryDto>> {
+    let categories = all_categories(state).await?;
     let counts: Vec<(i64, i64)> =
-        sqlx::query_as("SELECT year_id, COUNT(*) FROM subjects GROUP BY year_id")
+        sqlx::query_as("SELECT category_id, COUNT(*) FROM subjects GROUP BY category_id")
             .fetch_all(&state.db)
             .await?;
-    Ok(years
+    Ok(categories
         .into_iter()
-        .map(|year| {
+        .map(|category| {
             let subject_count = counts
                 .iter()
-                .find(|(id, _)| *id == year.id)
+                .find(|(id, _)| *id == category.id)
                 .map_or(0, |(_, c)| *c);
-            YearDto {
-                year,
+            CategoryDto {
+                category,
                 subject_count,
             }
         })
@@ -56,7 +56,7 @@ async fn years_with_counts(state: &AppState) -> AppResult<Vec<YearDto>> {
 }
 
 #[derive(sqlx::FromRow)]
-struct YearListRow {
+struct CategoryListRow {
     id: i64,
     slug: String,
     name: String,
@@ -68,21 +68,21 @@ struct YearListRow {
     subject_count: i64,
 }
 
-async fn list_years(
+async fn list_categories(
     State(state): State<AppState>,
     axum::extract::Query(q): axum::extract::Query<PageQuery>,
 ) -> AppResult<axum::response::Response> {
     if q.search.is_none() && q.offset.is_none() && q.limit.is_none() {
-        return Ok(Json(years_with_counts(&state).await?).into_response());
+        return Ok(Json(categories_with_counts(&state).await?).into_response());
     }
     let search = q.search();
     let pattern = search.as_ref().map(|s| format!("%{s}%"));
     let limit = q.limit();
-    let rows: Vec<YearListRow> = sqlx::query_as(
+    let rows: Vec<CategoryListRow> = sqlx::query_as(
         "SELECT y.id, y.slug, y.name, y.description, y.sort_order, y.created_by, \
          y.created_at, y.updated_at, \
-         (SELECT COUNT(*) FROM subjects s WHERE s.year_id = y.id) AS subject_count \
-         FROM years y \
+         (SELECT COUNT(*) FROM subjects s WHERE s.category_id = y.id) AS subject_count \
+         FROM categories y \
          WHERE (? IS NULL OR y.name LIKE ? OR COALESCE(y.description, '') LIKE ?) \
          ORDER BY y.sort_order, y.name LIMIT ? OFFSET ?",
     )
@@ -97,8 +97,8 @@ async fn list_years(
     let items = rows
         .into_iter()
         .take(limit as usize)
-        .map(|r| YearDto {
-            year: YearRow {
+        .map(|r| CategoryDto {
+            category: CategoryRow {
                 id: r.id,
                 slug: r.slug,
                 name: r.name,
@@ -115,25 +115,25 @@ async fn list_years(
 }
 
 #[derive(Debug, Serialize)]
-struct YearWithSubjects {
+struct CategoryWithSubjects {
     #[serde(flatten)]
-    year: YearDto,
+    category: CategoryDto,
     subjects: Vec<SubjectDto>,
     subjects_has_more: bool,
 }
 
-async fn get_year(
+async fn get_category(
     State(state): State<AppState>,
     Path(slug): Path<String>,
     axum::extract::Query(q): axum::extract::Query<PageQuery>,
-) -> AppResult<Json<YearWithSubjects>> {
-    let year = years_with_counts(&state)
+) -> AppResult<Json<CategoryWithSubjects>> {
+    let category = categories_with_counts(&state)
         .await?
         .into_iter()
-        .find(|y| y.year.slug == slug)
-        .ok_or(AppError::NotFound("year"))?;
+        .find(|y| y.category.slug == slug)
+        .ok_or(AppError::NotFound("category"))?;
     let paged = q.limit.is_some() || q.offset.is_some() || q.search.is_some();
-    let (subjects, subjects_has_more) = crate::routes::public::subjects_for_year(
+    let (subjects, subjects_has_more) = crate::routes::public::subjects_for_category(
         &state,
         &slug,
         q.search(),
@@ -141,8 +141,8 @@ async fn get_year(
         q.offset(),
     )
     .await?;
-    Ok(Json(YearWithSubjects {
-        year,
+    Ok(Json(CategoryWithSubjects {
+        category,
         subjects,
         subjects_has_more,
     }))
@@ -153,74 +153,74 @@ async fn get_year(
 struct ManagedSubject {
     #[serde(flatten)]
     subject: SubjectDto,
-    /// You may add quizzes/reviews to this subject (your year, shared year/subject, or admin).
+    /// You may add quizzes/reviews to this subject (your category, shared category/subject, or admin).
     can_add_content: bool,
     /// This subject was shared with you on its own.
     shared_with_you: bool,
 }
 
-/// A year as seen in the dashboard and by API clients.
+/// A category as seen in the dashboard and by API clients.
 #[derive(Debug, Serialize)]
-struct ManagedYear {
+struct ManagedCategory {
     #[serde(flatten)]
-    year: YearDto,
+    category: CategoryDto,
     owner_id: Option<i64>,
     owner_name: Option<String>,
-    /// You own this year (or are an admin): edit it, manage its subjects and sharing.
+    /// You own this category (or are an admin): edit it, manage its subjects and sharing.
     can_manage: bool,
-    /// The whole year was shared with you.
+    /// The whole category was shared with you.
     shared_with_you: bool,
     /// You may add content to at least one of its subjects.
     can_add_content: bool,
     subjects: Vec<ManagedSubject>,
 }
 
-async fn list_managed_years(
+async fn list_managed_categories(
     RequireEditor(user, _): ContentManager,
     State(state): State<AppState>,
-) -> AppResult<Json<Vec<ManagedYear>>> {
+) -> AppResult<Json<Vec<ManagedCategory>>> {
     let actor = Actor::of(&user);
     let shared = access::shared_with(&state.db, actor.id).await?;
     let owners: Vec<(i64, Option<String>)> = sqlx::query_as(
-        "SELECT y.id, u.display_name FROM years y LEFT JOIN users u ON u.id = y.created_by",
+        "SELECT y.id, u.display_name FROM categories y LEFT JOIN users u ON u.id = y.created_by",
     )
     .fetch_all(&state.db)
     .await?;
     let subjects = all_subjects(&state).await?;
-    let years = years_with_counts(&state).await?;
+    let categories = categories_with_counts(&state).await?;
     Ok(Json(
-        years
+        categories
             .into_iter()
-            .map(|year| {
-                let owner_id = year.year.created_by;
+            .map(|category| {
+                let owner_id = category.category.created_by;
                 let owner_name = owners
                     .iter()
-                    .find(|(id, _)| *id == year.year.id)
+                    .find(|(id, _)| *id == category.category.id)
                     .and_then(|(_, n)| n.clone());
-                let can_manage = access::can_manage_year(actor, owner_id);
-                let year_shared = shared.years.contains(&year.year.id);
+                let can_manage = access::can_manage_category(actor, owner_id);
+                let category_shared = shared.categories.contains(&category.category.id);
                 let subjects: Vec<ManagedSubject> = subjects
                     .iter()
-                    .filter(|s| s.year_id == year.year.id)
+                    .filter(|s| s.category_id == category.category.id)
                     .map(|s| {
                         let subject_shared = shared.subjects.contains(&s.id);
                         ManagedSubject {
-                            can_add_content: can_manage || year_shared || subject_shared,
+                            can_add_content: can_manage || category_shared || subject_shared,
                             shared_with_you: subject_shared,
                             subject: s.clone(),
                         }
                     })
                     .collect();
-                ManagedYear {
+                ManagedCategory {
                     can_add_content: can_manage
-                        || year_shared
+                        || category_shared
                         || subjects.iter().any(|s| s.can_add_content),
                     can_manage,
-                    shared_with_you: year_shared,
+                    shared_with_you: category_shared,
                     owner_id,
                     owner_name,
                     subjects,
-                    year,
+                    category,
                 }
             })
             .collect(),
@@ -228,7 +228,7 @@ async fn list_managed_years(
 }
 
 #[derive(Debug, Deserialize)]
-struct YearInput {
+struct CategoryInput {
     name: String,
     /// Optional; derived from the name when empty.
     slug: Option<String>,
@@ -237,7 +237,7 @@ struct YearInput {
     sort_order: i32,
 }
 
-impl YearInput {
+impl CategoryInput {
     fn normalize(mut self) -> AppResult<(String, String, Option<String>, i32)> {
         self.name = self.name.trim().to_string();
         if self.name.is_empty() || self.name.chars().count() > 100 {
@@ -257,23 +257,23 @@ impl YearInput {
     }
 }
 
-async fn load(state: &AppState, id: i64) -> AppResult<YearDto> {
-    years_with_counts(state)
+async fn load(state: &AppState, id: i64) -> AppResult<CategoryDto> {
+    categories_with_counts(state)
         .await?
         .into_iter()
-        .find(|y| y.year.id == id)
-        .ok_or(AppError::NotFound("year"))
+        .find(|y| y.category.id == id)
+        .ok_or(AppError::NotFound("category"))
 }
 
-/// Any editor (manager or admin) can create a year; they become its owner.
-async fn create_year(
+/// Any editor (manager or admin) can create a category; they become its owner.
+async fn create_category(
     RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
-    AppJson(body): AppJson<YearInput>,
-) -> AppResult<(StatusCode, Json<YearDto>)> {
+    AppJson(body): AppJson<CategoryInput>,
+) -> AppResult<(StatusCode, Json<CategoryDto>)> {
     let (name, slug, description, sort_order) = body.normalize()?;
     let res = sqlx::query(
-        "INSERT INTO years (slug, name, description, sort_order, created_by) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO categories (slug, name, description, sort_order, created_by) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&slug)
     .bind(&name)
@@ -288,16 +288,16 @@ async fn create_year(
     ))
 }
 
-async fn update_year(
+async fn update_category(
     RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    AppJson(body): AppJson<YearInput>,
-) -> AppResult<Json<YearDto>> {
-    access::require_year(&state.db, Actor::of(&user), id, "change this year").await?;
+    AppJson(body): AppJson<CategoryInput>,
+) -> AppResult<Json<CategoryDto>> {
+    access::require_category(&state.db, Actor::of(&user), id, "change this category").await?;
     let (name, slug, description, sort_order) = body.normalize()?;
     sqlx::query(
-        "UPDATE years SET slug = ?, name = ?, description = ?, sort_order = ? WHERE id = ?",
+        "UPDATE categories SET slug = ?, name = ?, description = ?, sort_order = ? WHERE id = ?",
     )
     .bind(&slug)
     .bind(&name)
@@ -309,36 +309,36 @@ async fn update_year(
     Ok(Json(load(&state, id).await?))
 }
 
-async fn delete_year(
+async fn delete_category(
     RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<StatusCode> {
-    access::require_year(&state.db, Actor::of(&user), id, "delete this year").await?;
-    let year = load(&state, id).await?;
-    if year.subject_count > 0 {
+    access::require_category(&state.db, Actor::of(&user), id, "delete this category").await?;
+    let category = load(&state, id).await?;
+    if category.subject_count > 0 {
         return Err(AppError::Conflict(
-            "move or delete this year's subjects first".into(),
+            "move or delete this category's subjects first".into(),
         ));
     }
-    sqlx::query("DELETE FROM years WHERE id = ?")
+    sqlx::query("DELETE FROM categories WHERE id = ?")
         .bind(id)
         .execute(&state.db)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Used by subject create/update to validate `year_id`.
-pub async fn ensure_year(state: &AppState, year_id: i64) -> AppResult<()> {
-    let found: Option<YearRow> = sqlx::query_as(concat!(
+/// Used by subject create/update to validate `category_id`.
+pub async fn ensure_category(state: &AppState, category_id: i64) -> AppResult<()> {
+    let found: Option<CategoryRow> = sqlx::query_as(concat!(
         "SELECT ",
-        year_columns!(),
-        " FROM years WHERE id = ?"
+        category_columns!(),
+        " FROM categories WHERE id = ?"
     ))
-    .bind(year_id)
+    .bind(category_id)
     .fetch_optional(&state.db)
     .await?;
     found
         .map(|_| ())
-        .ok_or_else(|| AppError::Validation("year_id: year not found".into()))
+        .ok_or_else(|| AppError::Validation("category_id: category not found".into()))
 }

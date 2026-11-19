@@ -3,7 +3,6 @@ import { useRouter } from 'vue-router'
 
 import type { Subject } from '@/api/types'
 
-import AppIcon from './AppIcon.vue'
 import BaseModal from './BaseModal.vue'
 
 const props = defineProps<{ subject: Subject | null }>()
@@ -24,27 +23,35 @@ function go(path: string) {
     @close="emit('close')"
   >
     <div v-if="props.subject" class="grid gap-3 sm:grid-cols-2">
-      <button
-        class="card flex flex-col items-start gap-2 p-5 text-left transition hover:border-ctp-accent disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-ctp-surface0"
+      <v-card
+        tag="button"
+        type="button"
+        hover
+        class="w-full card-lift flex flex-col items-start gap-2 p-5 text-left"
         :disabled="!props.subject.has_review"
         @click="go(`/subjects/${props.subject.slug}/review`)"
       >
-        <span class="rounded-lg bg-ctp-surface0 p-2 text-ctp-accent"><AppIcon name="book" /></span>
+        <v-avatar color="primary" variant="tonal" rounded="lg">
+          <v-icon icon="mdi-book-open-page-variant-outline" />
+        </v-avatar>
         <span class="font-semibold text-ctp-text">Interactive Review</span>
         <span class="text-sm text-ctp-subtext0">
           {{ props.subject.has_review ? 'Read the interactive study guide.' : 'Coming soon' }}
         </span>
-      </button>
-      <button
-        class="card flex flex-col items-start gap-2 p-5 text-left transition hover:border-ctp-accent"
+      </v-card>
+      <v-card
+        tag="button"
+        type="button"
+        hover
+        class="w-full card-lift flex flex-col items-start gap-2 p-5 text-left"
         @click="go(`/subjects/${props.subject.slug}/quizzes`)"
       >
-        <span class="rounded-lg bg-ctp-surface0 p-2 text-ctp-accent"
-          ><AppIcon name="list-check"
-        /></span>
+        <v-avatar color="primary" variant="tonal" rounded="lg">
+          <v-icon icon="mdi-format-list-checks" />
+        </v-avatar>
         <span class="font-semibold text-ctp-text">Quiz</span>
         <span class="text-sm text-ctp-subtext0">Practice with QCM or flashcards.</span>
-      </button>
+      </v-card>
     </div>
   </BaseModal>
 </template>

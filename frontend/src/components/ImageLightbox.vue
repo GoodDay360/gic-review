@@ -4,12 +4,10 @@ import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import { useLightboxStore } from '@/stores/lightbox'
 
-import AppIcon from './AppIcon.vue'
-
 const lightbox = useLightboxStore()
 const scale = ref(1)
 const offset = ref({ x: 0, y: 0 })
-const closeBtn = ref<HTMLButtonElement | null>(null)
+const closeBtn = ref<{ $el: HTMLElement } | null>(null)
 let drag: { x: number; y: number; ox: number; oy: number } | null = null
 let previouslyFocused: HTMLElement | null = null
 
@@ -50,7 +48,7 @@ function onKey(e: KeyboardEvent) {
   else if (e.key === '-') zoom(-0.5)
   else if (e.key === 'Tab') {
     e.preventDefault()
-    closeBtn.value?.focus()
+    closeBtn.value?.$el.focus()
   }
 }
 
@@ -62,7 +60,7 @@ watch(
       previouslyFocused = document.activeElement as HTMLElement | null
       document.addEventListener('keydown', onKey, true)
       await nextTick()
-      closeBtn.value?.focus()
+      closeBtn.value?.$el.focus()
     } else {
       document.removeEventListener('keydown', onKey, true)
       previouslyFocused?.focus?.()
@@ -76,7 +74,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey, true))
   <Teleport to="body">
     <div
       v-if="lightbox.src"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-ctp-crust/95"
+      class="animate__animated animate__fadeIn animate__faster fixed inset-0 z-[3000] flex items-center justify-center bg-ctp-crust/95"
       role="dialog"
       aria-modal="true"
       :aria-label="lightbox.alt || 'Image viewer'"
@@ -84,20 +82,25 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey, true))
       @wheel="onWheel"
     >
       <div class="absolute top-3 right-3 flex gap-2">
-        <button class="btn-secondary p-2" aria-label="Zoom out" @click="zoom(-0.5)">
-          <AppIcon name="zoom-out" />
-        </button>
-        <button class="btn-secondary p-2" aria-label="Zoom in" @click="zoom(0.5)">
-          <AppIcon name="zoom-in" />
-        </button>
-        <button
+        <v-btn
+          icon="mdi-magnify-minus-outline"
+          variant="tonal"
+          aria-label="Zoom out"
+          @click="zoom(-0.5)"
+        />
+        <v-btn
+          icon="mdi-magnify-plus-outline"
+          variant="tonal"
+          aria-label="Zoom in"
+          @click="zoom(0.5)"
+        />
+        <v-btn
           ref="closeBtn"
-          class="btn-secondary p-2"
+          icon="mdi-close"
+          variant="tonal"
           aria-label="Close image"
           @click="lightbox.close()"
-        >
-          <AppIcon name="close" />
-        </button>
+        />
       </div>
       <img
         :src="lightbox.src"

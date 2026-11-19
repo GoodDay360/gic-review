@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import type { Question, QuizDetail } from '@/api/types'
-import AppIcon from '@/components/AppIcon.vue'
 import ResultScreen from '@/components/ResultScreen.vue'
 import { useLightboxStore } from '@/stores/lightbox'
 import { useProgressStore, type FlashcardProgress, type ModeResult } from '@/stores/progress'
@@ -199,24 +198,24 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <template v-if="!finished && current">
       <div class="flex flex-wrap items-center justify-between gap-2 text-sm text-ctp-subtext0">
         <span>Card {{ index + 1 }} / {{ queue.length }}</span>
-        <span>
-          <span class="text-ctp-green">{{ knewCount }} known</span> ·
-          <span class="text-ctp-red">{{ missedIds.size }} to review</span> · {{ remaining }} left
+        <span class="flex flex-wrap gap-1.5">
+          <v-chip size="small" color="success" variant="tonal" prepend-icon="mdi-check">
+            {{ knewCount }} known
+          </v-chip>
+          <v-chip size="small" color="error" variant="tonal" prepend-icon="mdi-replay">
+            {{ missedIds.size }} to review
+          </v-chip>
+          <v-chip size="small" variant="tonal">{{ remaining }} left</v-chip>
         </span>
       </div>
-      <div
-        class="h-2 overflow-hidden rounded-full bg-ctp-surface0"
-        role="progressbar"
-        :aria-valuenow="index"
-        aria-valuemin="0"
-        :aria-valuemax="queue.length"
+      <v-progress-linear
+        :model-value="(index / queue.length) * 100"
+        color="primary"
+        bg-color="ctp-surface1"
+        height="8"
+        rounded
         aria-label="Deck progress"
-      >
-        <div
-          class="h-full rounded-full bg-ctp-accent transition-all"
-          :style="{ width: `${(index / queue.length) * 100}%` }"
-        />
-      </div>
+      />
 
       <FlashcardCard
         :key="`${current.id}-${index}`"
@@ -226,31 +225,28 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       />
 
       <div class="flex items-center justify-between gap-2">
-        <button class="btn-ghost" :disabled="index === 0" aria-label="Previous card" @click="prev">
-          <AppIcon name="chevron-left" />
-        </button>
+        <v-btn
+          variant="text"
+          icon="mdi-chevron-left"
+          :disabled="index === 0"
+          aria-label="Previous card"
+          @click="prev"
+        />
         <div class="flex flex-1 justify-center gap-2">
-          <button
-            class="btn border border-ctp-red text-ctp-red hover:bg-ctp-red/10"
-            @click="didntKnow"
-          >
-            <AppIcon name="x" :size="16" /> Didn't know
-          </button>
-          <button
-            class="btn border border-ctp-green text-ctp-green hover:bg-ctp-green/10"
-            @click="knew"
-          >
-            <AppIcon name="check" :size="16" /> I knew it
-          </button>
+          <v-btn prepend-icon="mdi-close" color="error" variant="tonal" @click="didntKnow">
+            Didn't know
+          </v-btn>
+          <v-btn prepend-icon="mdi-check" color="success" variant="tonal" @click="knew">
+            I knew it
+          </v-btn>
         </div>
-        <button
-          class="btn-ghost"
+        <v-btn
+          variant="text"
+          icon="mdi-chevron-right"
           :disabled="index + 1 >= queue.length"
           aria-label="Next card"
           @click="next"
-        >
-          <AppIcon name="chevron-right" />
-        </button>
+        />
       </div>
       <p class="hidden text-center text-xs text-ctp-overlay1 sm:block">
         Space flip · ← / → previous / next · 1 knew it · 2 didn't know
@@ -268,16 +264,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       ]"
     >
       <template #actions>
-        <button
+        <v-btn
           v-if="displayMissedCards.length"
-          class="btn-primary"
+          color="primary"
+          prepend-icon="mdi-target"
           @click="start(displayMissedCards)"
         >
           Study missed cards again
-        </button>
-        <button class="btn-secondary" @click="start()">
-          <AppIcon name="refresh" :size="16" /> Redo quiz
-        </button>
+        </v-btn>
+        <v-btn variant="tonal" prepend-icon="mdi-refresh" @click="start()">Redo quiz </v-btn>
       </template>
     </ResultScreen>
   </div>

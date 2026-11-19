@@ -2,6 +2,8 @@ import { flavorEntries, flavors, type AccentName, type FlavorName } from '@catpp
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
+import { applyVuetifyTheme } from '@/plugins/vuetify'
+
 export type FlavorChoice = FlavorName | 'system'
 
 // Keep these keys in sync with the inline script in index.html.
@@ -56,6 +58,7 @@ export const useThemeStore = defineStore('theme', () => {
     const root = document.documentElement
     root.setAttribute('data-flavor', flavor.value)
     root.setAttribute('data-accent', accent.value)
+    applyVuetifyTheme(flavor.value, accent.value)
   }
 
   function setFlavor(next: FlavorChoice) {

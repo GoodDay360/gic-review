@@ -2,15 +2,15 @@
 
 > **AI assistants:** read `prompt.md` (build brief) and `docs/AI-SPEC.md` (current status) first. When you add or change a feature, update the feature/requirement list in both.
 
-A study website for exam review. Students pick their year (e.g. I3, I4), then a subject, then read its **Interactive
+A study website for exam review. Students pick their category (e.g. I3, I4), then a subject, then read its **Interactive
 Review** or practise with **Quizzes** in **QCM** or **Flashcard** mode, with no account
 needed. **Managers** create quizzes and interactive reviews in the dashboard, or through the
 API with their personal **API key** (how AI assistants add content). **Admins** can do everything
-managers can (on all content) and also manage accounts, API keys, years and subjects.
+managers can (on all content) and also manage accounts, API keys, categories and subjects.
 
 | Part | Stack | Folder |
 |---|---|---|
-| Frontend | Vue 3 + TypeScript + Vite + Tailwind CSS 4 + Pinia + Vue Router, Catppuccin theme | `frontend/` |
+| Frontend | Vue 3 + TypeScript + Vite + Vuetify 4 (Material Design Icons) + Tailwind CSS 4 + Pinia + Vue Router, AOS + animate.css, Catppuccin theme | `frontend/` |
 | Backend | Rust + Axum + Tokio + SQLx (MySQL 8), Cloudflare R2 via `aws-sdk-s3` | `backend/` |
 
 The two projects are fully separate (own dependencies, own `.env`) and talk only over HTTP.
@@ -113,7 +113,7 @@ curl -H "Authorization: Bearer gic_…" -H 'Content-Type: application/json' \
   --data @docs/examples/hci-sample-quiz.json http://localhost:8080/api/admin/quizzes/import
 ```
 
-A key reaches the content its owner created, everything in their years, and everything in years or
+A key reaches the content its owner created, everything in their categories, and everything in categories or
 subjects shared with them.
 To let an AI build content from your course material, give it the key, the API base URL and
 `docs/AI-HOW-ADD-QUIZ.md` / `docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md`.

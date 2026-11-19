@@ -10,7 +10,7 @@ through the API.
 |---|---|
 | **API base URL** | `https://gic-review.onrender.com/api` |
 | **API key** | Dashboard → **API key** → *Create API key*. Tick `quizzes:write` and/or `reviews:write`, and pick a short expiry. It is shown only once, so copy it. |
-| **Year** and **subject** | Dashboard → **Years** / **Subjects**. They must already exist (only humans can create them), and they must be yours or shared with you. Use their *slug* (the short name in the link, e.g. `i4` and `hci`). |
+| **Category** and **subject** | Dashboard → **Categories** / **Subjects**. They must already exist (only humans can create them), and they must be yours or shared with you. Use their *slug* (the short name in the link, e.g. `i4` and `hci`). |
 | **The two guides** | [`AI-HOW-ADD-QUIZ.md`](AI-HOW-ADD-QUIZ.md) and [`AI-HOW-ADD-INTERACTIVE-REVIEW.md`](AI-HOW-ADD-INTERACTIVE-REVIEW.md) in this folder. They tell the AI exactly which API calls to make. |
 
 ### Giving the guides to the AI
@@ -31,7 +31,7 @@ Attach your lesson files (and the two guides), then send:
 ```text
 API base URL: https://gic-review.onrender.com/api
 API key: <your-api-key>
-Year: <year-slug>        (e.g. i4)
+Category: <category-slug>        (e.g. i4)
 Subject: <subject-slug>  (e.g. hci)
 New Interactive Review Title: <new-title>
 New Quiz Title: <new-title>
@@ -61,7 +61,7 @@ reports a timeout on its first request, tell it to simply try again.
 
 ## Keep your API key safe
 
-- Anyone with the key can add and edit content in your years and subjects. Only paste it into
+- Anyone with the key can add and edit content in your categories and subjects. Only paste it into
   AI tools you trust.
 - Give the key only the permissions the job needs and a short expiry.
 - When you're done, or if the key leaks, **revoke** or **regenerate** it in Dashboard → API key.

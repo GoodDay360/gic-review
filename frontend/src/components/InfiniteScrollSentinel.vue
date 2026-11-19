@@ -47,12 +47,27 @@ onBeforeUnmount(() => observer?.disconnect())
 
 <template>
   <div ref="target" class="flex min-h-12 items-center justify-center py-3" aria-live="polite">
-    <span v-if="loading" class="text-sm text-ctp-subtext0">Loading more…</span>
-    <button v-else-if="error" type="button" class="btn-secondary btn-sm" @click="emit('loadMore')">
+    <span v-if="loading" class="flex items-center gap-2 text-sm text-ctp-subtext0">
+      <v-progress-circular size="18" width="2" /> Loading more…
+    </span>
+    <v-btn
+      v-else-if="error"
+      variant="tonal"
+      color="error"
+      size="small"
+      prepend-icon="mdi-refresh"
+      @click="emit('loadMore')"
+    >
       Retry
-    </button>
-    <button v-else-if="hasMore" type="button" class="btn-ghost btn-sm" @click="emit('loadMore')">
+    </v-btn>
+    <v-btn
+      v-else-if="hasMore"
+      variant="text"
+      size="small"
+      append-icon="mdi-chevron-down"
+      @click="emit('loadMore')"
+    >
       Load more
-    </button>
+    </v-btn>
   </div>
 </template>

@@ -1,18 +1,12 @@
-<script lang="ts">
-/** Open modals, innermost last: only the top one reacts to Esc / Tab. */
-const modalStack: symbol[] = []
-</script>
-
 <script setup lang="ts">
 /**
- * Accessible modal: focus trap, Esc / backdrop click to close, aria labelling,
- * and focus is restored to the element that opened it.
+ * App dialog built on `<v-dialog>` (focus trap, Esc / outside click to close, focus restore).
+ * Full-screen-ish sheet on phones, centered card on larger screens.
  */
-import { nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
+import { computed, useId } from 'vue'
+import { useDisplay } from 'vuetify'
 
 import { useLightboxStore } from '@/stores/lightbox'
-
-import AppIcon from './AppIcon.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -20,129 +14,64 @@ const props = withDefaults(
     title: string
     description?: string
     size?: 'sm' | 'md' | 'lg' | 'xl'
+    /** Keep the dialog open on outside click / Esc (e.g. while saving). */
+    persistent?: boolean
   }>(),
-  { size: 'md', description: undefined },
+  { size: 'md', description: undefined, persistent: false },
 )
 const emit = defineEmits<{ close: [] }>()
 
-const panel = ref<HTMLElement | null>(null)
-const titleId = useId()
-const descId = useId()
-let previouslyFocused: HTMLElement | null = null
-const token = Symbol('modal')
 const lightbox = useLightboxStore()
+const { xs } = useDisplay()
+const titleId = useId()
+const sizes = { sm: 400, md: 540, lg: 720, xl: 960 }
 
-function popStack() {
-  const i = modalStack.indexOf(token)
-  if (i >= 0) modalStack.splice(i, 1)
-}
-
-const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-
-function focusables(): HTMLElement[] {
-  return panel.value ? Array.from(panel.value.querySelectorAll<HTMLElement>(FOCUSABLE)) : []
-}
-
-function onKeydown(e: KeyboardEvent) {
-  // The image lightbox sits above modals and handles its own keys.
-  if (!props.open || lightbox.src || modalStack[modalStack.length - 1] !== token) return
-  if (e.key === 'Escape') {
-    e.stopPropagation()
-    emit('close')
-    return
-  }
-  if (e.key !== 'Tab') return
-  const items = focusables()
-  if (items.length === 0) {
-    e.preventDefault()
-    return
-  }
-  const first = items[0]!
-  const last = items[items.length - 1]!
-  if (e.shiftKey && document.activeElement === first) {
-    e.preventDefault()
-    last.focus()
-  } else if (!e.shiftKey && document.activeElement === last) {
-    e.preventDefault()
-    first.focus()
-  }
-}
-
-watch(
-  () => props.open,
-  async (open) => {
-    if (open) {
-      previouslyFocused = document.activeElement as HTMLElement | null
-      modalStack.push(token)
-      document.addEventListener('keydown', onKeydown, true)
-      document.body.style.overflow = 'hidden'
-      await nextTick()
-      ;(focusables()[0] ?? panel.value)?.focus()
-    } else {
-      document.removeEventListener('keydown', onKeydown, true)
-      popStack()
-      if (modalStack.length === 0) document.body.style.overflow = ''
-      previouslyFocused?.focus?.()
-    }
+const model = computed({
+  get: () => props.open,
+  set: (v) => {
+    // The image lightbox sits above dialogs and handles its own Esc.
+    if (!v && !lightbox.src) emit('close')
   },
-  { immediate: true },
-)
-
-onBeforeUnmount(() => {
-  document.removeEventListener('keydown', onKeydown, true)
-  popStack()
-  if (modalStack.length === 0) document.body.style.overflow = ''
 })
-
-const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
 </script>
 
 <template>
-  <Teleport to="body">
-    <Transition
-      enter-active-class="transition duration-150 ease-out"
-      enter-from-class="opacity-0"
-      leave-active-class="transition duration-100 ease-in"
-      leave-to-class="opacity-0"
-    >
+  <v-dialog
+    v-model="model"
+    :max-width="sizes[size]"
+    :persistent="persistent"
+    :fullscreen="xs && size !== 'sm'"
+    :transition="xs ? 'dialog-bottom-transition' : 'scale-transition'"
+    :aria-labelledby="titleId"
+  >
+    <v-card :rounded="xs && size !== 'sm' ? 0 : 'xl'" class="bg-ctp-base">
+      <v-card-item class="border-b border-ctp-surface0 px-5 py-4">
+        <v-card-title :id="titleId" class="p-0 text-lg font-semibold text-wrap">
+          {{ title }}
+        </v-card-title>
+        <v-card-subtitle v-if="description" class="mt-1 p-0 text-sm text-wrap opacity-100">
+          <span class="text-ctp-subtext0">{{ description }}</span>
+        </v-card-subtitle>
+        <template #append>
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            size="small"
+            aria-label="Close dialog"
+            @click="emit('close')"
+          />
+        </template>
+      </v-card-item>
+      <v-card-text class="p-5">
+        <slot />
+      </v-card-text>
+      <!-- A plain footer (not v-card-actions, which would force every button to variant="text"). -->
       <div
-        v-if="open"
-        class="fixed inset-0 z-40 flex items-end justify-center bg-ctp-crust/70 p-0 backdrop-blur-sm sm:items-center sm:p-4"
-        @mousedown.self="emit('close')"
+        v-if="$slots.footer"
+        class="flex flex-wrap items-center justify-end gap-2 border-t border-ctp-surface0 px-4 py-3"
       >
-        <div
-          ref="panel"
-          role="dialog"
-          aria-modal="true"
-          :aria-labelledby="titleId"
-          :aria-describedby="description ? descId : undefined"
-          tabindex="-1"
-          class="flex max-h-[92vh] w-full flex-col rounded-t-2xl border border-ctp-surface0 bg-ctp-base shadow-2xl sm:rounded-2xl"
-          :class="sizes[size]"
-        >
-          <header class="flex items-start justify-between gap-4 border-b border-ctp-surface0 p-5">
-            <div>
-              <h2 :id="titleId" class="text-lg font-semibold text-ctp-text">{{ title }}</h2>
-              <p v-if="description" :id="descId" class="mt-1 text-sm text-ctp-subtext0">
-                {{ description }}
-              </p>
-            </div>
-            <button class="btn-ghost -m-2 p-2" aria-label="Close dialog" @click="emit('close')">
-              <AppIcon name="close" />
-            </button>
-          </header>
-          <div class="overflow-y-auto p-5">
-            <slot />
-          </div>
-          <footer
-            v-if="$slots.footer"
-            class="flex justify-end gap-2 border-t border-ctp-surface0 p-4"
-          >
-            <slot name="footer" />
-          </footer>
-        </div>
+        <slot name="footer" />
       </div>
-    </Transition>
-  </Teleport>
+    </v-card>
+  </v-dialog>
 </template>

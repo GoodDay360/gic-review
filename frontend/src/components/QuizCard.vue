@@ -5,8 +5,6 @@ import type { QuizSummary } from '@/api/types'
 import { getQuizMode } from '@/quiz-modes/registry'
 import { useProgressStore } from '@/stores/progress'
 
-import AppIcon from './AppIcon.vue'
-
 const props = defineProps<{ quiz: QuizSummary }>()
 defineEmits<{ select: [quiz: QuizSummary] }>()
 
@@ -18,20 +16,23 @@ const best = computed(() => {
 </script>
 
 <template>
-  <button
-    class="card group flex h-full flex-col overflow-hidden text-left transition hover:-translate-y-0.5 hover:border-ctp-surface2 hover:shadow-lg"
+  <v-card
+    tag="button"
+    type="button"
+    hover
+    class="w-full card-lift group flex h-full flex-col overflow-hidden text-left"
     @click="$emit('select', quiz)"
   >
-    <div class="aspect-[16/7] w-full bg-ctp-surface0">
+    <div class="aspect-[16/7] w-full overflow-hidden bg-ctp-surface0">
       <img
         v-if="quiz.cover_image_url"
         :src="quiz.cover_image_url"
         alt=""
         loading="lazy"
-        class="h-full w-full object-cover"
+        class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
       />
       <div v-else class="flex h-full items-center justify-center text-ctp-overlay0">
-        <AppIcon name="list-check" :size="36" />
+        <v-icon icon="mdi-format-list-checks" size="40" />
       </div>
     </div>
     <div class="flex flex-1 flex-col gap-2 p-4">
@@ -39,19 +40,31 @@ const best = computed(() => {
       <p v-if="quiz.description" class="line-clamp-2 text-sm text-ctp-subtext0">
         {{ quiz.description }}
       </p>
-      <div class="mt-auto flex flex-wrap items-center gap-2 pt-2 text-xs">
-        <span class="rounded-full bg-ctp-surface0 px-2.5 py-1 text-ctp-subtext1">
+      <div class="mt-auto flex flex-wrap items-center gap-2 pt-2">
+        <v-chip size="small" variant="tonal" prepend-icon="mdi-help-circle-outline">
           {{ quiz.question_count }} question{{ quiz.question_count === 1 ? '' : 's' }}
-        </span>
-        <span
+        </v-chip>
+        <v-chip
           v-for="m in quiz.available_modes"
           :key="m"
-          class="rounded-full bg-ctp-accent/15 px-2.5 py-1 font-medium text-ctp-accent"
+          size="small"
+          color="primary"
+          variant="tonal"
+          :prepend-icon="getQuizMode(m)?.icon"
         >
           {{ getQuizMode(m)?.label ?? m }}
-        </span>
-        <span v-if="best !== null" class="ml-auto text-ctp-subtext0">Best: {{ best }}%</span>
+        </v-chip>
+        <v-chip
+          v-if="best !== null"
+          size="small"
+          :color="best >= 50 ? 'success' : 'warning'"
+          variant="text"
+          prepend-icon="mdi-trophy-outline"
+          class="ml-auto"
+        >
+          Best: {{ best }}%
+        </v-chip>
       </div>
     </div>
-  </button>
+  </v-card>
 </template>

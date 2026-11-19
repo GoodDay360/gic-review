@@ -158,22 +158,22 @@ async fn delete_user(
     Path(id): Path<i64>,
 ) -> AppResult<StatusCode> {
     load_manager(&state, id).await?;
-    // Their years go to the person each year was first shared with; years never shared keep
+    // Their categories go to the person each category was first shared with; categories never shared keep
     // existing with no owner (admins manage them). Quizzes/reviews they created stay where
-    // they are (created_by becomes NULL) and remain managed by the year's owner and admins.
+    // they are (created_by becomes NULL) and remain managed by the category's owner and admins.
     let mut tx = state.db.begin().await?;
     sqlx::query(
-        "UPDATE years y SET y.created_by = \
-           (SELECT s.user_id FROM year_shares s WHERE s.year_id = y.id \
+        "UPDATE categories y SET y.created_by = \
+           (SELECT s.user_id FROM category_shares s WHERE s.category_id = y.id \
             ORDER BY s.created_at, s.user_id LIMIT 1) \
          WHERE y.created_by = ?",
     )
     .bind(id)
     .execute(&mut *tx)
     .await?;
-    // New owners no longer need a share entry for their own year.
+    // New owners no longer need a share entry for their own category.
     sqlx::query(
-        "DELETE s FROM year_shares s JOIN years y ON y.id = s.year_id WHERE s.user_id = y.created_by",
+        "DELETE s FROM category_shares s JOIN categories y ON y.id = s.category_id WHERE s.user_id = y.created_by",
     )
     .execute(&mut *tx)
     .await?;

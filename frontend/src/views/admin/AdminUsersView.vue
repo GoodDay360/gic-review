@@ -3,7 +3,6 @@ import { onMounted, reactive, ref } from 'vue'
 
 import { api, errorMessage } from '@/api/client'
 import type { User } from '@/api/types'
-import AppIcon from '@/components/AppIcon.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
 import { useAsync } from '@/composables/useAsync'
@@ -88,82 +87,97 @@ async function confirmDelete() {
 <template>
   <div class="space-y-5">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <h1 class="text-2xl font-bold text-ctp-text">Managers</h1>
-      <button class="btn-primary" @click="creating = true">
-        <AppIcon name="plus" :size="16" /> New manager
-      </button>
+      <h1 class="animate__animated animate__fadeInDown text-2xl font-bold text-ctp-text">
+        Managers
+      </h1>
+      <v-btn color="primary" prepend-icon="mdi-account-plus-outline" @click="creating = true"
+        >New manager
+      </v-btn>
     </div>
-    <p class="text-sm text-ctp-subtext0">
+    <v-alert type="info" icon="mdi-information-outline" class="text-sm">
       Managers can create quizzes and interactive reviews. Only admins can manage accounts and
       subjects.
-    </p>
+    </v-alert>
 
     <div v-if="loading" class="space-y-2">
       <SkeletonBlock v-for="i in 3" :key="i" class="h-14" />
     </div>
     <ul v-else class="space-y-2">
-      <li v-for="u in users" :key="u.id" class="card flex flex-wrap items-center gap-3 p-3">
+      <v-card
+        v-for="(u, i) in users"
+        :key="u.id"
+        tag="li"
+        class="card-lift flex flex-wrap items-center gap-3 p-3"
+        :class="u.is_active ? '' : 'opacity-70'"
+        data-aos="fade-up"
+        :data-aos-delay="Math.min(i, 6) * 40"
+      >
+        <v-avatar :color="u.role === 'admin' ? 'ctp-peach' : 'primary'" variant="tonal">
+          {{ u.display_name.slice(0, 1).toUpperCase() }}
+        </v-avatar>
         <div class="min-w-0 flex-1">
           <p class="font-medium text-ctp-text">{{ u.display_name }}</p>
           <p class="text-xs text-ctp-subtext0">{{ u.email }}</p>
         </div>
-        <span class="rounded-full bg-ctp-surface0 px-2.5 py-1 text-xs uppercase">{{ u.role }}</span>
-        <span
+        <v-chip size="small" variant="tonal" class="uppercase">{{ u.role }}</v-chip>
+        <v-chip
           v-if="!u.is_active"
-          class="rounded-full bg-ctp-red/15 px-2.5 py-1 text-xs text-ctp-red"
-          >Inactive</span
+          size="small"
+          color="error"
+          variant="tonal"
+          prepend-icon="mdi-account-off-outline"
         >
+          Inactive
+        </v-chip>
         <template v-if="u.role === 'manager'">
-          <button
-            class="btn-secondary btn-sm"
-            :disabled="togglingId === u.id"
+          <v-btn
+            variant="tonal"
+            size="small"
+            :color="u.is_active ? 'warning' : 'success'"
+            :prepend-icon="u.is_active ? 'mdi-account-cancel-outline' : 'mdi-account-check-outline'"
+            :loading="togglingId === u.id"
             @click="toggleActive(u)"
           >
-            {{ togglingId === u.id ? 'Working…' : u.is_active ? 'Deactivate' : 'Activate' }}
-          </button>
-          <button class="btn-secondary btn-sm" @click="resetting = u">Reset password</button>
-          <button class="btn-ghost btn-sm text-ctp-red" aria-label="Delete" @click="deleting = u">
-            <AppIcon name="trash" :size="16" />
-          </button>
+            {{ u.is_active ? 'Deactivate' : 'Activate' }}
+          </v-btn>
+          <v-btn variant="tonal" size="small" prepend-icon="mdi-lock-reset" @click="resetting = u">
+            Reset password
+          </v-btn>
+          <v-btn
+            variant="text"
+            size="small"
+            icon="mdi-delete-outline"
+            color="error"
+            aria-label="Delete"
+            @click="deleting = u"
+          />
         </template>
-      </li>
+      </v-card>
     </ul>
 
     <BaseModal :open="creating" title="New manager" @close="creating = false">
-      <form id="new-user" class="space-y-4" @submit.prevent="create">
-        <div>
-          <label class="label" for="nu-name">Display name</label>
-          <input id="nu-name" v-model="form.display_name" class="input" required maxlength="100" />
-        </div>
-        <div>
-          <label class="label" for="nu-email">Email</label>
-          <input
-            id="nu-email"
-            v-model="form.email"
-            type="email"
-            class="input"
-            required
-            autocomplete="off"
-          />
-        </div>
-        <div>
-          <label class="label" for="nu-pass">Initial password (min 8 characters)</label>
-          <input
-            id="nu-pass"
-            v-model="form.password"
-            type="password"
-            class="input"
-            required
-            minlength="8"
-            autocomplete="new-password"
-          />
-        </div>
-      </form>
+      <v-form id="new-user" class="space-y-4" @submit.prevent="create">
+        <v-text-field v-model="form.display_name" label="Display name" required maxlength="100" />
+        <v-text-field v-model="form.email" label="Email" type="email" required autocomplete="off" />
+        <v-text-field
+          v-model="form.password"
+          label="Initial password (min 8 characters)"
+          type="password"
+          required
+          minlength="8"
+          autocomplete="new-password"
+        />
+      </v-form>
       <template #footer>
-        <button class="btn-ghost" @click="creating = false">Cancel</button>
-        <button class="btn-primary" type="submit" form="new-user" :disabled="saving">
-          {{ saving ? 'Creating…' : 'Create manager' }}
-        </button>
+        <v-btn variant="text" @click="creating = false">Cancel</v-btn>
+        <v-btn
+          color="primary"
+          type="submit"
+          form="new-user"
+          prepend-icon="mdi-plus"
+          :loading="saving"
+          >Create manager</v-btn
+        >
       </template>
     </BaseModal>
 
@@ -173,37 +187,45 @@ async function confirmDelete() {
       size="sm"
       @close="resetting = null"
     >
-      <form id="reset-pass" @submit.prevent="resetPassword">
-        <label class="label" for="rp-pass">New password (min 8 characters)</label>
-        <input
-          id="rp-pass"
+      <v-form id="reset-pass" @submit.prevent="resetPassword">
+        <v-text-field
           v-model="newPassword"
+          label="New password (min 8 characters)"
           type="password"
-          class="input"
+          prepend-inner-icon="mdi-lock-outline"
           required
           minlength="8"
           autocomplete="new-password"
         />
-      </form>
+      </v-form>
       <template #footer>
-        <button class="btn-ghost" @click="resetting = null">Cancel</button>
-        <button class="btn-primary" type="submit" form="reset-pass" :disabled="resettingPassword">
-          {{ resettingPassword ? 'Resetting…' : 'Reset' }}
-        </button>
+        <v-btn variant="text" @click="resetting = null">Cancel</v-btn>
+        <v-btn
+          color="primary"
+          type="submit"
+          form="reset-pass"
+          prepend-icon="mdi-lock-reset"
+          :loading="resettingPassword"
+          >Reset</v-btn
+        >
       </template>
     </BaseModal>
 
     <BaseModal :open="!!deleting" title="Delete manager?" size="sm" @close="deleting = null">
-      <p class="text-sm text-ctp-subtext1">
+      <v-alert type="warning" icon="mdi-account-remove-outline">
         {{ deleting?.email }} will be deleted. Their quizzes and reviews go to the manager each one
         was shared with first; anything never shared stays online (if published) but nobody can edit
         it. Consider deactivating instead.
-      </p>
+      </v-alert>
       <template #footer>
-        <button class="btn-ghost" @click="deleting = null">Cancel</button>
-        <button class="btn-danger" :disabled="deletingManager" @click="confirmDelete">
-          {{ deletingManager ? 'Deleting…' : 'Delete' }}
-        </button>
+        <v-btn variant="text" @click="deleting = null">Cancel</v-btn>
+        <v-btn
+          color="error"
+          prepend-icon="mdi-delete-outline"
+          :loading="deletingManager"
+          @click="confirmDelete"
+          >Delete</v-btn
+        >
       </template>
     </BaseModal>
   </div>

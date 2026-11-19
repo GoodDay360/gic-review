@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router'
 
 import { api } from '@/api/client'
 import type { QuizDetail } from '@/api/types'
-import AppIcon from '@/components/AppIcon.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
@@ -82,55 +81,66 @@ function cancelNewQuiz() {
 <template>
   <div class="mx-auto max-w-3xl px-4 py-6 sm:py-8">
     <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-      <RouterLink
+      <v-btn
+        variant="text"
+        prepend-icon="mdi-arrow-left"
         :to="quiz ? `/subjects/${quiz.subject_slug}/quizzes` : '/'"
-        class="btn-ghost -ml-3"
-      >
-        <AppIcon name="arrow-left" :size="16" /> Back to quizzes
-      </RouterLink>
-      <div
+        class="-ml-3"
+        >Back to quizzes
+      </v-btn>
+      <v-btn-toggle
         v-if="quiz && otherModes.length > 1"
-        class="flex gap-1 rounded-lg bg-ctp-surface0 p-1"
-        role="tablist"
+        :model-value="mode?.id"
+        mandatory
+        density="comfortable"
+        variant="outlined"
+        divided
+        rounded="lg"
+        color="primary"
         aria-label="Quiz mode"
       >
-        <button
+        <v-btn
           v-for="m in otherModes"
           :key="m.id"
-          role="tab"
-          :aria-selected="m.id === mode?.id"
-          class="rounded-md px-3 py-1 text-sm"
-          :class="
-            m.id === mode?.id
-              ? 'bg-ctp-base font-medium text-ctp-text shadow'
-              : 'text-ctp-subtext0 hover:text-ctp-text'
-          "
+          :value="m.id"
+          :prepend-icon="m.icon"
           @click="switchMode(m.id)"
         >
           {{ m.label }}
-        </button>
-      </div>
+        </v-btn>
+      </v-btn-toggle>
     </div>
 
     <div v-if="loading" class="space-y-4">
       <SkeletonBlock class="h-8 w-2/3" />
       <SkeletonBlock class="h-72" />
     </div>
-    <EmptyState v-else-if="error" title="Couldn't load this quiz" :message="error" icon="warning">
-      <button class="btn-secondary" @click="run">Try again</button>
+    <EmptyState
+      v-else-if="error"
+      title="Couldn't load this quiz"
+      :message="error"
+      icon="mdi-alert-outline"
+    >
+      <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" @click="run"
+        >Try again</v-btn
+      >
     </EmptyState>
     <template v-else-if="quiz">
-      <header class="mb-6">
+      <header class="animate__animated animate__fadeInDown mb-6">
         <p class="text-sm text-ctp-subtext0">
           {{ quiz.subject_name }}<span v-if="mode"> · {{ mode.label }}</span>
         </p>
         <h1 class="text-2xl font-bold text-ctp-text">{{ quiz.title }}</h1>
-        <p
+        <v-chip
           v-if="!quiz.is_published"
-          class="mt-2 inline-block rounded-md bg-ctp-yellow/20 px-2 py-1 text-xs font-medium text-ctp-yellow"
+          color="warning"
+          variant="tonal"
+          size="small"
+          prepend-icon="mdi-eye-off-outline"
+          class="mt-2"
         >
           Draft: only its editors can see this quiz
-        </p>
+        </v-chip>
       </header>
       <component
         :is="mode!.component"
@@ -141,12 +151,12 @@ function cancelNewQuiz() {
       <EmptyState
         v-else-if="!pendingProgress"
         title="This mode isn't available for this quiz"
-        icon="info"
+        icon="mdi-information-outline"
       >
         <div class="flex flex-wrap justify-center gap-2">
-          <button v-for="m in otherModes" :key="m.id" class="btn-primary" @click="switchMode(m.id)">
+          <v-btn v-for="m in otherModes" :key="m.id" color="primary" @click="switchMode(m.id)">
             Play as {{ m.label }}
-          </button>
+          </v-btn>
         </div>
       </EmptyState>
     </template>
@@ -157,26 +167,29 @@ function cancelNewQuiz() {
       description="Your current progress is saved in this browser."
       @close="cancelNewQuiz"
     >
-      <div
-        class="flex items-start gap-3 rounded-xl border border-ctp-yellow/30 bg-ctp-yellow/10 p-4"
-      >
-        <span
-          class="grid size-9 shrink-0 place-items-center rounded-full bg-ctp-yellow/15 text-ctp-yellow"
-          aria-hidden="true"
-        >
-          <AppIcon name="info" :size="18" />
-        </span>
-        <p class="text-sm leading-6 text-ctp-subtext1">{{ progressPrompt }}</p>
-      </div>
+      <v-alert type="warning" icon="mdi-progress-clock" :text="progressPrompt" />
       <template #footer>
         <div class="grid w-full grid-cols-1 gap-2 sm:grid-cols-[auto_1fr_1fr]">
-          <button class="btn-ghost w-full whitespace-nowrap" @click="cancelNewQuiz">Go back</button>
-          <button class="btn-secondary w-full whitespace-nowrap" @click="continuePrevious">
+          <v-btn variant="text" class="w-full whitespace-nowrap" @click="cancelNewQuiz"
+            >Go back</v-btn
+          >
+          <v-btn
+            variant="tonal"
+            color="primary"
+            prepend-icon="mdi-play"
+            class="w-full whitespace-nowrap"
+            @click="continuePrevious"
+          >
             Continue previous quiz
-          </button>
-          <button class="btn-danger w-full whitespace-nowrap" @click="clearAndStartSelected">
+          </v-btn>
+          <v-btn
+            color="error"
+            prepend-icon="mdi-restart"
+            class="w-full whitespace-nowrap"
+            @click="clearAndStartSelected"
+          >
             {{ startSelectedLabel }}
-          </button>
+          </v-btn>
         </div>
       </template>
     </BaseModal>

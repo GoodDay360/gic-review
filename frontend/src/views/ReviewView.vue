@@ -10,7 +10,6 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { api, errorMessage } from '@/api/client'
 import type { Page, Review, Subject } from '@/api/types'
-import AppIcon from '@/components/AppIcon.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import InfiniteScrollSentinel from '@/components/InfiniteScrollSentinel.vue'
 import SearchBar from '@/components/SearchBar.vue'
@@ -139,12 +138,21 @@ function open(r: Review) {
 <template>
   <div class="mx-auto flex max-w-6xl flex-col px-4 py-6">
     <div class="mb-4 flex flex-wrap items-center gap-2">
-      <RouterLink v-if="selected" :to="{ query: {} }" class="btn-ghost -ml-3">
-        <AppIcon name="arrow-left" :size="16" /> All reviews
-      </RouterLink>
-      <RouterLink v-else :to="subject ? `/years/${subject.year_slug}` : '/'" class="btn-ghost -ml-3"
-        ><AppIcon name="arrow-left" :size="16" />
-        {{ subject ? `${subject.year_name} subjects` : 'Home' }}</RouterLink
+      <v-btn
+        v-if="selected"
+        variant="text"
+        prepend-icon="mdi-arrow-left"
+        :to="{ query: {} }"
+        class="-ml-3"
+        >All reviews
+      </v-btn>
+      <v-btn
+        v-else
+        variant="text"
+        prepend-icon="mdi-arrow-left"
+        :to="subject ? `/categories/${subject.category_slug}` : '/'"
+        class="-ml-3"
+        >{{ subject ? `${subject.category_name} subjects` : 'Home' }}</v-btn
       >
       <h1 class="text-xl font-bold text-ctp-text">
         {{ subject?.name
@@ -157,15 +165,17 @@ function open(r: Review) {
       v-else-if="error && !subject"
       title="Couldn't load the review"
       :message="error"
-      icon="warning"
+      icon="mdi-alert-outline"
     >
-      <button class="btn-secondary" @click="run">Try again</button>
+      <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" @click="run"
+        >Try again</v-btn
+      >
     </EmptyState>
     <EmptyState
       v-else-if="directReviewError"
       title="Couldn't load this review"
       :message="directReviewError"
-      icon="warning"
+      icon="mdi-alert-outline"
     />
     <template v-else-if="!selected">
       <SearchBar
@@ -181,9 +191,11 @@ function open(r: Review) {
         v-else-if="reviewsError && reviews.length === 0"
         title="Couldn't load interactive reviews"
         :message="reviewsError"
-        icon="warning"
+        icon="mdi-alert-outline"
       >
-        <button class="btn-secondary" @click="retry">Try again</button>
+        <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" @click="retry"
+          >Try again</v-btn
+        >
       </EmptyState>
       <EmptyState
         v-else-if="reviews.length === 0"
@@ -191,21 +203,34 @@ function open(r: Review) {
         :message="
           search ? 'Try another search.' : 'There is no interactive review for this subject yet.'
         "
-        icon="book"
+        icon="mdi-book-open-page-variant-outline"
       />
       <template v-else>
         <ul class="grid gap-3 sm:grid-cols-2">
-          <li v-for="r in reviews" :key="r.id">
-            <button
-              class="card flex w-full items-center gap-3 p-4 text-left hover:border-ctp-accent"
+          <li
+            v-for="(r, i) in reviews"
+            :key="r.id"
+            data-aos="fade-up"
+            :data-aos-delay="(i % 2) * 70"
+          >
+            <v-card
+              tag="button"
+              type="button"
+              hover
+              class="card-lift group flex w-full items-center gap-3 p-4 text-left"
               @click="open(r)"
             >
-              <span class="rounded-lg bg-ctp-surface0 p-2 text-ctp-accent"
-                ><AppIcon name="book"
-              /></span>
-              <span class="font-medium text-ctp-text">{{ r.title }}</span>
-              <AppIcon name="chevron-right" class="ml-auto text-ctp-overlay1" />
-            </button>
+              <v-avatar color="primary" variant="tonal" rounded="lg">
+                <v-icon icon="mdi-book-open-page-variant-outline" />
+              </v-avatar>
+              <span class="font-medium text-ctp-text group-hover:text-ctp-accent">{{
+                r.title
+              }}</span>
+              <v-icon
+                icon="mdi-chevron-right"
+                class="ml-auto text-ctp-overlay1 transition-transform group-hover:translate-x-1"
+              />
+            </v-card>
           </li>
         </ul>
         <InfiniteScrollSentinel
@@ -225,14 +250,14 @@ function open(r: Review) {
       sandbox="allow-scripts"
       referrerpolicy="no-referrer"
       loading="lazy"
-      class="h-[calc(100vh-10rem)] min-h-[60vh] w-full rounded-xl border border-ctp-surface0 bg-ctp-base"
+      class="animate__animated animate__fadeIn h-[calc(100vh-10rem)] min-h-[60vh] w-full rounded-xl border border-ctp-surface0 bg-ctp-base"
       @load="sendTheme"
     />
     <EmptyState
       v-else-if="selected"
       title="This review cannot be displayed safely"
       message="Its URL is not on the file storage domain."
-      icon="warning"
+      icon="mdi-alert-outline"
     />
   </div>
 </template>

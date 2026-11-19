@@ -3,10 +3,10 @@
 export type QuizModeId = 'qcm' | 'flashcard'
 export type Role = 'admin' | 'manager'
 
-export interface Year {
+export interface Category {
   id: number
   slug: string
-  /** Free text, e.g. "I4" or "Very Cool Year". */
+  /** Free text, e.g. "I4" or "Very Cool Category". */
   name: string
   description: string | null
   sort_order: number
@@ -15,7 +15,7 @@ export interface Year {
   updated_at: string
 }
 
-export interface YearWithSubjects extends Year {
+export interface CategoryWithSubjects extends Category {
   subjects: Subject[]
   subjects_has_more: boolean
 }
@@ -27,9 +27,9 @@ export interface Page<T> {
 
 export interface Subject {
   id: number
-  year_id: number
-  year_slug: string
-  year_name: string
+  category_id: number
+  category_slug: string
+  category_name: string
   slug: string
   name: string
   description: string | null
@@ -44,10 +44,10 @@ export interface Subject {
 /** Present on items returned by the manager API (`/admin/...`). */
 export interface ManagedFields {
   /**
-   * How you can reach this item: `owner` (you created it), `admin`, `year_owner` (it's in your
-   * year) or `shared` (its year or subject is shared with you: edit, but not delete).
+   * How you can reach this item: `owner` (you created it), `admin`, `category_owner` (it's in your
+   * category) or `shared` (its category or subject is shared with you: edit, but not delete).
    */
-  access?: 'owner' | 'admin' | 'year_owner' | 'shared'
+  access?: 'owner' | 'admin' | 'category_owner' | 'shared'
   owner_id?: number | null
   owner_name?: string | null
 }
@@ -62,7 +62,7 @@ export interface Shares {
   owner: SharePerson | null
   shared_with: (SharePerson & { shared_at: string })[]
   you_are_owner: boolean
-  /** Year owner or admin: may add/remove people. */
+  /** Category owner or admin: may add/remove people. */
   can_manage: boolean
 }
 
@@ -196,7 +196,7 @@ export interface QuestionInput {
 }
 
 export interface SubjectInput {
-  year_id: number
+  category_id: number
   name: string
   slug: string
   description: string | null

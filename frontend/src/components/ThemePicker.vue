@@ -1,15 +1,11 @@
 <script setup lang="ts">
-/** Header dropdown: the 4 Catppuccin flavors + System, and the 14 accent colors. */
-import { flavors, type AccentName, type FlavorName } from '@catppuccin/palette'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+/** Header menu: the 4 Catppuccin flavors + System, and the 14 accent colors. */
+import { flavors, type FlavorName } from '@catppuccin/palette'
+import { computed } from 'vue'
 
 import { ACCENT_NAMES, FLAVOR_NAMES, useThemeStore, type FlavorChoice } from '@/stores/theme'
 
-import AppIcon from './AppIcon.vue'
-
 const theme = useThemeStore()
-const open = ref(false)
-const root = ref<HTMLElement | null>(null)
 
 const options = computed(() => [
   { id: 'system' as FlavorChoice, label: 'System', hint: 'Latte / Mocha' },
@@ -23,31 +19,8 @@ const options = computed(() => [
 // Swatches preview other flavors, so they read colors from the palette package.
 function swatch(name: FlavorName) {
   const c = flavors[name].colors
-  return [c.base.hex, c.mauve.hex, c.text.hex]
+  return [c.base.hex, c[theme.accent].hex, c.text.hex]
 }
-
-function choose(id: FlavorChoice) {
-  theme.setFlavor(id)
-}
-
-function chooseAccent(name: AccentName) {
-  theme.setAccent(name)
-}
-
-function onDocClick(e: MouseEvent) {
-  if (open.value && root.value && !root.value.contains(e.target as Node)) open.value = false
-}
-function onKey(e: KeyboardEvent) {
-  if (open.value && e.key === 'Escape') open.value = false
-}
-onMounted(() => {
-  document.addEventListener('click', onDocClick)
-  document.addEventListener('keydown', onKey)
-})
-onBeforeUnmount(() => {
-  document.removeEventListener('click', onDocClick)
-  document.removeEventListener('keydown', onKey)
-})
 
 const currentLabel = computed(() =>
   theme.choice === 'system' ? 'System' : flavors[theme.choice].name,
@@ -55,44 +28,51 @@ const currentLabel = computed(() =>
 </script>
 
 <template>
-  <div ref="root" class="relative">
-    <button
-      class="btn-ghost px-2.5"
-      :aria-expanded="open"
-      aria-haspopup="true"
-      :aria-label="`Theme: ${currentLabel}`"
-      @click="open = !open"
-    >
-      <AppIcon name="palette" />
-      <span class="hidden sm:inline">{{ currentLabel }}</span>
-      <AppIcon name="chevron-down" :size="16" />
-    </button>
+  <v-menu location="bottom end" :close-on-content-click="false" offset="8">
+    <template #activator="{ props }">
+      <v-btn
+        v-bind="props"
+        variant="text"
+        prepend-icon="mdi-palette-outline"
+        append-icon="mdi-chevron-down"
+        :aria-label="`Theme: ${currentLabel}`"
+        class="px-2"
+      >
+        <span class="hidden sm:inline">{{ currentLabel }}</span>
+      </v-btn>
+    </template>
 
-    <div
-      v-if="open"
-      class="absolute right-0 z-30 mt-2 w-72 rounded-xl border border-ctp-surface0 bg-ctp-mantle p-2 shadow-xl"
-    >
+    <v-card width="300" class="p-2 shadow-xl" elevation="8">
       <p class="px-2 pt-1 pb-2 text-xs font-semibold tracking-wide text-ctp-subtext0 uppercase">
         Flavor
       </p>
-      <ul role="radiogroup" aria-label="Color flavor" class="space-y-0.5">
-        <li v-for="opt in options" :key="opt.id">
-          <button
-            role="radio"
-            :aria-checked="theme.choice === opt.id"
-            class="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm hover:bg-ctp-surface0"
-            :class="theme.choice === opt.id ? 'bg-ctp-surface0' : ''"
-            @click="choose(opt.id)"
-          >
+      <v-list
+        density="compact"
+        nav
+        class="bg-transparent p-0"
+        role="radiogroup"
+        aria-label="Color flavor"
+      >
+        <v-list-item
+          v-for="opt in options"
+          :key="opt.id"
+          role="radio"
+          :aria-checked="theme.choice === opt.id"
+          :active="theme.choice === opt.id"
+          color="primary"
+          rounded="lg"
+          @click="theme.setFlavor(opt.id)"
+        >
+          <template #prepend>
             <span
               v-if="opt.id === 'system'"
-              class="flex h-6 w-10 items-center justify-center rounded-md border border-ctp-surface1 text-ctp-subtext1"
+              class="me-3 flex h-6 w-10 items-center justify-center rounded-md border border-ctp-surface1 text-ctp-subtext1"
             >
-              <AppIcon name="monitor" :size="16" />
+              <v-icon icon="mdi-monitor" size="16" />
             </span>
             <span
               v-else
-              class="flex h-6 w-10 overflow-hidden rounded-md border border-ctp-surface1"
+              class="me-3 flex h-6 w-10 overflow-hidden rounded-md border border-ctp-surface1"
             >
               <span
                 v-for="(hex, i) in swatch(opt.id as FlavorName)"
@@ -101,19 +81,14 @@ const currentLabel = computed(() =>
                 :style="{ backgroundColor: hex }"
               />
             </span>
-            <span class="flex-1">
-              <span class="block font-medium text-ctp-text">{{ opt.label }}</span>
-              <span class="block text-xs text-ctp-subtext0">{{ opt.hint }}</span>
-            </span>
-            <AppIcon
-              v-if="theme.choice === opt.id"
-              name="check"
-              :size="16"
-              class="text-ctp-accent"
-            />
-          </button>
-        </li>
-      </ul>
+          </template>
+          <v-list-item-title class="font-medium">{{ opt.label }}</v-list-item-title>
+          <v-list-item-subtitle>{{ opt.hint }}</v-list-item-subtitle>
+          <template v-if="theme.choice === opt.id" #append>
+            <v-icon icon="mdi-check" size="18" />
+          </template>
+        </v-list-item>
+      </v-list>
 
       <p class="px-2 pt-3 pb-2 text-xs font-semibold tracking-wide text-ctp-subtext0 uppercase">
         Accent
@@ -122,16 +97,20 @@ const currentLabel = computed(() =>
         <button
           v-for="name in ACCENT_NAMES"
           :key="name"
+          v-ripple
+          type="button"
           role="radio"
           :aria-checked="theme.accent === name"
           :aria-label="name"
           :title="name"
-          class="h-7 w-7 rounded-full ring-offset-2 ring-offset-ctp-mantle transition"
+          class="flex h-7 w-7 items-center justify-center rounded-full ring-offset-2 ring-offset-ctp-mantle transition"
           :class="theme.accent === name ? 'ring-2 ring-ctp-text' : 'hover:scale-110'"
-          :style="{ backgroundColor: `var(--ctp-${name})` }"
-          @click="chooseAccent(name)"
-        />
+          :style="{ backgroundColor: `var(--ctp-${name})`, color: 'var(--ctp-base)' }"
+          @click="theme.setAccent(name)"
+        >
+          <v-icon v-if="theme.accent === name" icon="mdi-check" size="14" />
+        </button>
       </div>
-    </div>
-  </div>
+    </v-card>
+  </v-menu>
 </template>

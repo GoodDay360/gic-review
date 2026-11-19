@@ -54,7 +54,7 @@ Full URL = `BASE` + path. `{id}` = a quiz id, `{qid}` = a question id.
 | # | Method | Path | Key? | Use it to… |
 |---|---|---|---|---|
 | 1 | `GET` | `/auth/me` | yes | check the key works and has `quizzes:write` |
-| 2 | `GET` | `/subjects` or `/subjects?year={year_slug}` | no | list subjects (each with its year) → get the subject's `slug` / `id` |
+| 2 | `GET` | `/subjects` or `/subjects?category={category_slug}` | no | list subjects (each with its category) → get the subject's `slug` / `id` |
 | 3 | `GET` | `/admin/quizzes?subject_id={n}` | yes | list quizzes you can manage (to avoid duplicates, find ids) |
 | 4 | `GET` | `/admin/quizzes/{id}` | yes | read one quiz with all its questions and options |
 | 5 | `POST` | `/admin/uploads/image` | yes | upload an image file → get a `key` to use in the quiz |
@@ -68,17 +68,17 @@ Full URL = `BASE` + path. `{id}` = a quiz id, `{qid}` = a question id.
 | 13 | `DELETE` | `/admin/quizzes/{id}` | yes | delete a whole quiz (owner only; **ask the human first**) |
 | 14 | `DELETE` | `/admin/uploads/image/{key}` | yes | delete an uploaded image you didn't end up using |
 | 15 | `GET` | `/subjects/{slug}/quizzes` | no | see what students see (published quizzes only) |
-| 16 | `GET` | `/admin/years` | yes | **list years and subjects with `can_add_content`** (where you may add content) |
+| 16 | `GET` | `/admin/categories` | yes | **list categories and subjects with `can_add_content`** (where you may add content) |
 | 17 | `POST` | `/admin/quizzes` | yes | create a NEW **empty** quiz (title, description, cover), then add questions with #9 |
 
 **Most jobs only need #1, #16, #3, #5 (if there are images) and #6.**
 
 Don't call anything else under `/admin/…` (users, subjects, API keys, sharing). Those are for
 humans in the dashboard and refuse API keys (`403 api_key_not_allowed`). You can't create
-years or subjects either: a human does that in the dashboard. If what you need is missing, ask.
+categories or subjects either: a human does that in the dashboard. If what you need is missing, ask.
 
 **What your key can reach:** it acts as the person who made it. You see and edit quizzes
-in **their years** and in **years or subjects shared with them** (plus anything they created);
+in **their categories** and in **categories or subjects shared with them** (plus anything they created);
 others return `404`. Items you reach through a share (`"access": "shared"`) can be edited and
 published but not deleted (`403 owner_only`). An **admin's** key reaches everything.
 
@@ -96,7 +96,7 @@ Expect `"role"` `"manager"` or `"admin"`, and `"quizzes:write"` in `"api_key_sco
 **Step 2. Find a subject you may add to** (#16)
 
 ```bash
-curl -H "Authorization: Bearer $KEY" $BASE/admin/years
+curl -H "Authorization: Bearer $KEY" $BASE/admin/categories
 # [ { "id": 3, "name": "I4", "slug": "i4", "can_manage": true, "can_add_content": true,
 #     "subjects": [ { "id": 7, "slug": "hci-i4", "name": "Human Computer Interaction",
 #                     "can_add_content": true, … } ] },
@@ -106,17 +106,17 @@ curl -H "Authorization: Bearer $KEY" $BASE/admin/years
 ```
 Only use **subjects with `"can_add_content": true`**, and take their `slug`.
 
-**Years and subjects: the rules**
-- Subjects are grouped by **year** (e.g. `I3`, `I4`, or custom names like "Very Cool Year").
-- Each year **belongs to a person**, who can share the whole year, or single subjects of it, with
-  others. You can add content to a subject when the key's owner owns its year or the year/subject
+**Categories and subjects: the rules**
+- Subjects are grouped by **category** (e.g. `I3`, `I4`, or custom names like "Very Cool Category").
+- Each category **belongs to a person**, who can share the whole category, or single subjects of it, with
+  others. You can add content to a subject when the key's owner owns its category or the category/subject
   was shared with them: that's `"can_add_content": true`. Anything else is refused with
-  `403 not_your_year` (the message lists where you can add). Admin keys may use every year.
-- **You cannot create, rename or delete years or subjects, or share them.** A human does that in
-  the dashboard (Years / Subjects pages). If the year or subject you need doesn't exist or isn't
+  `403 not_your_category` (the message lists where you can add). Admin keys may use every category.
+- **You cannot create, rename or delete categories or subjects, or share them.** A human does that in
+  the dashboard (Categories / Subjects pages). If the category or subject you need doesn't exist or isn't
   available to you, **stop and ask the human** to create or share it (or to say which one to use).
-- When the human says e.g. *"I4 HCI"*, pick the subject named like "HCI" inside your year named
-  "I4". Two years can have similarly named subjects, so always check the year.
+- When the human says e.g. *"I4 HCI"*, pick the subject named like "HCI" inside your category named
+  "I4". Two categories can have similarly named subjects, so always check the category.
 
 **Step 3. Check what already exists** (#3)
 
@@ -166,9 +166,9 @@ curl -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
 Response `200`: `{ "id", "email", "display_name", "role": "manager" | "admin", "is_active", "auth_method": "api_key", "api_key_scopes": [...] }`.
 
 ### #2 `GET /subjects` (no key)
-Optional query `?year={year_slug}` to get one year's subjects only. Response `200`: array of
-`{ "id", "year_id", "year_slug", "year_name", "slug", "name", "description", "color", "sort_order", "has_review", "quiz_count" }`,
-ordered by year, then subject.
+Optional query `?category={category_slug}` to get one category's subjects only. Response `200`: array of
+`{ "id", "category_id", "category_slug", "category_name", "slug", "name", "description", "color", "sort_order", "has_review", "quiz_count" }`,
+ordered by category, then subject.
 
 ### #3 `GET /admin/quizzes?subject_id={n}`
 `subject_id` is optional. Response `200`: array of quiz summaries (no questions):
@@ -245,13 +245,13 @@ shared quizzes). Never do this without the human's explicit request.
 ### #15 `GET /subjects/{slug}/quizzes` (no key)
 What students see: published quizzes of the subject.
 
-### #16 `GET /admin/years`
-Response `200`: array of years, each with `{ "id", "slug", "name", "description", "sort_order", "subject_count", "owner_id", "owner_name", "can_manage", "shared_with_you", "can_add_content", "subjects": [ { …subject, "can_add_content", "shared_with_you" } ] }`.
-`can_manage: true` = the year is yours (or you're an admin). `can_add_content` (on the year and on each
-subject) = you may add quizzes/reviews there, because the year is yours or the year/subject is shared with you
+### #16 `GET /admin/categories`
+Response `200`: array of categories, each with `{ "id", "slug", "name", "description", "sort_order", "subject_count", "owner_id", "owner_name", "can_manage", "shared_with_you", "can_add_content", "subjects": [ { …subject, "can_add_content", "shared_with_you" } ] }`.
+`can_manage: true` = the category is yours (or you're an admin). `can_add_content` (on the category and on each
+subject) = you may add quizzes/reviews there, because the category is yours or the category/subject is shared with you
 (`shared_with_you`).
-The public `GET /years` and `GET /years/{year_slug}` (no key) show the same years without ownership.
-`GET /years/{year_slug}` returns one year plus its `subjects` array.
+The public `GET /categories` and `GET /categories/{category_slug}` (no key) show the same categories without ownership.
+`GET /categories/{category_slug}` returns one category plus its `subjects` array.
 
 ### The quiz object (returned by #4, #6–#12)
 
@@ -435,7 +435,7 @@ Errors look like `{ "error": { "code": "…", "message": "…" } }`. The `messag
 | 401 | `unauthorized` | Key missing/wrong/expired/revoked → ask the human for a new key. |
 | 403 | `missing_scope` | Key lacks `quizzes:write` → ask for a key with that permission. |
 | 403 | `owner_only` | Only the quiz's owner can do that (e.g. delete a quiz shared with you). |
-| 403 | `not_your_year` | You can't add to that subject → use a subject with `can_add_content: true` (#16), or ask the human. |
+| 403 | `not_your_category` | You can't add to that subject → use a subject with `can_add_content: true` (#16), or ask the human. |
 | 403 | `api_key_not_allowed` | You called a dashboard-only endpoint; don't. |
 | 404 | `not_found` | Wrong id, or not your quiz. |
 | 409 | `conflict` | Something is still in use / duplicate. |

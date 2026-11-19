@@ -3,7 +3,6 @@
 import { computed } from 'vue'
 
 import type { Question, QuestionOption } from '@/api/types'
-import AppIcon from '@/components/AppIcon.vue'
 import ZoomableImage from '@/components/ZoomableImage.vue'
 
 const props = defineProps<{
@@ -65,14 +64,16 @@ const letter = (i: number) => String.fromCharCode(65 + i)
       aria-label="Answer options"
       :class="hasImages ? 'grid grid-cols-1 gap-3 sm:grid-cols-2' : 'flex flex-col gap-2'"
     >
-      <div
+      <v-card
         v-for="(o, i) in options"
         :key="o.id"
+        :ripple="!submitted"
+        :style="{ animationDelay: `${i * 60}ms` }"
         :role="question.multi_select ? 'checkbox' : 'radio'"
         :aria-checked="selected.includes(o.id)"
         :aria-disabled="submitted"
         :tabindex="submitted ? -1 : 0"
-        class="flex cursor-pointer gap-3 rounded-xl border-2 bg-ctp-mantle p-3 text-left transition"
+        class="animate__animated animate__fadeInUp animate__faster flex cursor-pointer gap-3 rounded-xl border-2 bg-ctp-mantle p-3 text-left transition"
         :class="[
           stateClass[state(o)],
           hasImages ? 'flex-col' : 'items-center',
@@ -85,13 +86,18 @@ const letter = (i: number) => String.fromCharCode(65 + i)
           <span
             class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-ctp-surface2 text-xs font-semibold text-ctp-subtext1"
           >
-            <AppIcon
+            <v-icon
               v-if="state(o) === 'correct' || state(o) === 'missed'"
-              name="check"
-              :size="16"
+              icon="mdi-check"
+              size="16"
               class="text-ctp-green"
             />
-            <AppIcon v-else-if="state(o) === 'wrong'" name="x" :size="16" class="text-ctp-red" />
+            <v-icon
+              v-else-if="state(o) === 'wrong'"
+              icon="mdi-close"
+              size="16"
+              class="text-ctp-red"
+            />
             <template v-else>{{ letter(i) }}</template>
           </span>
           <span v-if="o.text" class="text-ctp-text">{{ o.text }}</span>
@@ -102,31 +108,28 @@ const letter = (i: number) => String.fromCharCode(65 + i)
           :alt="o.image_alt"
           img-class="aspect-video w-full rounded-md bg-ctp-crust object-contain"
         />
-      </div>
+      </v-card>
     </div>
 
-    <div
+    <v-alert
       v-if="submitted"
-      class="space-y-3 rounded-xl border-l-4 p-4"
-      :class="isCorrect ? 'border-ctp-green bg-ctp-green/10' : 'border-ctp-red bg-ctp-red/10'"
+      :type="isCorrect ? 'success' : 'error'"
+      :icon="isCorrect ? 'mdi-check-circle-outline' : 'mdi-close-circle-outline'"
+      :title="isCorrect ? 'Correct!' : 'Not quite.'"
+      border="start"
+      class="animate__animated"
+      :class="isCorrect ? 'animate__tada' : 'animate__headShake'"
       aria-live="polite"
     >
-      <p
-        class="flex items-center gap-2 font-semibold"
-        :class="isCorrect ? 'text-ctp-green' : 'text-ctp-red'"
-      >
-        <AppIcon :name="isCorrect ? 'check' : 'x'" />
-        {{ isCorrect ? 'Correct!' : 'Not quite.' }}
-      </p>
-      <p v-if="question.explanation" class="whitespace-pre-line text-ctp-text">
+      <p v-if="question.explanation" class="mt-1 whitespace-pre-line text-ctp-text">
         {{ question.explanation }}
       </p>
       <ZoomableImage
         v-if="question.explanation_image_url"
         :src="question.explanation_image_url"
         alt="Explanation diagram"
-        img-class="max-h-80 w-full rounded-lg bg-ctp-crust object-contain"
+        img-class="mt-3 max-h-80 w-full rounded-lg bg-ctp-crust object-contain"
       />
-    </div>
+    </v-alert>
   </article>
 </template>

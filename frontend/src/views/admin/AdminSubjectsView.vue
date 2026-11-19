@@ -1,15 +1,14 @@
 <script setup lang="ts">
 /**
- * Subjects live inside years. You can add/edit subjects only in years you own (admins: all).
+ * Subjects live inside categories. You can add/edit subjects only in categories you own (admins: all).
  * Subjects can only be created here, never through the API.
  */
 import { computed, onMounted, reactive, ref } from 'vue'
 
 import { api, errorMessage } from '@/api/client'
 import type { Subject, SubjectInput } from '@/api/types'
-import { loadManagedYears, type ManagedSubject, type ManagedYear } from '@/api/years'
+import { loadManagedCategories, type ManagedSubject, type ManagedCategory } from '@/api/categories'
 import ShareDialog from '@/components/admin/ShareDialog.vue'
-import AppIcon from '@/components/AppIcon.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
 import { useAsync } from '@/composables/useAsync'
@@ -19,18 +18,19 @@ import { useToastStore } from '@/stores/toast'
 
 const toast = useToastStore()
 const auth = useAuthStore()
-const { data: years, loading, run } = useAsync(loadManagedYears, [] as ManagedYear[])
+const { data: categories, loading, run } = useAsync(loadManagedCategories, [] as ManagedCategory[])
 onMounted(run)
-const subjects = computed<ManagedSubject[]>(() => years.value.flatMap((y) => y.subjects))
-/** Years you can add subjects to. */
-const myYears = computed(() => years.value.filter((y) => y.can_manage))
-const canManage = (s: Subject) => years.value.some((y) => y.id === s.year_id && y.can_manage)
+const subjects = computed<ManagedSubject[]>(() => categories.value.flatMap((y) => y.subjects))
+/** Categories you can add subjects to. */
+const myCategories = computed(() => categories.value.filter((y) => y.can_manage))
+const canManage = (s: Subject) =>
+  categories.value.some((y) => y.id === s.category_id && y.can_manage)
 const sharing = ref<ManagedSubject | null>(null)
 
 const editing = ref<Subject | 'new' | null>(null)
 const saving = ref(false)
 const form = reactive<SubjectInput>({
-  year_id: 0,
+  category_id: 0,
   name: '',
   slug: '',
   description: '',
@@ -41,7 +41,7 @@ let slugTouched = false
 
 function openNew() {
   Object.assign(form, {
-    year_id: myYears.value[0]?.id ?? 0,
+    category_id: myCategories.value[0]?.id ?? 0,
     name: '',
     slug: '',
     description: '',
@@ -53,7 +53,7 @@ function openNew() {
 }
 function openEdit(s: Subject) {
   Object.assign(form, {
-    year_id: s.year_id,
+    category_id: s.category_id,
     name: s.name,
     slug: s.slug,
     description: s.description ?? '',
@@ -126,26 +126,27 @@ async function cleanupOrphans() {
 <template>
   <div class="space-y-5">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <h1 class="text-2xl font-bold text-ctp-text">Subjects</h1>
+      <h1 class="animate__animated animate__fadeInDown text-2xl font-bold text-ctp-text">
+        Subjects
+      </h1>
       <div class="flex flex-wrap gap-2">
-        <button
+        <v-btn
           v-if="auth.isAdmin"
-          class="btn-secondary"
-          :disabled="cleaning"
+          variant="tonal"
+          prepend-icon="mdi-broom"
           title="Delete R2 files that no quiz, question, option or review uses (keeps files younger than 1 hour)"
+          :loading="cleaning"
           @click="cleanupOrphans"
+          >Clean up orphaned images</v-btn
         >
-          <AppIcon name="trash" :size="16" />
-          {{ cleaning ? 'Cleaning…' : 'Clean up orphaned images' }}
-        </button>
-        <button
-          class="btn-primary"
-          :disabled="!myYears.length"
-          :title="myYears.length ? '' : 'Create a year first (Years page)'"
+        <v-btn
+          color="primary"
+          prepend-icon="mdi-plus"
+          :disabled="!myCategories.length"
+          :title="myCategories.length ? '' : 'Create a category first (Categories page)'"
           @click="openNew"
-        >
-          <AppIcon name="plus" :size="16" /> New subject
-        </button>
+          >New subject
+        </v-btn>
       </div>
     </div>
 
@@ -153,56 +154,74 @@ async function cleanupOrphans() {
       <SkeletonBlock v-for="i in 2" :key="i" class="h-14" />
     </div>
     <ul v-else class="space-y-2">
-      <li v-for="s in subjects" :key="s.id" class="card flex flex-wrap items-center gap-3 p-3">
-        <span
-          class="h-8 w-8 rounded-lg"
-          :style="{ backgroundColor: `var(--ctp-${s.color})` }"
-          aria-hidden="true"
-        />
+      <v-card
+        v-for="(s, i) in subjects"
+        :key="s.id"
+        tag="li"
+        class="card-lift flex flex-wrap items-center gap-3 p-3"
+        data-aos="fade-up"
+        :data-aos-delay="Math.min(i, 6) * 40"
+      >
+        <v-avatar :color="`ctp-${s.color}`" rounded="lg" size="36" aria-hidden="true">
+          <v-icon icon="mdi-book-open-page-variant-outline" size="20" />
+        </v-avatar>
         <div class="min-w-0 flex-1">
           <p class="font-medium text-ctp-text">{{ s.name }}</p>
           <p class="text-xs text-ctp-subtext0">
-            <span class="font-medium text-ctp-subtext1">{{ s.year_name }}</span> · /{{ s.slug }} ·
-            order {{ s.sort_order }} · {{ s.quiz_count }} published quizzes
+            <span class="font-medium text-ctp-subtext1">{{ s.category_name }}</span> · /{{
+              s.slug
+            }}
+            · order {{ s.sort_order }} · {{ s.quiz_count }} published quizzes
           </p>
         </div>
-        <span
+        <v-chip
           v-if="s.shared_with_you"
-          class="rounded-full bg-ctp-blue/15 px-2 py-0.5 text-[11px] font-medium text-ctp-blue"
-          >Shared with you</span
+          size="x-small"
+          color="info"
+          variant="tonal"
+          prepend-icon="mdi-account-multiple-outline"
+          >Shared with you</v-chip
         >
         <span v-else-if="s.can_add_content && !canManage(s)" class="text-xs text-ctp-subtext0"
-          >Year shared with you</span
+          >Category shared with you</span
         >
-        <span v-else-if="!canManage(s)" class="text-xs text-ctp-overlay1">Not your year</span>
-        <button
+        <span v-else-if="!canManage(s)" class="text-xs text-ctp-overlay1">Not your category</span>
+        <v-btn
           v-if="canManage(s) || s.shared_with_you"
-          class="btn-ghost btn-sm"
+          variant="text"
+          size="small"
+          icon="mdi-account-multiple-outline"
           :aria-label="canManage(s) ? 'Share subject' : 'Who has access'"
           :title="
             canManage(s) ? 'Share this subject with other managers' : 'Who has access / leave'
           "
           @click="sharing = s"
-        >
-          <AppIcon name="users" :size="16" />
-        </button>
-        <button v-if="canManage(s)" class="btn-ghost btn-sm" aria-label="Edit" @click="openEdit(s)">
-          <AppIcon name="pencil" :size="16" />
-        </button>
-        <button
+        />
+        <v-btn
           v-if="canManage(s)"
-          class="btn-ghost btn-sm text-ctp-red"
+          variant="text"
+          size="small"
+          icon="mdi-pencil-outline"
+          aria-label="Edit"
+          @click="openEdit(s)"
+        />
+        <v-btn
+          v-if="canManage(s)"
+          variant="text"
+          size="small"
+          icon="mdi-delete-outline"
+          color="error"
           aria-label="Delete"
           @click="deleting = s"
-        >
-          <AppIcon name="trash" :size="16" />
-        </button>
-      </li>
+        />
+      </v-card>
     </ul>
 
     <ShareDialog
       kind="subjects"
-      :item="sharing ? { id: sharing.id, title: `${sharing.year_name} · ${sharing.name}` } : null"
+      :item="
+        sharing ? { id: sharing.id, title: `${sharing.category_name} · ${sharing.name}` } : null
+      "
       @close="sharing = null"
       @changed="run"
       @left="run"
@@ -213,84 +232,79 @@ async function cleanupOrphans() {
       :title="editing === 'new' ? 'New subject' : 'Edit subject'"
       @close="editing = null"
     >
-      <form id="subject-form" class="space-y-4" @submit.prevent="save">
-        <div>
-          <label class="label" for="sj-year">Year</label>
-          <select id="sj-year" v-model="form.year_id" class="input" required>
-            <option v-for="y in myYears" :key="y.id" :value="y.id">{{ y.name }}</option>
-          </select>
-          <p v-if="!myYears.length" class="mt-1 text-xs text-ctp-yellow">
-            Create a year first (Years page). You can only add subjects to your own years.
-          </p>
-        </div>
-        <div>
-          <label class="label" for="sj-name">Name</label>
-          <input
-            id="sj-name"
-            v-model="form.name"
-            class="input"
-            required
-            maxlength="150"
-            @input="onName"
-          />
-        </div>
+      <v-form id="subject-form" class="space-y-4" @submit.prevent="save">
+        <v-select
+          v-model="form.category_id"
+          :items="myCategories"
+          item-title="name"
+          item-value="id"
+          label="Category"
+          prepend-inner-icon="mdi-layers-outline"
+        />
+        <v-alert v-if="!myCategories.length" type="warning" density="compact">
+          Create a category first (Categories page). You can only add subjects to your own
+          categories.
+        </v-alert>
+        <v-text-field v-model="form.name" label="Name" required maxlength="150" @input="onName" />
         <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="label" for="sj-slug">Slug</label>
-            <input
-              id="sj-slug"
-              v-model="form.slug"
-              class="input"
-              required
-              pattern="[a-z0-9]+(-[a-z0-9]+)*"
-              @input="slugTouched = true"
-            />
-          </div>
-          <div>
-            <label class="label" for="sj-order">Order</label>
-            <input id="sj-order" v-model.number="form.sort_order" type="number" class="input" />
-          </div>
+          <v-text-field
+            v-model="form.slug"
+            label="Slug"
+            required
+            pattern="[a-z0-9]+(-[a-z0-9]+)*"
+            @input="slugTouched = true"
+          />
+          <v-text-field v-model.number="form.sort_order" label="Order" type="number" />
         </div>
-        <div>
-          <label class="label" for="sj-desc">Description</label>
-          <textarea id="sj-desc" v-model="form.description" class="input" rows="3" />
-        </div>
+        <v-textarea v-model="form.description" label="Description" rows="3" />
         <fieldset>
-          <legend class="label">Color</legend>
+          <legend class="mb-2 text-sm font-medium text-ctp-subtext1">Color</legend>
           <div class="flex flex-wrap gap-2">
             <button
               v-for="c in ACCENT_NAMES"
               :key="c"
+              v-ripple
               type="button"
               :aria-label="c"
               :aria-pressed="form.color === c"
               :title="c"
-              class="h-7 w-7 rounded-full ring-offset-2 ring-offset-ctp-base"
-              :class="form.color === c ? 'ring-2 ring-ctp-text' : ''"
-              :style="{ backgroundColor: `var(--ctp-${c})` }"
+              class="flex h-8 w-8 items-center justify-center rounded-full ring-offset-2 ring-offset-ctp-base transition"
+              :class="form.color === c ? 'ring-2 ring-ctp-text' : 'hover:scale-110'"
+              :style="{ backgroundColor: `var(--ctp-${c})`, color: 'var(--ctp-base)' }"
               @click="form.color = c"
-            />
+            >
+              <v-icon v-if="form.color === c" icon="mdi-check" size="16" />
+            </button>
           </div>
         </fieldset>
-      </form>
+      </v-form>
       <template #footer>
-        <button class="btn-ghost" @click="editing = null">Cancel</button>
-        <button class="btn-primary" type="submit" form="subject-form" :disabled="saving">
-          {{ saving ? 'Saving…' : 'Save' }}
-        </button>
+        <v-btn variant="text" @click="editing = null">Cancel</v-btn>
+        <v-btn
+          color="primary"
+          type="submit"
+          form="subject-form"
+          prepend-icon="mdi-content-save-outline"
+          :loading="saving"
+          >Save</v-btn
+        >
       </template>
     </BaseModal>
 
     <BaseModal :open="!!deleting" title="Delete subject?" size="sm" @close="deleting = null">
-      <p class="text-sm text-ctp-subtext1">
+      <v-alert type="warning" icon="mdi-delete-alert-outline">
         "{{ deleting?.name }}" can only be deleted when it has no quizzes and no interactive
         reviews.
-      </p>
+      </v-alert>
       <template #footer>
-        <button class="btn-ghost" @click="deleting = null">Cancel</button>
-        <button class="btn-danger" :disabled="deletingSubject" @click="confirmDelete">
-          {{ deletingSubject ? 'Deleting…' : 'Delete' }}
-        </button>
+        <v-btn variant="text" @click="deleting = null">Cancel</v-btn>
+        <v-btn
+          color="error"
+          prepend-icon="mdi-delete-outline"
+          :loading="deletingSubject"
+          @click="confirmDelete"
+          >Delete</v-btn
+        >
       </template>
     </BaseModal>
   </div>

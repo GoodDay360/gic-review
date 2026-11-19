@@ -1,23 +1,28 @@
 <script setup lang="ts">
 import type { ManagedFields } from '@/api/types'
-import AppIcon from '@/components/AppIcon.vue'
 
 defineProps<{ item: ManagedFields }>()
 </script>
 
 <template>
-  <span
+  <v-chip
     v-if="item.access === 'shared'"
-    class="inline-flex items-center gap-1 rounded-full bg-ctp-blue/15 px-2.5 py-1 text-xs font-medium text-ctp-blue"
-    title="Its year or subject is shared with you: you can edit and publish it, but not delete it"
+    size="small"
+    color="info"
+    variant="tonal"
+    prepend-icon="mdi-account-multiple-outline"
+    title="Its category or subject is shared with you: you can edit and publish it, but not delete it"
   >
-    <AppIcon name="users" :size="12" /> Shared · by {{ item.owner_name ?? 'unknown' }}
-  </span>
-  <span
-    v-else-if="item.access === 'admin' || item.access === 'year_owner'"
-    class="inline-flex items-center gap-1 rounded-full bg-ctp-peach/15 px-2.5 py-1 text-xs font-medium text-ctp-peach"
-    :title="item.access === 'admin' ? 'You have admin access' : 'It is in a year you own'"
+    Shared · by {{ item.owner_name ?? 'unknown' }}
+  </v-chip>
+  <v-chip
+    v-else-if="item.access === 'admin' || item.access === 'category_owner'"
+    size="small"
+    color="ctp-peach"
+    variant="tonal"
+    prepend-icon="mdi-account-outline"
+    :title="item.access === 'admin' ? 'You have admin access' : 'It is in a category you own'"
   >
-    <AppIcon name="users" :size="12" /> By {{ item.owner_name ?? 'a deleted account' }}
-  </span>
+    By {{ item.owner_name ?? 'a deleted account' }}
+  </v-chip>
 </template>

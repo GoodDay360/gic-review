@@ -3,10 +3,9 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { api, errorMessage } from '@/api/client'
-import { addableSubjects, loadManagedYears, type ManagedYear } from '@/api/years'
+import { addableSubjects, loadManagedCategories, type ManagedCategory } from '@/api/categories'
 import type { QuizDetail, QuizSummary, Subject } from '@/api/types'
 import OwnershipBadge from '@/components/admin/OwnershipBadge.vue'
-import AppIcon from '@/components/AppIcon.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
@@ -19,9 +18,9 @@ const toast = useToastStore()
 
 const subjectFilter = ref<number | ''>('')
 const subjects = ref<Subject[]>([])
-const years = ref<ManagedYear[]>([])
-/** New quizzes may only go into subjects of years you own (admins: any). */
-const addable = computed(() => addableSubjects(years.value))
+const categories = ref<ManagedCategory[]>([])
+/** New quizzes may only go into subjects of categories you own (admins: any). */
+const addable = computed(() => addableSubjects(categories.value))
 const {
   data: quizzes,
   loading,
@@ -35,10 +34,18 @@ const {
 )
 
 onMounted(async () => {
-  years.value = await loadManagedYears().catch(() => [])
-  subjects.value = years.value.flatMap((y) => y.subjects)
+  categories.value = await loadManagedCategories().catch(() => [])
+  subjects.value = categories.value.flatMap((y) => y.subjects)
   run()
 })
+
+const subjectItems = computed(() => [
+  { title: 'All subjects', value: '' as number | '' },
+  ...subjects.value.map((s) => ({ title: `${s.category_name} · ${s.name}`, value: s.id })),
+])
+const addableItems = computed(() =>
+  addable.value.map((s) => ({ title: `${s.category_name} · ${s.name}`, value: s.id })),
+)
 
 const subjectName = computed(() => new Map(subjects.value.map((s) => [s.id, s.name])))
 
@@ -62,10 +69,10 @@ async function create() {
       cover_image_key: null,
     })
     creating.value = false
-    toast.success('Quiz created (unpublished)')
+    toast.success('It stays a draft until you publish it.', 'Quiz created')
     router.push(`/admin/quizzes/${quiz.id}`)
   } catch (err) {
-    toast.error(errorMessage(err))
+    toast.error(errorMessage(err), 'Couldn’t create the quiz')
   } finally {
     creatingQuiz.value = false
   }
@@ -105,28 +112,32 @@ async function confirmDelete() {
 <template>
   <div class="space-y-5">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <h1 class="text-2xl font-bold text-ctp-text">Quizzes</h1>
+      <h1 class="animate__animated animate__fadeInDown text-2xl font-bold text-ctp-text">
+        Quizzes
+      </h1>
       <div class="flex flex-wrap gap-2">
-        <button
-          class="btn-primary"
+        <v-btn
+          color="primary"
+          prepend-icon="mdi-plus"
           :disabled="!addable.length"
-          :title="addable.length ? '' : 'Create a year and a subject first (Years / Subjects)'"
+          :title="
+            addable.length ? '' : 'Create a category and a subject first (Categories / Subjects)'
+          "
           @click="openCreate"
-        >
-          <AppIcon name="plus" :size="16" /> New quiz
-        </button>
+          >New quiz
+        </v-btn>
       </div>
     </div>
 
-    <div class="flex items-center gap-2">
-      <label for="subject-filter" class="text-sm text-ctp-subtext1">Subject</label>
-      <select id="subject-filter" v-model="subjectFilter" class="input max-w-xs" @change="run">
-        <option value="">All subjects</option>
-        <option v-for="s in subjects" :key="s.id" :value="s.id">
-          {{ s.year_name }} · {{ s.name }}
-        </option>
-      </select>
-    </div>
+    <v-select
+      v-model="subjectFilter"
+      :items="subjectItems"
+      label="Subject"
+      prepend-inner-icon="mdi-filter-variant"
+      hide-details
+      class="max-w-sm"
+      @update:model-value="run"
+    />
 
     <div v-if="loading" class="space-y-2">
       <SkeletonBlock v-for="i in 4" :key="i" class="h-16" />
@@ -135,10 +146,17 @@ async function confirmDelete() {
       v-else-if="!quizzes.length"
       title="No quizzes yet"
       message="Create one, or use Bulk import to paste a whole quiz as JSON."
-      icon="list-check"
+      icon="mdi-format-list-checks"
     />
     <ul v-else class="space-y-2">
-      <li v-for="q in quizzes" :key="q.id" class="card flex flex-wrap items-center gap-3 p-3">
+      <v-card
+        v-for="(q, i) in quizzes"
+        :key="q.id"
+        tag="li"
+        class="card-lift flex flex-wrap items-center gap-3 p-3"
+        data-aos="fade-up"
+        :data-aos-delay="Math.min(i, 6) * 40"
+      >
         <img
           v-if="q.cover_image_url"
           :src="q.cover_image_url"
@@ -158,77 +176,84 @@ async function confirmDelete() {
             <span v-if="q.available_modes.length">{{
               q.available_modes.map((m) => getQuizMode(m)?.label ?? m).join(', ')
             }}</span>
-            <span v-else class="text-ctp-yellow">no playable mode yet</span>
+            <span v-else class="text-ctp-peach">no playable mode yet</span>
           </p>
         </div>
-        <span
-          class="rounded-full px-2.5 py-1 text-xs font-medium"
-          :class="
-            q.is_published ? 'bg-ctp-green/15 text-ctp-green' : 'bg-ctp-surface0 text-ctp-subtext0'
-          "
+        <v-chip
+          size="small"
+          :color="q.is_published ? 'success' : undefined"
+          variant="tonal"
+          :prepend-icon="q.is_published ? 'mdi-earth' : 'mdi-file-edit-outline'"
         >
           {{ q.is_published ? 'Published' : 'Draft' }}
-        </span>
+        </v-chip>
         <OwnershipBadge :item="q" />
         <div class="flex gap-1">
-          <button
-            class="btn-secondary btn-sm"
-            :disabled="publishingId === q.id"
+          <v-btn
+            variant="tonal"
+            size="small"
+            :color="q.is_published ? undefined : 'success'"
+            :prepend-icon="q.is_published ? 'mdi-eye-off-outline' : 'mdi-publish'"
+            :loading="publishingId === q.id"
+            :disabled="publishingId !== null && publishingId !== q.id"
             @click="togglePublish(q)"
           >
-            {{ publishingId === q.id ? 'Working…' : q.is_published ? 'Unpublish' : 'Publish' }}
-          </button>
-          <RouterLink :to="`/admin/quizzes/${q.id}`" class="btn-ghost btn-sm" aria-label="Edit"
-            ><AppIcon name="pencil" :size="16"
-          /></RouterLink>
-          <button
+            {{ q.is_published ? 'Unpublish' : 'Publish' }}
+          </v-btn>
+          <v-btn
+            variant="text"
+            size="small"
+            icon="mdi-pencil-outline"
+            :to="`/admin/quizzes/${q.id}`"
+            aria-label="Edit"
+          />
+          <v-btn
             v-if="q.access !== 'shared'"
-            class="btn-ghost btn-sm text-ctp-red"
+            variant="text"
+            size="small"
+            icon="mdi-delete-outline"
+            color="error"
             aria-label="Delete"
             @click="deleting = q"
-          >
-            <AppIcon name="trash" :size="16" />
-          </button>
+          />
         </div>
-      </li>
+      </v-card>
     </ul>
 
     <BaseModal :open="creating" title="New quiz" @close="creating = false">
-      <form id="create-quiz" class="space-y-4" @submit.prevent="create">
-        <div>
-          <label class="label" for="nq-subject">Subject</label>
-          <select id="nq-subject" v-model="newQuiz.subject_id" class="input" required>
-            <option v-for="s in addable" :key="s.id" :value="s.id">
-              {{ s.year_name }} · {{ s.name }}
-            </option>
-          </select>
-        </div>
-        <div>
-          <label class="label" for="nq-title">Title</label>
-          <input id="nq-title" v-model="newQuiz.title" class="input" required maxlength="200" />
-        </div>
-        <div>
-          <label class="label" for="nq-desc">Description</label>
-          <textarea id="nq-desc" v-model="newQuiz.description" class="input" rows="3" />
-        </div>
-      </form>
+      <v-form id="create-quiz" class="space-y-4" @submit.prevent="create">
+        <v-select v-model="newQuiz.subject_id" :items="addableItems" label="Subject" />
+        <v-text-field v-model="newQuiz.title" label="Title" required maxlength="200" />
+        <v-textarea v-model="newQuiz.description" label="Description" rows="3" />
+      </v-form>
       <template #footer>
-        <button class="btn-ghost" @click="creating = false">Cancel</button>
-        <button class="btn-primary" type="submit" form="create-quiz" :disabled="creatingQuiz">
-          {{ creatingQuiz ? 'Creating…' : 'Create' }}
-        </button>
+        <v-btn variant="text" @click="creating = false">Cancel</v-btn>
+        <v-btn
+          color="primary"
+          type="submit"
+          form="create-quiz"
+          prepend-icon="mdi-plus"
+          :loading="creatingQuiz"
+        >
+          Create
+        </v-btn>
       </template>
     </BaseModal>
 
     <BaseModal :open="!!deleting" title="Delete quiz?" size="sm" @close="deleting = null">
-      <p class="text-sm text-ctp-subtext1">
+      <v-alert type="error" icon="mdi-delete-alert-outline">
         "{{ deleting?.title }}" and all its questions and images will be permanently deleted.
-      </p>
+      </v-alert>
       <template #footer>
-        <button class="btn-ghost" @click="deleting = null">Cancel</button>
-        <button class="btn-danger" :disabled="deletingQuiz" @click="confirmDelete">
-          {{ deletingQuiz ? 'Deleting…' : 'Delete' }}
-        </button>
+        <v-btn variant="text" @click="deleting = null">Cancel</v-btn>
+        <v-btn
+          color="error"
+          prepend-icon="mdi-delete-outline"
+          :loading="deletingQuiz"
+          @click="confirmDelete"
+        >
+          Delete
+        </v-btn>
       </template>
     </BaseModal>
   </div>

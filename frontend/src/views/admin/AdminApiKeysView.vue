@@ -4,7 +4,6 @@ import { computed, onMounted, ref } from 'vue'
 
 import { api, errorMessage } from '@/api/client'
 import type { ApiKey, User } from '@/api/types'
-import AppIcon from '@/components/AppIcon.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
@@ -52,38 +51,47 @@ async function confirmRevoke() {
 }
 
 const fmt = (d: string | null) => (d ? new Date(d.replace(' ', 'T')).toLocaleString() : 'Never')
-const statusClass = {
-  active: 'bg-ctp-green/15 text-ctp-green',
-  revoked: 'bg-ctp-red/15 text-ctp-red',
-  expired: 'bg-ctp-surface0 text-ctp-subtext0',
+const statusChip = {
+  active: { color: 'success', icon: 'mdi-check-circle-outline' },
+  revoked: { color: 'error', icon: 'mdi-cancel' },
+  expired: { color: undefined, icon: 'mdi-clock-alert-outline' },
 }
+const managerItems = computed(() => [
+  { title: 'All managers', value: '' as number | '' },
+  ...managers.value.map((m) => ({ title: `${m.display_name} (${m.email})`, value: m.id })),
+])
+const statusItems = [
+  { title: 'Active only', value: 'active' },
+  { title: 'All keys', value: 'all' },
+]
 </script>
 
 <template>
   <div class="space-y-5">
-    <h1 class="text-2xl font-bold text-ctp-text">API keys</h1>
-    <p class="max-w-2xl text-sm text-ctp-subtext0">
+    <h1 class="animate__animated animate__fadeInDown text-2xl font-bold text-ctp-text">API keys</h1>
+    <v-alert type="info" icon="mdi-information-outline" class="max-w-3xl text-sm">
       Each manager (and admin) can create one API key from their dashboard to let scripts or AI
       assistants add quizzes and interactive reviews. Revoke a key if it leaks or is no longer
       needed. Deactivating or deleting a manager also disables their key.
-    </p>
+    </v-alert>
 
     <div class="flex flex-wrap items-center gap-3">
-      <select
+      <v-select
         v-model="userFilter"
-        class="input max-w-xs"
-        aria-label="Filter by manager"
-        @change="run"
-      >
-        <option value="">All managers</option>
-        <option v-for="m in managers" :key="m.id" :value="m.id">
-          {{ m.display_name }} ({{ m.email }})
-        </option>
-      </select>
-      <select v-model="statusFilter" class="input max-w-[10rem]" aria-label="Filter by status">
-        <option value="active">Active only</option>
-        <option value="all">All keys</option>
-      </select>
+        :items="managerItems"
+        label="Manager"
+        prepend-inner-icon="mdi-account-search-outline"
+        hide-details
+        class="max-w-sm min-w-60"
+        @update:model-value="run"
+      />
+      <v-select
+        v-model="statusFilter"
+        :items="statusItems"
+        label="Status"
+        hide-details
+        class="max-w-[12rem] min-w-40"
+      />
     </div>
 
     <div v-if="loading" class="space-y-2">
@@ -93,10 +101,17 @@ const statusClass = {
       v-else-if="!shown.length"
       title="No API keys"
       message="Managers create keys from their own dashboard."
-      icon="key"
+      icon="mdi-key-variant"
     />
     <ul v-else class="space-y-2">
-      <li v-for="k in shown" :key="k.id" class="card flex flex-wrap items-center gap-3 p-3">
+      <v-card
+        v-for="(k, i) in shown"
+        :key="k.id"
+        tag="li"
+        class="card-lift flex flex-wrap items-center gap-3 p-3"
+        data-aos="fade-up"
+        :data-aos-delay="Math.min(i, 6) * 40"
+      >
         <div class="min-w-0 flex-1">
           <p class="font-medium text-ctp-text">
             {{ k.owner_name }}
@@ -111,32 +126,41 @@ const statusClass = {
             {{ fmt(k.expires_at) }}
           </p>
         </div>
-        <span
-          class="rounded-full px-2.5 py-1 text-xs font-medium capitalize"
-          :class="statusClass[k.status]"
-          >{{ k.status }}</span
+        <v-chip
+          size="small"
+          variant="tonal"
+          class="capitalize"
+          :color="statusChip[k.status].color"
+          :prepend-icon="statusChip[k.status].icon"
+          >{{ k.status }}</v-chip
         >
-        <button
+        <v-btn
           v-if="k.status === 'active'"
-          class="btn-ghost btn-sm text-ctp-red"
+          variant="tonal"
+          size="small"
+          prepend-icon="mdi-key-remove"
+          color="error"
           @click="revoking = k"
-        >
-          <AppIcon name="trash" :size="16" /> Revoke
-        </button>
-      </li>
+          >Revoke
+        </v-btn>
+      </v-card>
     </ul>
 
     <BaseModal :open="!!revoking" title="Revoke API key?" size="sm" @close="revoking = null">
-      <p class="text-sm text-ctp-subtext1">
+      <v-alert type="warning" icon="mdi-key-alert-outline">
         {{ revoking?.owner_name }}'s key
         <span class="font-mono">{{ revoking?.key_prefix }}…</span> will stop working immediately.
         They can create a new one from their dashboard.
-      </p>
+      </v-alert>
       <template #footer>
-        <button class="btn-ghost" @click="revoking = null">Cancel</button>
-        <button class="btn-danger" :disabled="revokingKey" @click="confirmRevoke">
-          {{ revokingKey ? 'Revoking…' : 'Revoke' }}
-        </button>
+        <v-btn variant="text" @click="revoking = null">Cancel</v-btn>
+        <v-btn
+          color="error"
+          prepend-icon="mdi-key-remove"
+          :loading="revokingKey"
+          @click="confirmRevoke"
+          >Revoke</v-btn
+        >
       </template>
     </BaseModal>
   </div>

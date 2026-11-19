@@ -1,3 +1,3 @@
 <template>
-  <div class="animate-pulse rounded-lg bg-ctp-surface0" aria-hidden="true" />
+  <v-skeleton-loader type="ossein" class="overflow-hidden rounded-xl" aria-hidden="true" />
 </template>

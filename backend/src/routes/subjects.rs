@@ -1,4 +1,4 @@
-//! Subject management (dashboard only): editors manage subjects in years they own;
+//! Subject management (dashboard only): editors manage subjects in categories they own;
 //! admins manage every subject.
 
 use axum::{
@@ -15,7 +15,7 @@ use crate::{
     error::{AppError, AppResult},
     extract::AppJson,
     models::SubjectDto,
-    routes::{public::all_subjects, years::ensure_year},
+    routes::{public::all_subjects, categories::ensure_category},
     state::AppState,
     validation::{ACCENTS, check_len, clean, is_slug},
 };
@@ -31,8 +31,8 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Debug, Deserialize)]
 struct SubjectInput {
-    /// The year this subject belongs to (required).
-    year_id: i64,
+    /// The category this subject belongs to (required).
+    category_id: i64,
     name: String,
     slug: String,
     description: Option<String>,
@@ -78,25 +78,25 @@ async fn find(state: &AppState, id: i64) -> AppResult<SubjectDto> {
         .ok_or(AppError::NotFound("subject"))
 }
 
-/// Editors create subjects in years they own (admins: any year). Dashboard only.
+/// Editors create subjects in categories they own (admins: any category). Dashboard only.
 async fn create_subject(
     RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
     AppJson(body): AppJson<SubjectInput>,
 ) -> AppResult<(StatusCode, Json<SubjectDto>)> {
     let body = body.normalize()?;
-    ensure_year(&state, body.year_id).await?;
-    access::require_year(
+    ensure_category(&state, body.category_id).await?;
+    access::require_category(
         &state.db,
         Actor::of(&user),
-        body.year_id,
-        "add subjects to this year",
+        body.category_id,
+        "add subjects to this category",
     )
     .await?;
     let res = sqlx::query(
-        "INSERT INTO subjects (year_id, slug, name, description, color, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO subjects (category_id, slug, name, description, color, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
     )
-    .bind(body.year_id)
+    .bind(body.category_id)
     .bind(&body.slug)
     .bind(&body.name)
     .bind(&body.description)
@@ -118,21 +118,21 @@ async fn update_subject(
 ) -> AppResult<Json<SubjectDto>> {
     let body = body.normalize()?;
     let current = find(&state, id).await?;
-    ensure_year(&state, body.year_id).await?;
+    ensure_category(&state, body.category_id).await?;
     let actor = Actor::of(&user);
-    // Owner rights on the subject's current year, and on the new one if it moves.
-    access::require_year(&state.db, actor, current.year_id, "change this subject").await?;
-    access::require_year(
+    // Owner rights on the subject's current category, and on the new one if it moves.
+    access::require_category(&state.db, actor, current.category_id, "change this subject").await?;
+    access::require_category(
         &state.db,
         actor,
-        body.year_id,
-        "move subjects into this year",
+        body.category_id,
+        "move subjects into this category",
     )
     .await?;
     sqlx::query(
-        "UPDATE subjects SET year_id = ?, slug = ?, name = ?, description = ?, color = ?, sort_order = ? WHERE id = ?",
+        "UPDATE subjects SET category_id = ?, slug = ?, name = ?, description = ?, color = ?, sort_order = ? WHERE id = ?",
     )
-    .bind(body.year_id)
+    .bind(body.category_id)
     .bind(&body.slug)
     .bind(&body.name)
     .bind(&body.description)
@@ -150,10 +150,10 @@ async fn delete_subject(
     Path(id): Path<i64>,
 ) -> AppResult<StatusCode> {
     let current = find(&state, id).await?;
-    access::require_year(
+    access::require_category(
         &state.db,
         Actor::of(&user),
-        current.year_id,
+        current.category_id,
         "delete this subject",
     )
     .await?;

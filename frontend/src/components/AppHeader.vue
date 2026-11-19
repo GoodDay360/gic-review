@@ -1,22 +1,28 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { APP_NAME } from '@/config'
 import { useAuthStore } from '@/stores/auth'
+import { useToastStore } from '@/stores/toast'
 
-import AppIcon from './AppIcon.vue'
 import ThemePicker from './ThemePicker.vue'
 
 const auth = useAuthStore()
+const toast = useToastStore()
 const router = useRouter()
 const loggingOut = ref(false)
+const isStaff = computed(() => auth.isStaff)
 
 async function logout() {
   if (loggingOut.value) return
   loggingOut.value = true
   try {
     await auth.logout()
+    toast.success('You have been signed out.', 'Signed out')
+    router.push('/')
+  } catch {
+    toast.warning('The server could not be reached, but you were signed out on this device.')
     router.push('/')
   } finally {
     loggingOut.value = false
@@ -25,46 +31,70 @@ async function logout() {
 </script>
 
 <template>
-  <header class="sticky top-0 z-20 border-b border-ctp-surface0 bg-ctp-mantle/95 backdrop-blur">
-    <div class="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4">
-      <RouterLink to="/" class="flex items-center gap-2 font-bold tracking-tight text-ctp-text">
-        <span
-          class="flex h-8 w-8 items-center justify-center rounded-lg bg-ctp-accent text-sm text-ctp-on-accent"
+  <v-app-bar flat height="60" class="border-b border-ctp-surface0 bg-ctp-mantle/90 backdrop-blur">
+    <div class="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4">
+      <RouterLink
+        to="/"
+        class="group flex items-center gap-2 font-bold tracking-tight text-ctp-text"
+      >
+        <v-avatar
+          color="primary"
+          rounded="lg"
+          size="36"
+          class="text-sm font-extrabold transition-transform group-hover:rotate-6"
         >
           GR
-        </span>
-        <span class="text-lg">{{ APP_NAME }}</span>
+        </v-avatar>
+        <span class="text-lg whitespace-nowrap">{{ APP_NAME }}</span>
       </RouterLink>
       <nav class="flex items-center gap-1">
-        <a
+        <v-btn
+          icon
+          variant="text"
+          size="small"
           href="https://github.com/GoodDay360/gic-review/blob/main/docs/README.md"
           target="_blank"
           rel="noopener noreferrer"
-          class="btn-ghost px-2.5"
           aria-label="Documentation (opens in a new tab)"
-          title="Documentation"
         >
-          <AppIcon name="file-text" :size="18" />
-        </a>
+          <v-icon icon="mdi-file-document-outline" />
+          <v-tooltip activator="parent">Documentation</v-tooltip>
+        </v-btn>
         <ThemePicker />
-        <template v-if="auth.isStaff">
-          <RouterLink to="/admin" class="btn-ghost px-2.5 text-sm">
-            <AppIcon name="pencil" :size="16" />
-            <span class="hidden sm:inline">Dashboard</span>
-          </RouterLink>
-          <button
-            class="btn-ghost px-2.5 text-sm"
+        <template v-if="isStaff">
+          <v-btn
+            to="/admin"
+            variant="tonal"
+            color="primary"
+            prepend-icon="mdi-view-dashboard-outline"
+            class="hidden sm:inline-flex"
+          >
+            Dashboard
+          </v-btn>
+          <v-btn
+            to="/admin"
+            icon="mdi-view-dashboard-outline"
+            variant="text"
+            size="small"
+            class="sm:hidden"
+            aria-label="Dashboard"
+          />
+          <v-btn
+            icon
+            variant="text"
+            size="small"
             aria-label="Log out"
-            :disabled="loggingOut"
+            :loading="loggingOut"
             @click="logout"
           >
-            <AppIcon name="logout" :size="16" />
-          </button>
+            <v-icon icon="mdi-logout" />
+            <v-tooltip activator="parent">Log out</v-tooltip>
+          </v-btn>
         </template>
-        <RouterLink v-else to="/login" class="px-2 text-xs text-ctp-subtext0 hover:text-ctp-accent">
+        <v-btn v-else to="/login" variant="text" size="small" prepend-icon="mdi-login">
           Staff login
-        </RouterLink>
+        </v-btn>
       </nav>
     </div>
-  </header>
+  </v-app-bar>
 </template>

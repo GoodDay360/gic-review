@@ -104,6 +104,7 @@ function cancelNewQuiz() {
           :key="m.id"
           :value="m.id"
           :prepend-icon="m.icon"
+          rounded="0"
           @click="switchMode(m.id)"
         >
           {{ m.label }}

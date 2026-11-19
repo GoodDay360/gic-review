@@ -221,7 +221,7 @@ pub struct CleanupReport {
     pub deleted: usize,
 }
 
-/// Serializes cleanup runs, so the admin button and the hourly worker never scan/delete at
+/// Serializes cleanup runs, so the admin button and the daily worker never scan/delete at
 /// the same time. A caller that arrives mid-run waits, then does its own (usually quick) run.
 static CLEANUP_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
@@ -269,11 +269,11 @@ pub async fn cleanup_orphans_now(state: &AppState) -> AppResult<CleanupReport> {
     Ok(CleanupReport { scanned, deleted })
 }
 
-/// Background worker: runs the orphan cleanup once right away (at startup), then every hour.
+/// Background worker: runs the orphan cleanup once right away (at startup), then every 24 hours.
 /// Failures are logged and retried on the next tick; they never stop the server.
 pub fn spawn_orphan_cleanup_worker(state: AppState) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60 * 60));
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(24 * 60 * 60));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             // The first tick completes immediately, so this also covers the startup run.

@@ -87,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
         image_upload_slots,
         cache,
     };
-    // Orphaned-image cleanup: once at startup, then hourly, in the background. Production
+    // Orphaned-image cleanup: once at startup, then daily, in the background. Production
     // only: a dev database doesn't know production's images, so running it locally against
     // a shared bucket would delete images that live quizzes still use.
     if state.config.is_production() {

@@ -3,30 +3,66 @@
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
-    routing::{post, put},
+    response::{IntoResponse, Response},
+    routing::{get, put},
 };
 use serde::Deserialize;
 
 use crate::{
     access::{self, Actor},
-    auth::RequireEditorSession,
+    auth::{ContentManager, RequireEditor, RequireEditorSession},
     error::{AppError, AppResult},
     extract::AppJson,
-    models::SubjectDto,
-    routes::{public::all_subjects, categories::ensure_category},
+    models::{AdminListQuery, SubjectDto},
+    routes::{
+        categories::{ManagedSubject, contains_ci, ensure_category, managed_categories, paginate},
+        public::all_subjects,
+    },
     state::AppState,
     validation::{ACCENTS, check_len, clean, is_slug},
 };
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/admin/subjects", post(create_subject))
+        .route("/admin/subjects", get(list_managed_subjects).post(create_subject))
         .route(
             "/admin/subjects/{id}",
             put(update_subject).delete(delete_subject),
         )
+}
+
+/// Every subject with `can_add_content` / `shared_with_you`, in category then subject order.
+/// Filter with `category_id`, `subject_id`; with any of `category_id`, `search` (name, slug,
+/// description or category name), `offset`, `limit` it returns one `Page` (max 20).
+async fn list_managed_subjects(
+    RequireEditor(user, _): ContentManager,
+    State(state): State<AppState>,
+    Query(q): Query<AdminListQuery>,
+) -> AppResult<Response> {
+    let page = q.page();
+    let search = page.search().map(|s| s.to_lowercase());
+    let subjects = managed_categories(&state, Actor::of(&user))
+        .await?
+        .into_iter()
+        .flat_map(|c| c.subjects)
+        .filter(move |m: &ManagedSubject| {
+            let s = &m.subject;
+            q.subject_id.is_none_or(|id| s.id == id)
+                && q.category_id.is_none_or(|id| s.category_id == id)
+                && search.as_deref().is_none_or(|needle| {
+                    contains_ci(&s.name, needle)
+                        || contains_ci(&s.slug, needle)
+                        || contains_ci(&s.category_name, needle)
+                        || s.description.as_deref().is_some_and(|d| contains_ci(d, needle))
+                })
+        });
+    Ok(if q.is_paged() {
+        Json(paginate(subjects, &page)).into_response()
+    } else {
+        Json(subjects.collect::<Vec<_>>()).into_response()
+    })
 }
 
 #[derive(Debug, Deserialize)]

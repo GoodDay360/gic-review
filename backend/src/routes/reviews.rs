@@ -6,9 +6,11 @@ use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::StatusCode,
+    response::{IntoResponse, Response},
     routing::get,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+use sqlx::{MySql, QueryBuilder};
 
 use crate::{
     access::{self, AccessInfo, Actor, Content},
@@ -16,7 +18,7 @@ use crate::{
     config::Config,
     error::{AppError, AppResult},
     html_minify::minify_review_html_async,
-    models::{ReviewDto, ReviewRow, review_columns},
+    models::{AdminListQuery, Page, ReviewDto, ReviewRow, review_columns},
     state::AppState,
     validation::{is_slug, slugify},
 };
@@ -159,38 +161,70 @@ async fn managed(state: &AppState, id: i64, actor: Actor) -> AppResult<ManagedRe
     })
 }
 
-#[derive(Debug, Deserialize)]
-struct ListQuery {
-    subject_id: Option<i64>,
-}
-
 /// Reviews the manager owns or that were shared with them (unpublished included).
+/// Filtered by `subject_id` / `category_id` / `search` (title or slug) in SQL; paged
+/// (`Page`, max 20) when any of `category_id`, `search`, `offset`, `limit` is given.
 async fn list_reviews(
     RequireEditor(user, _): ReviewManager,
     State(state): State<AppState>,
-    Query(q): Query<ListQuery>,
-) -> AppResult<Json<Vec<ManagedReview>>> {
-    let mut access = access::accessible(&state.db, Content::Review, Actor::of(&user)).await?;
-    let rows: Vec<ReviewRow> = sqlx::query_as(concat!(
+    Query(q): Query<AdminListQuery>,
+) -> AppResult<Response> {
+    let actor = Actor::of(&user);
+    let page = q.page();
+    let limit = q.is_paged().then(|| page.limit());
+    let mut query = QueryBuilder::<MySql>::new(concat!(
         "SELECT ",
         review_columns!(),
-        " FROM interactive_reviews \
-         WHERE (? IS NULL OR subject_id = ?) ORDER BY subject_id, sort_order, title"
-    ))
-    .bind(q.subject_id)
-    .bind(q.subject_id)
-    .fetch_all(&state.db)
-    .await?;
-    Ok(Json(
-        rows.into_iter()
-            .filter_map(|r| {
-                access.remove(&r.id).map(|access| ManagedReview {
-                    review: ReviewDto::from_row(r, &state.storage),
-                    access,
-                })
+        " FROM interactive_reviews WHERE TRUE"
+    ));
+    if let Some(subject_id) = q.subject_id {
+        query.push(" AND interactive_reviews.subject_id = ").push_bind(subject_id);
+    }
+    if let Some(category_id) = q.category_id {
+        query
+            .push(" AND interactive_reviews.subject_id IN (SELECT id FROM subjects WHERE category_id = ")
+            .push_bind(category_id)
+            .push(")");
+    }
+    if let Some(search) = page.search() {
+        let pattern = format!("%{search}%");
+        query
+            .push(" AND (interactive_reviews.title LIKE ")
+            .push_bind(pattern.clone())
+            .push(" OR interactive_reviews.slug LIKE ")
+            .push_bind(pattern)
+            .push(")");
+    }
+    access::push_manageable_filter(&mut query, "interactive_reviews", actor);
+    query.push(" ORDER BY subject_id, sort_order, title, id");
+    if let Some(limit) = limit {
+        query
+            .push(" LIMIT ")
+            .push_bind(limit + 1)
+            .push(" OFFSET ")
+            .push_bind(page.offset());
+    }
+    let mut rows: Vec<ReviewRow> = query.build_query_as().fetch_all(&state.db).await?;
+    let has_more = limit.is_some_and(|limit| rows.len() > limit as usize);
+    if let Some(limit) = limit {
+        rows.truncate(limit as usize);
+    }
+    let ids: Vec<i64> = rows.iter().map(|r| r.id).collect();
+    let mut access = access::accessible(&state.db, Content::Review, actor, &ids).await?;
+    let items: Vec<ManagedReview> = rows
+        .into_iter()
+        .filter_map(|r| {
+            access.remove(&r.id).map(|access| ManagedReview {
+                review: ReviewDto::from_row(r, &state.storage),
+                access,
             })
-            .collect(),
-    ))
+        })
+        .collect();
+    Ok(if limit.is_some() {
+        Json(Page { items, has_more }).into_response()
+    } else {
+        Json(items).into_response()
+    })
 }
 
 async fn get_review(

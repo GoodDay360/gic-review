@@ -23,7 +23,7 @@ const best = computed(() => {
     class="w-full card-lift group flex h-full flex-col overflow-hidden text-left"
     @click="$emit('select', quiz)"
   >
-    <div class="aspect-[16/7] w-full overflow-hidden bg-ctp-surface0">
+    <div class="relative aspect-[16/7] w-full overflow-hidden bg-ctp-surface0">
       <img
         v-if="quiz.cover_image_url"
         :src="quiz.cover_image_url"
@@ -34,11 +34,25 @@ const best = computed(() => {
       <div v-else class="flex h-full items-center justify-center text-ctp-overlay0">
         <v-icon icon="mdi-format-list-checks" size="40" />
       </div>
+      <!-- On the cover, not in the chips row: there it wraps and makes cards uneven. -->
+      <v-chip
+        v-if="best !== null"
+        size="small"
+        :color="best >= 50 ? 'success' : 'warning'"
+        variant="flat"
+        prepend-icon="mdi-trophy-outline"
+        class="!absolute right-2 top-2"
+      >
+        Best: {{ best }}%
+      </v-chip>
     </div>
     <div class="flex flex-1 flex-col gap-2 p-4">
       <h3 class="font-semibold text-ctp-text group-hover:text-ctp-accent">{{ quiz.title }}</h3>
       <p v-if="quiz.description" class="line-clamp-2 text-sm text-ctp-subtext0">
         {{ quiz.description }}
+      </p>
+      <p v-if="quiz.created_by_name" class="flex items-center gap-1 text-xs text-ctp-overlay1">
+        <v-icon icon="mdi-account-outline" size="14" /> Created by {{ quiz.created_by_name }}
       </p>
       <div class="mt-auto flex flex-wrap items-center gap-2 pt-2">
         <v-chip size="small" variant="tonal" prepend-icon="mdi-help-circle-outline">
@@ -53,16 +67,6 @@ const best = computed(() => {
           :prepend-icon="getQuizMode(m)?.icon"
         >
           {{ getQuizMode(m)?.label ?? m }}
-        </v-chip>
-        <v-chip
-          v-if="best !== null"
-          size="small"
-          :color="best >= 50 ? 'success' : 'warning'"
-          variant="text"
-          prepend-icon="mdi-trophy-outline"
-          class="ml-auto"
-        >
-          Best: {{ best }}%
         </v-chip>
       </div>
     </div>

@@ -7,17 +7,20 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
+    response::{IntoResponse, Response},
     routing::{get, patch, post, put},
 };
 use serde::{Deserialize, Serialize};
-use sqlx::{MySql, Transaction};
+use sqlx::{MySql, QueryBuilder, Transaction};
 
 use crate::{
     access::{self, AccessInfo, Actor, Content},
     auth::{QuizManager, RequireEditor},
     error::{AppError, AppResult},
     extract::AppJson,
-    models::{QuizDetail, QuizSummary, question_image_keys},
+    models::{
+        AdminListQuery, Page, QuizDetail, QuizRow, QuizSummary, question_image_keys, quiz_columns,
+    },
     repo,
     state::AppState,
     validation::{check_image_key, check_len, clean},
@@ -275,29 +278,74 @@ pub async fn load_quiz(state: &AppState, id: i64, actor: Actor) -> AppResult<Man
 
 // ---------- Quiz handlers ----------
 
-#[derive(Debug, Deserialize)]
-struct ListQuery {
-    subject_id: Option<i64>,
-}
-
-/// Quizzes the manager owns or that were shared with them (drafts included).
+/// Quizzes the manager owns or that were shared with them (drafts included), newest first.
+/// Filtered by `subject_id` / `category_id` / `search` (title or description) in SQL; paged
+/// (`Page`, max 20) when any of `category_id`, `search`, `offset`, `limit` is given.
 async fn list_quizzes(
     RequireEditor(user, _): QuizManager,
     State(state): State<AppState>,
-    Query(q): Query<ListQuery>,
-) -> AppResult<Json<Vec<ManagedQuizSummary>>> {
-    let mut access = access::accessible(&state.db, Content::Quiz, Actor::of(&user)).await?;
-    let quizzes = repo::quiz_summaries(&state.db, &state.storage, q.subject_id, false).await?;
-    Ok(Json(
-        quizzes
-            .into_iter()
-            .filter_map(|summary| {
-                access
-                    .remove(&summary.id)
-                    .map(|access| ManagedQuizSummary { summary, access })
+    Query(q): Query<AdminListQuery>,
+) -> AppResult<Response> {
+    let actor = Actor::of(&user);
+    let page = q.page();
+    let limit = q.is_paged().then(|| page.limit());
+    let mut query = QueryBuilder::<MySql>::new(concat!(
+        "SELECT ",
+        quiz_columns!(),
+        " FROM quizzes z WHERE TRUE"
+    ));
+    if let Some(subject_id) = q.subject_id {
+        query.push(" AND z.subject_id = ").push_bind(subject_id);
+    }
+    if let Some(category_id) = q.category_id {
+        query
+            .push(" AND z.subject_id IN (SELECT id FROM subjects WHERE category_id = ")
+            .push_bind(category_id)
+            .push(")");
+    }
+    if let Some(search) = page.search() {
+        let pattern = format!("%{search}%");
+        query
+            .push(" AND (z.title LIKE ")
+            .push_bind(pattern.clone())
+            .push(" OR COALESCE(z.description, '') LIKE ")
+            .push_bind(pattern)
+            .push(")");
+    }
+    access::push_manageable_filter(&mut query, "z", actor);
+    query.push(" ORDER BY z.created_at DESC, z.id DESC");
+    if let Some(limit) = limit {
+        query
+            .push(" LIMIT ")
+            .push_bind(limit + 1)
+            .push(" OFFSET ")
+            .push_bind(page.offset());
+    }
+    let mut rows: Vec<QuizRow> = query.build_query_as().fetch_all(&state.db).await?;
+    let has_more = limit.is_some_and(|limit| rows.len() > limit as usize);
+    if let Some(limit) = limit {
+        rows.truncate(limit as usize);
+    }
+    let ids: Vec<i64> = rows.iter().map(|z| z.id).collect();
+    let mut access = access::accessible(&state.db, Content::Quiz, actor, &ids).await?;
+    let mut questions =
+        repo::load_questions(&state.db, &state.storage, None, None, Some(&ids)).await?;
+    let items: Vec<ManagedQuizSummary> = rows
+        .into_iter()
+        .filter_map(|z| {
+            let access = access.remove(&z.id)?;
+            let qs = questions.remove(&z.id).unwrap_or_default();
+            Some(ManagedQuizSummary {
+                summary: QuizSummary::build(z, &qs, &state.storage),
+                access,
             })
-            .collect(),
-    ))
+        })
+        .collect();
+    Ok(if limit.is_some() {
+        Json(Page { items, has_more }).into_response()
+    } else {
+        Json(items).into_response()
+    })
 }
 
 async fn get_quiz(

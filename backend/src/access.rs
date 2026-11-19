@@ -22,7 +22,7 @@
 use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
-use sqlx::MySqlPool;
+use sqlx::{MySql, MySqlPool, QueryBuilder};
 
 use crate::{
     auth::{AuthUser, Role},
@@ -171,42 +171,40 @@ pub async fn require(
     })
 }
 
-/// Access info for every item `actor` can manage, keyed by item id.
+/// Access info for the items `actor` can manage among `ids`, keyed by item id.
 pub async fn accessible(
     db: &MySqlPool,
     kind: Content,
     actor: Actor,
+    ids: &[i64],
 ) -> AppResult<HashMap<i64, AccessInfo>> {
-    let rows: Vec<AccessListRow> = match kind {
-        Content::Quiz => {
-            sqlx::query_as(
-                "SELECT z.id, z.created_by, u.display_name, y.created_by, \
-                 CAST(y.shared_with_all OR sj.shared_with_all \
-                   OR EXISTS(SELECT 1 FROM category_shares ys WHERE ys.category_id = y.id AND ys.user_id = ?) \
-                   OR EXISTS(SELECT 1 FROM subject_shares ss WHERE ss.subject_id = sj.id AND ss.user_id = ?) AS SIGNED) \
-                 FROM quizzes z JOIN subjects sj ON sj.id = z.subject_id JOIN categories y ON y.id = sj.category_id \
-                 LEFT JOIN users u ON u.id = z.created_by",
-            )
-            .bind(actor.id)
-            .bind(actor.id)
-            .fetch_all(db)
-            .await?
-        }
-        Content::Review => {
-            sqlx::query_as(
-                "SELECT r.id, r.created_by, u.display_name, y.created_by, \
-                 CAST(y.shared_with_all OR sj.shared_with_all \
-                   OR EXISTS(SELECT 1 FROM category_shares ys WHERE ys.category_id = y.id AND ys.user_id = ?) \
-                   OR EXISTS(SELECT 1 FROM subject_shares ss WHERE ss.subject_id = sj.id AND ss.user_id = ?) AS SIGNED) \
-                 FROM interactive_reviews r JOIN subjects sj ON sj.id = r.subject_id JOIN categories y ON y.id = sj.category_id \
-                 LEFT JOIN users u ON u.id = r.created_by",
-            )
-            .bind(actor.id)
-            .bind(actor.id)
-            .fetch_all(db)
-            .await?
-        }
+    if ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let table = match kind {
+        Content::Quiz => "quizzes",
+        Content::Review => "interactive_reviews",
     };
+    let mut query = QueryBuilder::<MySql>::new(
+        "SELECT z.id, z.created_by, u.display_name, y.created_by, \
+         CAST(y.shared_with_all OR sj.shared_with_all \
+           OR EXISTS(SELECT 1 FROM category_shares ys WHERE ys.category_id = y.id AND ys.user_id = ",
+    );
+    query
+        .push_bind(actor.id)
+        .push(") OR EXISTS(SELECT 1 FROM subject_shares ss WHERE ss.subject_id = sj.id AND ss.user_id = ")
+        .push_bind(actor.id)
+        .push(format!(
+            ") AS SIGNED) FROM {table} z JOIN subjects sj ON sj.id = z.subject_id \
+             JOIN categories y ON y.id = sj.category_id \
+             LEFT JOIN users u ON u.id = z.created_by WHERE z.id IN ("
+        ));
+    let mut list = query.separated(", ");
+    for id in ids {
+        list.push_bind(*id);
+    }
+    query.push(")");
+    let rows: Vec<AccessListRow> = query.build_query_as().fetch_all(db).await?;
     Ok(rows
         .into_iter()
         .filter_map(|(id, owner_id, owner_name, category_owner, shared)| {
@@ -223,6 +221,30 @@ pub async fn accessible(
         .collect())
 }
 
+/// Append `AND <the item aliased `alias` is manageable by actor>` to a query (SQL twin of
+/// `access_for`), so lists can filter and paginate in the database.
+pub fn push_manageable_filter(query: &mut QueryBuilder<MySql>, alias: &str, actor: Actor) {
+    if actor.is_admin {
+        return;
+    }
+    query
+        .push(format!(" AND ({alias}.created_by = "))
+        .push_bind(actor.id)
+        .push(format!(
+            " OR EXISTS(SELECT 1 FROM subjects sj JOIN categories y ON y.id = sj.category_id \
+             WHERE sj.id = {alias}.subject_id AND (y.created_by = "
+        ))
+        .push_bind(actor.id)
+        .push(
+            " OR y.shared_with_all OR sj.shared_with_all \
+             OR EXISTS(SELECT 1 FROM category_shares ys WHERE ys.category_id = y.id AND ys.user_id = ",
+        )
+        .push_bind(actor.id)
+        .push(") OR EXISTS(SELECT 1 FROM subject_shares ss WHERE ss.subject_id = sj.id AND ss.user_id = ")
+        .push_bind(actor.id)
+        .push("))))");
+}
+
 // ---------- Categories and subjects ----------
 
 /// Owner rights on a category: edit/delete it, manage its subjects and who it is shared with.
@@ -231,11 +253,17 @@ pub fn can_manage_category(actor: Actor, category_owner: Option<i64>) -> bool {
 }
 
 /// Require owner rights on a category (`404` if it doesn't exist, `403 owner_only` otherwise).
-pub async fn require_category(db: &MySqlPool, actor: Actor, category_id: i64, what: &str) -> AppResult<()> {
-    let row: Option<(Option<i64>,)> = sqlx::query_as("SELECT created_by FROM categories WHERE id = ?")
-        .bind(category_id)
-        .fetch_optional(db)
-        .await?;
+pub async fn require_category(
+    db: &MySqlPool,
+    actor: Actor,
+    category_id: i64,
+    what: &str,
+) -> AppResult<()> {
+    let row: Option<(Option<i64>,)> =
+        sqlx::query_as("SELECT created_by FROM categories WHERE id = ?")
+            .bind(category_id)
+            .fetch_optional(db)
+            .await?;
     let (owner,) = row.ok_or(AppError::NotFound("category"))?;
     if can_manage_category(actor, owner) {
         Ok(())
@@ -315,7 +343,8 @@ pub async fn check_can_add_to_subject(
     .bind(subject_id)
     .fetch_optional(db)
     .await?;
-    let (category_id, owner, category_name, subject_name) = row.ok_or(AppError::NotFound("subject"))?;
+    let (category_id, owner, category_name, subject_name) =
+        row.ok_or(AppError::NotFound("subject"))?;
     let shared = shared_with(db, actor.id).await?;
     if owner == Some(actor.id)
         || shared.categories.contains(&category_id)

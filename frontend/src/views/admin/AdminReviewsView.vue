@@ -9,15 +9,15 @@ import {
   type ManagedCategory,
 } from '@/api/categories'
 import type { Review, Subject } from '@/api/types'
-import CategorySubjectFilter, {
-  filterBySubject,
-  type FilterId,
-} from '@/components/admin/CategorySubjectFilter.vue'
+import CategorySubjectFilter from '@/components/admin/CategorySubjectFilter.vue'
 import SubjectPicker from '@/components/admin/SubjectPicker.vue'
 import OwnershipBadge from '@/components/admin/OwnershipBadge.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import InfiniteScrollSentinel from '@/components/InfiniteScrollSentinel.vue'
+import SearchBar from '@/components/SearchBar.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
+import { useManagedList } from '@/composables/useManagedList'
 import { useToastStore } from '@/stores/toast'
 
 const toast = useToastStore()
@@ -30,29 +30,31 @@ const formSubjects = computed<Subject[]>(() =>
     ? subjectsForEdit(categories.value, editing.value.subject_id)
     : addableSubjects(categories.value),
 )
-const reviews = ref<Review[]>([])
-const loading = ref(true)
+/** Filtered, searched and paged on the server (20 per page, infinite scroll). */
+const {
+  search,
+  category: categoryFilter,
+  subject: subjectFilter,
+  items: reviews,
+  loading,
+  loadingMore,
+  hasMore,
+  error,
+  loadMore,
+  retry,
+  reset,
+  isFiltered,
+  replaceItem,
+  removeItem,
+} = useManagedList<Review>('/admin/reviews')
 
-async function load() {
-  loading.value = true
+onMounted(async () => {
   try {
-    ;[categories.value, reviews.value] = await Promise.all([
-      loadManagedCategories(),
-      api.get<Review[]>('/admin/reviews'),
-    ])
+    categories.value = await loadManagedCategories()
   } catch (err) {
     toast.error(errorMessage(err))
-  } finally {
-    loading.value = false
   }
-}
-onMounted(load)
-
-const categoryFilter = ref<FilterId>('')
-const subjectFilter = ref<FilterId>('')
-const filteredReviews = computed(() =>
-  filterBySubject(reviews.value, categories.value, categoryFilter.value, subjectFilter.value),
-)
+})
 
 const subjectName = (id: number) => subjects.value.find((s) => s.id === id)?.name ?? '?'
 
@@ -120,7 +122,7 @@ async function save() {
     )
     toast.success(isNew ? 'Review uploaded' : 'Review updated')
     editing.value = null
-    load()
+    reset()
   } catch (err) {
     toast.error(errorMessage(err))
   } finally {
@@ -138,7 +140,7 @@ async function togglePublish(r: Review) {
     data.append('is_published', String(!r.is_published))
     const updated = await api.put<Review>(`/admin/reviews/${r.id}`, data)
     toast.success(r.is_published ? 'Review unpublished' : 'Review published')
-    reviews.value = reviews.value.map((x) => (x.id === updated.id ? updated : x))
+    replaceItem(updated)
   } catch (err) {
     toast.error(errorMessage(err))
   } finally {
@@ -153,8 +155,8 @@ async function confirmDelete() {
   try {
     await api.delete(`/admin/reviews/${deleting.value.id}`)
     toast.success('Review deleted')
+    removeItem(deleting.value.id)
     deleting.value = null
-    load()
   } catch (err) {
     toast.error(errorMessage(err))
   } finally {
@@ -185,86 +187,109 @@ async function confirmDelete() {
       v-model:subject="subjectFilter"
       :categories="categories"
     />
+    <SearchBar
+      v-model="search"
+      label="Search interactive reviews"
+      placeholder="Search interactive reviews…"
+    />
 
-    <div v-if="loading" class="space-y-2">
+    <div v-if="loading && !reviews.length" class="space-y-2">
       <SkeletonBlock v-for="i in 3" :key="i" class="h-14" />
     </div>
+    <EmptyState
+      v-else-if="error && !reviews.length"
+      title="Couldn't load interactive reviews"
+      :message="error"
+      icon="mdi-alert-outline"
+    >
+      <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" @click="retry"
+        >Try again</v-btn
+      >
+    </EmptyState>
+    <EmptyState
+      v-else-if="!reviews.length && isFiltered()"
+      title="No matching reviews"
+      message="No interactive review matches the search and the selected category and subject."
+      icon="mdi-filter-remove-outline"
+    />
     <EmptyState
       v-else-if="!reviews.length"
       title="No interactive reviews yet"
       icon="mdi-book-open-page-variant-outline"
     />
-    <EmptyState
-      v-else-if="!filteredReviews.length"
-      title="No matching reviews"
-      message="No interactive review matches the selected category and subject."
-      icon="mdi-filter-remove-outline"
-    />
-    <ul v-else class="space-y-2">
-      <v-card
-        v-for="(r, i) in filteredReviews"
-        :key="r.id"
-        tag="li"
-        class="card-lift flex flex-wrap items-center gap-3 p-3"
-        data-aos="fade-up"
-        :data-aos-delay="Math.min(i, 6) * 40"
-      >
-        <v-avatar color="primary" variant="tonal" rounded="lg">
-          <v-icon icon="mdi-language-html5" />
-        </v-avatar>
-        <div class="min-w-0 flex-1">
-          <p class="font-medium text-ctp-text">{{ r.title }}</p>
-          <p class="text-xs text-ctp-subtext0">
-            {{ subjectName(r.subject_id) }} · /{{ r.slug }} · order {{ r.sort_order }}
-          </p>
-        </div>
-        <v-chip
-          size="small"
-          :color="r.is_published ? 'success' : undefined"
-          variant="tonal"
-          :prepend-icon="r.is_published ? 'mdi-earth' : 'mdi-eye-off-outline'"
+    <template v-else>
+      <ul class="space-y-2">
+        <v-card
+          v-for="(r, i) in reviews"
+          :key="r.id"
+          tag="li"
+          class="card-lift flex flex-wrap items-center gap-3 p-3"
+          data-aos="fade-up"
+          :data-aos-delay="(i % 20 < 6 ? i % 20 : 6) * 40"
         >
-          {{ r.is_published ? 'Published' : 'Hidden' }}
-        </v-chip>
-        <v-btn
-          variant="tonal"
-          size="small"
-          :color="r.is_published ? undefined : 'success'"
-          :prepend-icon="r.is_published ? 'mdi-eye-off-outline' : 'mdi-publish'"
-          :loading="publishingId === r.id"
-          :disabled="publishingId !== null && publishingId !== r.id"
-          @click="togglePublish(r)"
-        >
-          {{ r.is_published ? 'Unpublish' : 'Publish' }}
-        </v-btn>
-        <v-btn
-          variant="text"
-          size="small"
-          icon="mdi-code-tags"
-          :href="r.url"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Open raw HTML"
-        />
-        <v-btn
-          variant="text"
-          size="small"
-          icon="mdi-pencil-outline"
-          aria-label="Edit"
-          @click="openEdit(r)"
-        />
-        <OwnershipBadge :item="r" />
-        <v-btn
-          v-if="r.access !== 'shared'"
-          variant="text"
-          size="small"
-          icon="mdi-delete-outline"
-          color="error"
-          aria-label="Delete"
-          @click="deleting = r"
-        />
-      </v-card>
-    </ul>
+          <v-avatar color="primary" variant="tonal" rounded="lg">
+            <v-icon icon="mdi-language-html5" />
+          </v-avatar>
+          <div class="min-w-0 flex-1">
+            <p class="font-medium text-ctp-text">{{ r.title }}</p>
+            <p class="text-xs text-ctp-subtext0">
+              {{ subjectName(r.subject_id) }} · /{{ r.slug }} · order {{ r.sort_order }}
+            </p>
+          </div>
+          <v-chip
+            size="small"
+            :color="r.is_published ? 'success' : undefined"
+            variant="tonal"
+            :prepend-icon="r.is_published ? 'mdi-earth' : 'mdi-eye-off-outline'"
+          >
+            {{ r.is_published ? 'Published' : 'Hidden' }}
+          </v-chip>
+          <v-btn
+            variant="tonal"
+            size="small"
+            :color="r.is_published ? undefined : 'success'"
+            :prepend-icon="r.is_published ? 'mdi-eye-off-outline' : 'mdi-publish'"
+            :loading="publishingId === r.id"
+            :disabled="publishingId !== null && publishingId !== r.id"
+            @click="togglePublish(r)"
+          >
+            {{ r.is_published ? 'Unpublish' : 'Publish' }}
+          </v-btn>
+          <v-btn
+            variant="text"
+            size="small"
+            icon="mdi-code-tags"
+            :href="r.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open raw HTML"
+          />
+          <v-btn
+            variant="text"
+            size="small"
+            icon="mdi-pencil-outline"
+            aria-label="Edit"
+            @click="openEdit(r)"
+          />
+          <OwnershipBadge :item="r" />
+          <v-btn
+            v-if="r.access !== 'shared'"
+            variant="text"
+            size="small"
+            icon="mdi-delete-outline"
+            color="error"
+            aria-label="Delete"
+            @click="deleting = r"
+          />
+        </v-card>
+      </ul>
+      <InfiniteScrollSentinel
+        :has-more="hasMore"
+        :loading="loadingMore"
+        :error="error"
+        @load-more="error ? retry() : loadMore()"
+      />
+    </template>
 
     <BaseModal
       :open="!!editing"

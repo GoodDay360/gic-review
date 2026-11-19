@@ -155,6 +155,7 @@ Optional query `?category={category_slug}`. Response `200`: array of
 
 ### #3 `GET /admin/reviews?subject_id={n}`
 `subject_id` optional. Response `200`: array of **review objects** (below), unpublished included.
+Optional paging: add any of `category_id`, `search` (title/slug), `offset`, `limit` (max 20) and the response becomes `{ "items": [ … ], "has_more": bool }` instead of an array.
 
 ### #4 `GET /admin/reviews/{id}`
 Response `200`: one review object. `404` if it doesn't exist or isn't yours.

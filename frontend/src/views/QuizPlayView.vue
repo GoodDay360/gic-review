@@ -133,7 +133,8 @@ function cancelNewQuiz() {
     <template v-else-if="quiz">
       <header class="animate__animated animate__fadeInDown mb-6">
         <p class="text-sm text-ctp-subtext0">
-          {{ quiz.subject_name }}<span v-if="mode"> · {{ mode.label }}</span>
+          {{ quiz.subject_name }}<span v-if="mode"> · {{ mode.label }}</span
+          ><span v-if="quiz.created_by_name"> · Created by {{ quiz.created_by_name }}</span>
         </p>
         <h1 class="text-2xl font-bold text-ctp-text">{{ quiz.title }}</h1>
         <v-chip

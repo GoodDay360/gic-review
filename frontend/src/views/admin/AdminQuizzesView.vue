@@ -5,39 +5,46 @@ import { useRouter } from 'vue-router'
 import { api, errorMessage } from '@/api/client'
 import { addableSubjects, loadManagedCategories, type ManagedCategory } from '@/api/categories'
 import type { QuizDetail, QuizSummary, Subject } from '@/api/types'
-import CategorySubjectFilter, {
-  filterBySubject,
-  type FilterId,
-} from '@/components/admin/CategorySubjectFilter.vue'
+import CategorySubjectFilter from '@/components/admin/CategorySubjectFilter.vue'
 import SubjectPicker from '@/components/admin/SubjectPicker.vue'
 import OwnershipBadge from '@/components/admin/OwnershipBadge.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import InfiniteScrollSentinel from '@/components/InfiniteScrollSentinel.vue'
+import SearchBar from '@/components/SearchBar.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
-import { useAsync } from '@/composables/useAsync'
+import { useManagedList } from '@/composables/useManagedList'
 import { getQuizMode } from '@/quiz-modes/registry'
 import { useToastStore } from '@/stores/toast'
 
 const router = useRouter()
 const toast = useToastStore()
 
-const categoryFilter = ref<FilterId>('')
-const subjectFilter = ref<FilterId>('')
 const subjects = ref<Subject[]>([])
 const categories = ref<ManagedCategory[]>([])
 /** New quizzes may only go into subjects of categories you own (admins: any). */
 const addable = computed(() => addableSubjects(categories.value))
-const { data: quizzes, loading, run } = useAsync(() => api.get<QuizSummary[]>('/admin/quizzes'), [])
+/** Filtered, searched and paged on the server (20 per page, infinite scroll). */
+const {
+  search,
+  category: categoryFilter,
+  subject: subjectFilter,
+  items: quizzes,
+  loading,
+  loadingMore,
+  hasMore,
+  error,
+  loadMore,
+  retry,
+  isFiltered,
+  replaceItem,
+  removeItem,
+} = useManagedList<QuizSummary>('/admin/quizzes')
 
 onMounted(async () => {
   categories.value = await loadManagedCategories().catch(() => [])
   subjects.value = categories.value.flatMap((y) => y.subjects)
-  run()
 })
-
-const filteredQuizzes = computed(() =>
-  filterBySubject(quizzes.value, categories.value, categoryFilter.value, subjectFilter.value),
-)
 const subjectName = computed(() => new Map(subjects.value.map((s) => [s.id, s.name])))
 
 // ----- create -----
@@ -75,7 +82,7 @@ async function togglePublish(q: QuizSummary) {
   try {
     await api.patch(`/admin/quizzes/${q.id}/publish`, { is_published: !q.is_published })
     toast.success(q.is_published ? 'Quiz unpublished' : 'Quiz published')
-    run()
+    replaceItem({ ...q, is_published: !q.is_published })
   } catch (err) {
     toast.error(errorMessage(err))
   } finally {
@@ -90,8 +97,8 @@ async function confirmDelete() {
   try {
     await api.delete(`/admin/quizzes/${deleting.value.id}`)
     toast.success('Quiz deleted')
+    removeItem(deleting.value.id)
     deleting.value = null
-    run()
   } catch (err) {
     toast.error(errorMessage(err))
   } finally {
@@ -126,93 +133,112 @@ async function confirmDelete() {
       v-model:subject="subjectFilter"
       :categories="categories"
     />
+    <SearchBar v-model="search" label="Search quizzes" placeholder="Search quizzes…" />
 
-    <div v-if="loading" class="space-y-2">
+    <div v-if="loading && !quizzes.length" class="space-y-2">
       <SkeletonBlock v-for="i in 4" :key="i" class="h-16" />
     </div>
+    <EmptyState
+      v-else-if="error && !quizzes.length"
+      title="Couldn't load quizzes"
+      :message="error"
+      icon="mdi-alert-outline"
+    >
+      <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" @click="retry"
+        >Try again</v-btn
+      >
+    </EmptyState>
+    <EmptyState
+      v-else-if="!quizzes.length && isFiltered()"
+      title="No matching quizzes"
+      message="No quiz matches the search and the selected category and subject."
+      icon="mdi-filter-remove-outline"
+    />
     <EmptyState
       v-else-if="!quizzes.length"
       title="No quizzes yet"
       message="Create one, or use Bulk import to paste a whole quiz as JSON."
       icon="mdi-format-list-checks"
     />
-    <EmptyState
-      v-else-if="!filteredQuizzes.length"
-      title="No matching quizzes"
-      message="No quiz matches the selected category and subject."
-      icon="mdi-filter-remove-outline"
-    />
-    <ul v-else class="space-y-2">
-      <v-card
-        v-for="(q, i) in filteredQuizzes"
-        :key="q.id"
-        tag="li"
-        class="card-lift flex flex-wrap items-center gap-3 p-3"
-        data-aos="fade-up"
-        :data-aos-delay="Math.min(i, 6) * 40"
-      >
-        <img
-          v-if="q.cover_image_url"
-          :src="q.cover_image_url"
-          alt=""
-          class="h-12 w-20 rounded-md object-cover"
-          loading="lazy"
-        />
-        <div class="min-w-0 flex-1">
-          <RouterLink
-            :to="`/admin/quizzes/${q.id}`"
-            class="font-medium text-ctp-text hover:text-ctp-accent"
-            >{{ q.title }}</RouterLink
-          >
-          <p class="text-xs text-ctp-subtext0">
-            {{ subjectName.get(q.subject_id) ?? 'Unknown subject' }} ·
-            {{ q.question_count }} questions ·
-            <span v-if="q.available_modes.length">{{
-              q.available_modes.map((m) => getQuizMode(m)?.label ?? m).join(', ')
-            }}</span>
-            <span v-else class="text-ctp-peach">no playable mode yet</span>
-          </p>
-        </div>
-        <v-chip
-          size="small"
-          :color="q.is_published ? 'success' : undefined"
-          variant="tonal"
-          :prepend-icon="q.is_published ? 'mdi-earth' : 'mdi-file-edit-outline'"
+    <template v-else>
+      <ul class="space-y-2">
+        <v-card
+          v-for="(q, i) in quizzes"
+          :key="q.id"
+          tag="li"
+          class="card-lift flex flex-wrap items-center gap-3 p-3"
+          data-aos="fade-up"
+          :data-aos-delay="(i % 20 < 6 ? i % 20 : 6) * 40"
         >
-          {{ q.is_published ? 'Published' : 'Draft' }}
-        </v-chip>
-        <OwnershipBadge :item="q" />
-        <div class="flex gap-1">
-          <v-btn
+          <img
+            v-if="q.cover_image_url"
+            :src="q.cover_image_url"
+            alt=""
+            class="h-12 w-20 rounded-md object-cover"
+            loading="lazy"
+          />
+          <div class="min-w-0 flex-1">
+            <RouterLink
+              :to="`/admin/quizzes/${q.id}`"
+              class="font-medium text-ctp-text hover:text-ctp-accent"
+              >{{ q.title }}</RouterLink
+            >
+            <p class="text-xs text-ctp-subtext0">
+              {{ subjectName.get(q.subject_id) ?? 'Unknown subject' }} ·
+              {{ q.question_count }} questions ·
+              <span v-if="q.available_modes.length">{{
+                q.available_modes.map((m) => getQuizMode(m)?.label ?? m).join(', ')
+              }}</span>
+              <span v-else class="text-ctp-peach">no playable mode yet</span>
+            </p>
+          </div>
+          <v-chip
+            size="small"
+            :color="q.is_published ? 'success' : undefined"
             variant="tonal"
-            size="small"
-            :color="q.is_published ? undefined : 'success'"
-            :prepend-icon="q.is_published ? 'mdi-eye-off-outline' : 'mdi-publish'"
-            :loading="publishingId === q.id"
-            :disabled="publishingId !== null && publishingId !== q.id"
-            @click="togglePublish(q)"
+            :prepend-icon="q.is_published ? 'mdi-earth' : 'mdi-file-edit-outline'"
           >
-            {{ q.is_published ? 'Unpublish' : 'Publish' }}
-          </v-btn>
-          <v-btn
-            variant="text"
-            size="small"
-            icon="mdi-pencil-outline"
-            :to="`/admin/quizzes/${q.id}`"
-            aria-label="Edit"
-          />
-          <v-btn
-            v-if="q.access !== 'shared'"
-            variant="text"
-            size="small"
-            icon="mdi-delete-outline"
-            color="error"
-            aria-label="Delete"
-            @click="deleting = q"
-          />
-        </div>
-      </v-card>
-    </ul>
+            {{ q.is_published ? 'Published' : 'Draft' }}
+          </v-chip>
+          <OwnershipBadge :item="q" />
+          <div class="flex gap-1">
+            <v-btn
+              variant="tonal"
+              size="small"
+              :color="q.is_published ? undefined : 'success'"
+              :prepend-icon="q.is_published ? 'mdi-eye-off-outline' : 'mdi-publish'"
+              :loading="publishingId === q.id"
+              :disabled="publishingId !== null && publishingId !== q.id"
+              @click="togglePublish(q)"
+            >
+              {{ q.is_published ? 'Unpublish' : 'Publish' }}
+            </v-btn>
+            <v-btn
+              variant="text"
+              size="small"
+              icon="mdi-pencil-outline"
+              :to="`/admin/quizzes/${q.id}`"
+              aria-label="Edit"
+            />
+            <v-btn
+              v-if="q.access !== 'shared'"
+              variant="text"
+              size="small"
+              icon="mdi-delete-outline"
+              color="error"
+              aria-label="Delete"
+              @click="deleting = q"
+            />
+          </div>
+        </v-card>
+      </ul>
+      <InfiniteScrollSentinel
+        :has-more="hasMore"
+        :loading="loadingMore"
+        :error="error"
+        @load-more="error ? retry() : loadMore()"
+      />
+    </template>
 
     <BaseModal :open="creating" title="New quiz" @close="creating = false">
       <v-form id="create-quiz" class="space-y-4" @submit.prevent="create">

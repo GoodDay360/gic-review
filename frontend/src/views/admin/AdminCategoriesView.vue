@@ -4,22 +4,25 @@
  * Any editor can create a category (they own it); only its owner or an admin can change it.
  * New quizzes/reviews can only go into subjects of categories you own.
  */
-import { onMounted, reactive, ref } from 'vue'
+import { reactive, ref } from 'vue'
 
 import { api, errorMessage } from '@/api/client'
-import { loadManagedCategories, type ManagedCategory } from '@/api/categories'
+import type { ManagedCategory } from '@/api/categories'
 import ShareDialog from '@/components/admin/ShareDialog.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import InfiniteScrollSentinel from '@/components/InfiniteScrollSentinel.vue'
+import SearchBar from '@/components/SearchBar.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
-import { useAsync } from '@/composables/useAsync'
+import { useManagedList } from '@/composables/useManagedList'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore } from '@/stores/toast'
 
 const toast = useToastStore()
 const auth = useAuthStore()
-const { data: categories, loading, run } = useAsync(loadManagedCategories, [] as ManagedCategory[])
-onMounted(run)
+/** Searched and paged on the server (20 per page, infinite scroll). */
+const { search, items, loading, loadingMore, hasMore, error, loadMore, retry, reset } =
+  useManagedList<ManagedCategory>('/admin/categories')
 
 const editing = ref<ManagedCategory | 'new' | null>(null)
 const saving = ref(false)
@@ -34,7 +37,7 @@ function toSlug(name: string) {
 }
 
 function openNew() {
-  Object.assign(form, { name: '', slug: '', description: '', sort_order: categories.value.length })
+  Object.assign(form, { name: '', slug: '', description: '', sort_order: items.value.length })
   slugTouched = false
   editing.value = 'new'
 }
@@ -66,7 +69,7 @@ async function save() {
     else if (editing.value) await api.put(`/admin/categories/${editing.value.id}`, body)
     toast.success('Category saved')
     editing.value = null
-    run()
+    reset()
   } catch (err) {
     toast.error(errorMessage(err))
   } finally {
@@ -84,7 +87,7 @@ async function confirmDelete() {
     await api.delete(`/admin/categories/${deleting.value.id}`)
     toast.success('Category deleted')
     deleting.value = null
-    run()
+    reset()
   } catch (err) {
     toast.error(errorMessage(err))
   } finally {
@@ -109,95 +112,121 @@ async function confirmDelete() {
       subject on the Subjects page. Categories can only be created here, never through the API.
     </v-alert>
 
-    <div v-if="loading" class="space-y-2">
+    <SearchBar v-model="search" label="Search categories" placeholder="Search categories…" />
+
+    <div v-if="loading && !items.length" class="space-y-2">
       <SkeletonBlock v-for="i in 2" :key="i" class="h-14" />
     </div>
     <EmptyState
-      v-else-if="!categories.length"
+      v-else-if="error && !items.length"
+      title="Couldn't load categories"
+      :message="error"
+      icon="mdi-alert-outline"
+    >
+      <v-btn variant="tonal" color="primary" prepend-icon="mdi-refresh" @click="retry"
+        >Try again</v-btn
+      >
+    </EmptyState>
+    <EmptyState
+      v-else-if="!items.length && search.trim()"
+      title="No matching categories"
+      message="Try another search."
+      icon="mdi-magnify-close"
+    />
+    <EmptyState
+      v-else-if="!items.length"
       title="No categories yet"
       message="Create the first category."
       icon="mdi-layers-outline"
     />
-    <ul v-else class="space-y-2">
-      <v-card
-        v-for="(y, i) in categories"
-        :key="y.id"
-        tag="li"
-        class="card-lift flex flex-wrap items-center gap-3 p-3"
-        data-aos="fade-up"
-        :data-aos-delay="Math.min(i, 6) * 40"
-      >
-        <v-avatar color="primary" variant="tonal" rounded="lg" class="px-2 text-sm font-bold">
-          {{ y.name.slice(0, 4) }}
-        </v-avatar>
-        <div class="min-w-0 flex-1">
-          <p class="flex flex-wrap items-center gap-2 font-medium text-ctp-text">
-            {{ y.name }}
-            <v-chip
-              v-if="y.can_manage && y.owner_id === auth.user?.id"
-              size="x-small"
-              color="success"
-              variant="tonal"
-              prepend-icon="mdi-star-outline"
-              >Yours</v-chip
-            >
-            <v-chip v-else size="x-small" variant="tonal">
-              {{ y.owner_name ? `Owned by ${y.owner_name}` : 'No owner (admins only)' }}
-            </v-chip>
-            <v-chip
-              v-if="y.shared_with_you"
-              size="x-small"
-              color="info"
-              variant="tonal"
-              prepend-icon="mdi-account-multiple-outline"
-              >Shared with you</v-chip
-            >
-          </p>
-          <p class="text-xs text-ctp-subtext0">
-            /categories/{{ y.slug }} · order {{ y.sort_order }} · {{ y.subject_count }} subject{{
-              y.subject_count === 1 ? '' : 's'
-            }}
-          </p>
-        </div>
-        <v-btn
-          v-if="y.can_manage || y.shared_with_you"
-          variant="text"
-          size="small"
-          icon="mdi-account-multiple-outline"
-          :aria-label="y.can_manage ? 'Share category' : 'Who has access'"
-          :title="
-            y.can_manage ? 'Share this category with other managers' : 'Who has access / leave'
-          "
-          @click="sharing = y"
-        />
-        <v-btn
-          v-if="y.can_manage"
-          variant="text"
-          size="small"
-          icon="mdi-pencil-outline"
-          aria-label="Edit"
-          @click="openEdit(y)"
-        />
-        <v-btn
-          v-if="y.can_manage"
-          variant="text"
-          size="small"
-          icon="mdi-delete-outline"
-          color="error"
-          aria-label="Delete"
-          :disabled="y.subject_count > 0"
-          :title="y.subject_count > 0 ? 'Move or delete its subjects first' : 'Delete'"
-          @click="deleting = y"
-        />
-      </v-card>
-    </ul>
+    <template v-else>
+      <ul class="space-y-2">
+        <v-card
+          v-for="(y, i) in items"
+          :key="y.id"
+          tag="li"
+          class="card-lift flex flex-wrap items-center gap-3 p-3"
+          data-aos="fade-up"
+          :data-aos-delay="(i % 20 < 6 ? i % 20 : 6) * 40"
+        >
+          <v-avatar color="primary" variant="tonal" rounded="lg" class="px-2 text-sm font-bold">
+            {{ y.name.slice(0, 4) }}
+          </v-avatar>
+          <div class="min-w-0 flex-1">
+            <p class="flex flex-wrap items-center gap-2 font-medium text-ctp-text">
+              {{ y.name }}
+              <v-chip
+                v-if="y.can_manage && y.owner_id === auth.user?.id"
+                size="x-small"
+                color="success"
+                variant="tonal"
+                prepend-icon="mdi-star-outline"
+                >Yours</v-chip
+              >
+              <v-chip v-else size="x-small" variant="tonal">
+                {{ y.owner_name ? `Owned by ${y.owner_name}` : 'No owner (admins only)' }}
+              </v-chip>
+              <v-chip
+                v-if="y.shared_with_you"
+                size="x-small"
+                color="info"
+                variant="tonal"
+                prepend-icon="mdi-account-multiple-outline"
+                >Shared with you</v-chip
+              >
+            </p>
+            <p class="text-xs text-ctp-subtext0">
+              /categories/{{ y.slug }} · order {{ y.sort_order }} · {{ y.subject_count }} subject{{
+                y.subject_count === 1 ? '' : 's'
+              }}
+            </p>
+          </div>
+          <v-btn
+            v-if="y.can_manage || y.shared_with_you"
+            variant="text"
+            size="small"
+            icon="mdi-account-multiple-outline"
+            :aria-label="y.can_manage ? 'Share category' : 'Who has access'"
+            :title="
+              y.can_manage ? 'Share this category with other managers' : 'Who has access / leave'
+            "
+            @click="sharing = y"
+          />
+          <v-btn
+            v-if="y.can_manage"
+            variant="text"
+            size="small"
+            icon="mdi-pencil-outline"
+            aria-label="Edit"
+            @click="openEdit(y)"
+          />
+          <v-btn
+            v-if="y.can_manage"
+            variant="text"
+            size="small"
+            icon="mdi-delete-outline"
+            color="error"
+            aria-label="Delete"
+            :disabled="y.subject_count > 0"
+            :title="y.subject_count > 0 ? 'Move or delete its subjects first' : 'Delete'"
+            @click="deleting = y"
+          />
+        </v-card>
+      </ul>
+      <InfiniteScrollSentinel
+        :has-more="hasMore"
+        :loading="loadingMore"
+        :error="error"
+        @load-more="error ? retry() : loadMore()"
+      />
+    </template>
 
     <ShareDialog
       kind="categories"
       :item="sharing ? { id: sharing.id, title: sharing.name } : null"
       @close="sharing = null"
-      @changed="run"
-      @left="run"
+      @changed="reset"
+      @left="reset"
     />
 
     <BaseModal

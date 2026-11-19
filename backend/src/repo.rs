@@ -16,7 +16,7 @@ use crate::{
 
 /// Load questions (with options) for every quiz matching the filter, grouped by quiz id.
 /// `subject_id = None` means all subjects, `quiz_id = Some` narrows to one quiz.
-async fn load_questions(
+pub(crate) async fn load_questions(
     db: &MySqlPool,
     storage: &Storage,
     subject_id: Option<i64>,

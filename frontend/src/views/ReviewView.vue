@@ -150,6 +150,9 @@ function open(r: Review) {
         {{ subject?.name
         }}<span v-if="selected" class="font-normal text-ctp-subtext0"> · {{ selected.title }}</span>
       </h1>
+      <p v-if="selected?.created_by_name" class="w-full text-xs text-ctp-overlay1">
+        Created by {{ selected.created_by_name }}
+      </p>
     </div>
 
     <SkeletonBlock v-if="loading && !subject" class="h-[75vh]" />
@@ -215,9 +218,14 @@ function open(r: Review) {
               <v-avatar color="primary" variant="tonal" rounded="lg">
                 <v-icon icon="mdi-book-open-page-variant-outline" />
               </v-avatar>
-              <span class="font-medium text-ctp-text group-hover:text-ctp-accent">{{
-                r.title
-              }}</span>
+              <span class="min-w-0">
+                <span class="block font-medium text-ctp-text group-hover:text-ctp-accent">{{
+                  r.title
+                }}</span>
+                <span v-if="r.created_by_name" class="block text-xs text-ctp-overlay1"
+                  >Created by {{ r.created_by_name }}</span
+                >
+              </span>
               <v-icon
                 icon="mdi-chevron-right"
                 class="ml-auto text-ctp-overlay1 transition-transform group-hover:translate-x-1"

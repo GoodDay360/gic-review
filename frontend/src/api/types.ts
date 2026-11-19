@@ -79,6 +79,8 @@ export interface Review extends ManagedFields {
   url: string
   sort_order: number
   is_published: boolean
+  /** Creator's display name ("Created by …"); null if that account was deleted. */
+  created_by_name: string | null
   created_at: string
   updated_at: string
 }
@@ -93,6 +95,8 @@ export interface QuizSummary extends ManagedFields {
   is_published: boolean
   question_count: number
   available_modes: QuizModeId[]
+  /** Creator's display name ("Created by …"); null if that account was deleted. */
+  created_by_name: string | null
   created_at: string
   updated_at: string
 }

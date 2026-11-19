@@ -174,6 +174,7 @@ ordered by category, then subject.
 `subject_id` is optional. Response `200`: array of quiz summaries (no questions):
 `{ "id", "subject_id", "title", "description", "cover_image_key", "cover_image_url", "is_published", "question_count", "available_modes", "access", "owner_id", "owner_name", "created_at", "updated_at" }`.
 Only quizzes the key's owner owns (`"access": "owner"`) or that were shared with them (`"access": "shared"`); an admin's key lists all quizzes (`"access": "admin"`).
+Optional paging: add any of `category_id`, `search` (title/description), `offset`, `limit` (max 20) and the response becomes `{ "items": [ … ], "has_more": bool }` instead of an array.
 
 ### #4 `GET /admin/quizzes/{id}`
 Response `200`: the **quiz object** (section 4, at the end). `404` if it doesn't exist or isn't yours.

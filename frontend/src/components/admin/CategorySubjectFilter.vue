@@ -1,29 +1,12 @@
 <script lang="ts">
-import type { ManagedCategory } from '@/api/categories'
-
 /** '' = "All". */
 export type FilterId = number | ''
-
-/** Keep the items whose subject matches the chosen category / subject. */
-export function filterBySubject<T extends { subject_id: number }>(
-  items: T[],
-  categories: ManagedCategory[],
-  categoryId: FilterId,
-  subjectId: FilterId,
-): T[] {
-  const subjectCategory = new Map(
-    categories.flatMap((c) => c.subjects).map((s) => [s.id, s.category_id]),
-  )
-  return items.filter(
-    (it) =>
-      (!subjectId || it.subject_id === subjectId) &&
-      (!categoryId || subjectCategory.get(it.subject_id) === categoryId),
-  )
-}
 </script>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+
+import type { ManagedCategory } from '@/api/categories'
 
 const props = defineProps<{ categories: ManagedCategory[] }>()
 const category = defineModel<FilterId>('category', { default: '' })

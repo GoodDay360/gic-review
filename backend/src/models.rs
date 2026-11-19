@@ -63,6 +63,37 @@ impl PageQuery {
     }
 }
 
+/// Filters for the manager lists (`/admin/quizzes`, `/admin/reviews`). Without `category_id`,
+/// `search`, `offset` and `limit` the endpoint returns a plain array (older clients, API keys);
+/// with any of them it returns one `Page` (max 20 items).
+#[derive(Debug, Deserialize, Default)]
+pub struct AdminListQuery {
+    pub subject_id: Option<i64>,
+    pub category_id: Option<i64>,
+    // Not `#[serde(flatten)]` of `PageQuery`: flatten breaks number parsing in query strings.
+    pub search: Option<String>,
+    pub offset: Option<i64>,
+    pub limit: Option<i64>,
+}
+
+impl AdminListQuery {
+    pub fn is_paged(&self) -> bool {
+        self.category_id.is_some()
+            || self.search.is_some()
+            || self.offset.is_some()
+            || self.limit.is_some()
+    }
+
+    pub fn page(&self) -> PageQuery {
+        PageQuery {
+            search: self.search.clone(),
+            slug: None,
+            offset: self.offset,
+            limit: self.limit,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct Page<T> {
     pub items: Vec<T>,
@@ -148,12 +179,17 @@ pub struct ReviewRow {
     pub created_by: Option<i64>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+    /// Display name of the creator (`None` if the account was deleted).
+    pub created_by_name: Option<String>,
 }
 
 /// Column list for SELECTs (a macro so queries stay `&'static str` literals).
+/// The table must not be aliased: the creator subquery refers to `interactive_reviews`.
 macro_rules! review_columns {
     () => {
-        "id, subject_id, title, slug, r2_key, sort_order, is_published, created_by, created_at, updated_at"
+        "id, subject_id, title, slug, r2_key, sort_order, is_published, created_by, created_at, \
+         updated_at, (SELECT u.display_name FROM users u \
+         WHERE u.id = interactive_reviews.created_by) AS created_by_name"
     };
 }
 pub(crate) use review_columns;
@@ -168,6 +204,8 @@ pub struct ReviewDto {
     pub url: String,
     pub sort_order: i32,
     pub is_published: bool,
+    /// Display name of whoever created it ("Created by …"); `None` if that account is gone.
+    pub created_by_name: Option<String>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }
@@ -189,6 +227,7 @@ impl ReviewDto {
             url,
             sort_order: r.sort_order,
             is_published: r.is_published,
+            created_by_name: r.created_by_name,
             created_at: r.created_at,
             updated_at: r.updated_at,
         }
@@ -208,13 +247,16 @@ pub struct QuizRow {
     pub created_by: Option<i64>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+    /// Display name of the creator (`None` if the account was deleted).
+    pub created_by_name: Option<String>,
 }
 
 /// Column list for SELECTs (a macro so queries stay `&'static str` literals).
 macro_rules! quiz_columns {
     () => {
         "z.id, z.subject_id, z.title, z.description, z.cover_image_key, \
-     z.is_published, z.created_by, z.created_at, z.updated_at"
+     z.is_published, z.created_by, z.created_at, z.updated_at, \
+     (SELECT u.display_name FROM users u WHERE u.id = z.created_by) AS created_by_name"
     };
 }
 pub(crate) use quiz_columns;
@@ -339,6 +381,8 @@ pub struct QuizSummary {
     pub is_published: bool,
     pub question_count: usize,
     pub available_modes: Vec<QuizMode>,
+    /// Display name of whoever created it ("Created by …"); `None` if that account is gone.
+    pub created_by_name: Option<String>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }
@@ -367,6 +411,7 @@ impl QuizSummary {
             is_published: z.is_published,
             question_count: questions.len(),
             available_modes: crate::quiz_modes::available_modes(questions),
+            created_by_name: z.created_by_name,
             created_at: z.created_at,
             updated_at: z.updated_at,
         }

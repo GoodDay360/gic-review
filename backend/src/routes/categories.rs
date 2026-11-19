@@ -8,9 +8,9 @@
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::{get, put},
 };
 use serde::{Deserialize, Serialize};
@@ -20,7 +20,7 @@ use crate::{
     auth::{ContentManager, RequireEditor, RequireEditorSession},
     error::{AppError, AppResult},
     extract::AppJson,
-    models::{Page, PageQuery, SubjectDto, CategoryDto, CategoryRow, category_columns},
+    models::{AdminListQuery, Page, PageQuery, SubjectDto, CategoryDto, CategoryRow, category_columns},
     routes::public::{all_subjects, all_categories},
     state::AppState,
     validation::{check_len, clean, is_slug, slugify},
@@ -150,9 +150,9 @@ async fn get_category(
 
 /// A subject as seen in the dashboard and by API clients.
 #[derive(Debug, Serialize)]
-struct ManagedSubject {
+pub(crate) struct ManagedSubject {
     #[serde(flatten)]
-    subject: SubjectDto,
+    pub(crate) subject: SubjectDto,
     /// You may add quizzes/reviews to this subject (your category, shared category/subject, or admin).
     can_add_content: bool,
     /// This subject was shared with you on its own.
@@ -161,7 +161,7 @@ struct ManagedSubject {
 
 /// A category as seen in the dashboard and by API clients.
 #[derive(Debug, Serialize)]
-struct ManagedCategory {
+pub(crate) struct ManagedCategory {
     #[serde(flatten)]
     category: CategoryDto,
     owner_id: Option<i64>,
@@ -172,24 +172,61 @@ struct ManagedCategory {
     shared_with_you: bool,
     /// You may add content to at least one of its subjects.
     can_add_content: bool,
-    subjects: Vec<ManagedSubject>,
+    pub(crate) subjects: Vec<ManagedSubject>,
 }
 
+/// Every category with its subjects, as `GET /admin/categories` returns them. With any of
+/// `search` (name, slug or description), `offset`, `limit` it returns one `Page` (max 20) instead.
 async fn list_managed_categories(
     RequireEditor(user, _): ContentManager,
     State(state): State<AppState>,
-) -> AppResult<Json<Vec<ManagedCategory>>> {
-    let actor = Actor::of(&user);
+    Query(q): Query<AdminListQuery>,
+) -> AppResult<Response> {
+    let categories = managed_categories(&state, Actor::of(&user)).await?;
+    if !q.is_paged() {
+        return Ok(Json(categories).into_response());
+    }
+    let page = q.page();
+    let search = page.search().map(|s| s.to_lowercase());
+    let matches = categories.into_iter().filter(|c| {
+        search.as_deref().is_none_or(|s| {
+            let c = &c.category.category;
+            contains_ci(&c.name, s)
+                || contains_ci(&c.slug, s)
+                || c.description.as_deref().is_some_and(|d| contains_ci(d, s))
+        })
+    });
+    Ok(Json(paginate(matches, &page)).into_response())
+}
+
+/// Case-insensitive substring match (`needle` already lowercased), like SQL `LIKE '%…%'`.
+pub(crate) fn contains_ci(haystack: &str, needle: &str) -> bool {
+    haystack.to_lowercase().contains(needle)
+}
+
+/// One page (`offset`, `limit`) of an already filtered list.
+pub(crate) fn paginate<T>(items: impl Iterator<Item = T>, page: &PageQuery) -> Page<T> {
+    let limit = page.limit() as usize;
+    let mut items: Vec<T> = items.skip(page.offset() as usize).take(limit + 1).collect();
+    let has_more = items.len() > limit;
+    items.truncate(limit);
+    Page { items, has_more }
+}
+
+/// Every category (with owner, sharing and its subjects) as seen by `actor`.
+pub(crate) async fn managed_categories(
+    state: &AppState,
+    actor: Actor,
+) -> AppResult<Vec<ManagedCategory>> {
     let shared = access::shared_with(&state.db, actor.id).await?;
     let owners: Vec<(i64, Option<String>)> = sqlx::query_as(
         "SELECT y.id, u.display_name FROM categories y LEFT JOIN users u ON u.id = y.created_by",
     )
     .fetch_all(&state.db)
     .await?;
-    let subjects = all_subjects(&state).await?;
-    let categories = categories_with_counts(&state).await?;
-    Ok(Json(
-        categories
+    let subjects = all_subjects(state).await?;
+    let categories = categories_with_counts(state).await?;
+    Ok(categories
             .into_iter()
             .map(|category| {
                 let owner_id = category.category.created_by;
@@ -223,8 +260,7 @@ async fn list_managed_categories(
                     category,
                 }
             })
-            .collect(),
-    ))
+            .collect())
 }
 
 #[derive(Debug, Deserialize)]

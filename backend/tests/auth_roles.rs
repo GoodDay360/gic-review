@@ -1988,5 +1988,6 @@ async fn db_subject_slugs_are_unique_per_category_only() {
     .await;
     assert_eq!(r.status, StatusCode::CREATED, "{:?}", r.json);
     assert_eq!(r.json["category_slug"], categories[1].0);
+    assert_eq!(r.json["category_name"], "I4");
     tdb.cleanup().await;
 }

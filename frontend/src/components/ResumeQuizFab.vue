@@ -32,6 +32,11 @@ const stepText = computed(() => {
   return `${unit} ${Math.min(quiz.index + 1, total)} / ${total}`
 })
 
+/** "I4 · Human Computer Interaction" (empty for progress saved before names were stored). */
+const whereText = computed(() =>
+  [active.value?.categoryName, active.value?.subjectName].filter(Boolean).join(' · '),
+)
+
 const target = computed(() =>
   active.value
     ? { path: `/quizzes/${active.value.quizId}/play`, query: { mode: active.value.mode } }
@@ -54,7 +59,7 @@ const target = computed(() =>
         v-if="visible && active"
         :to="target"
         class="pointer-events-auto absolute right-4 bottom-4 flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-full bg-ctp-accent py-2 pr-5 pl-2 text-ctp-base shadow-lg transition-transform hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ctp-accent"
-        :aria-label="`Continue unfinished quiz: ${active.quizTitle}`"
+        :aria-label="`Continue unfinished quiz: ${active.quizTitle}${whereText ? ` (${whereText})` : ''}`"
       >
         <span
           class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ctp-base/20"
@@ -67,6 +72,13 @@ const target = computed(() =>
           </span>
           <span class="max-w-[14rem] truncate text-sm font-semibold sm:max-w-[18rem]">
             {{ active.quizTitle }}
+          </span>
+          <span
+            v-if="whereText"
+            class="flex max-w-[14rem] items-center gap-1 text-xs opacity-80 sm:max-w-[18rem]"
+          >
+            <v-icon icon="mdi-folder-outline" size="12" class="shrink-0" />
+            <span class="truncate">{{ whereText }}</span>
           </span>
         </span>
         <v-icon icon="mdi-chevron-right" size="20" class="shrink-0 opacity-80" />

@@ -201,10 +201,11 @@ pub async fn quiz_detail(
     .bind(quiz.subject_id)
     .fetch_one(db)
     .await?;
-    let (category_slug,): (String,) = sqlx::query_as("SELECT slug FROM categories WHERE id = ?")
-        .bind(subject.category_id)
-        .fetch_one(db)
-        .await?;
+    let (category_slug, category_name): (String, String) =
+        sqlx::query_as("SELECT slug, name FROM categories WHERE id = ?")
+            .bind(subject.category_id)
+            .fetch_one(db)
+            .await?;
 
     let questions = load_questions(db, storage, None, Some(quiz_id), None)
         .await?
@@ -216,6 +217,7 @@ pub async fn quiz_detail(
         subject_slug: subject.slug,
         subject_name: subject.name,
         category_slug,
+        category_name,
         questions,
     }))
 }

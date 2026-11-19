@@ -351,6 +351,7 @@ pub struct QuizDetail {
     pub subject_name: String,
     /// Subject slugs are unique per category: links need both.
     pub category_slug: String,
+    pub category_name: String,
     pub questions: Vec<QuestionDto>,
 }
 

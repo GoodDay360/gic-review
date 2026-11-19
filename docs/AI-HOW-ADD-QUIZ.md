@@ -260,6 +260,7 @@ The public `GET /categories` and `GET /categories/{category_slug}` (no key) show
   "id": 15,
   "subject_id": 1, "subject_slug": "hci", "subject_name": "Human Computer Interaction",
   "category_slug": "i4",              // subject slugs are unique per category, links need both
+  "category_name": "I4",
   "title": "…", "description": "…",
   "cover_image_key": null, "cover_image_url": null,
   "is_published": false,

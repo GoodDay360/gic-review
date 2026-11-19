@@ -130,6 +130,7 @@ export interface QuizDetail extends QuizSummary {
   subject_name: string
   /** Subject slugs are unique per category: links need both. */
   category_slug: string
+  category_name: string
   questions: Question[]
 }
 

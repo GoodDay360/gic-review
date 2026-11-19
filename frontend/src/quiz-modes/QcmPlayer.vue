@@ -47,6 +47,8 @@ function saveProgress() {
   progress.saveActiveQuiz({
     quizId: props.quiz.id,
     quizTitle: props.quiz.title,
+    categoryName: props.quiz.category_name,
+    subjectName: props.quiz.subject_name,
     mode: 'qcm',
     questionIds: round.value.questions.map((q) => q.id),
     optionIds: Object.fromEntries(

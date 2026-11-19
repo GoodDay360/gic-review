@@ -17,6 +17,9 @@ export interface ModeResult {
 interface QuizProgressBase {
   quizId: number
   quizTitle: string
+  /** Shown on the resume button. Missing in progress saved by older versions. */
+  categoryName?: string
+  subjectName?: string
 }
 
 export interface QcmProgress extends QuizProgressBase {

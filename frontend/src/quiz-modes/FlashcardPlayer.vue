@@ -47,6 +47,8 @@ function saveProgress() {
   progress.saveActiveQuiz({
     quizId: props.quiz.id,
     quizTitle: props.quiz.title,
+    categoryName: props.quiz.category_name,
+    subjectName: props.quiz.subject_name,
     mode: 'flashcard',
     queue: queue.value.map((question) => question.id),
     index: index.value,

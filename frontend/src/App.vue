@@ -3,6 +3,7 @@ import { onMounted } from 'vue'
 
 import AppHeader from '@/components/AppHeader.vue'
 import ImageLightbox from '@/components/ImageLightbox.vue'
+import ResumeQuizFab from '@/components/ResumeQuizFab.vue'
 import ToastHost from '@/components/ToastHost.vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -24,6 +25,7 @@ onMounted(() => useAuthStore().fetchMe())
           </Transition>
         </RouterView>
       </div>
+      <ResumeQuizFab />
       <v-footer
         class="flex-grow-0 justify-center border-t border-ctp-surface0 bg-ctp-mantle py-4 text-center text-xs text-ctp-subtext0"
       >

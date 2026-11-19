@@ -6,6 +6,7 @@ use gic_review_api::{
     cache::ResponseCache,
     config::{Config, db_options_from_env},
     rate_limit::RateLimiter,
+    routes,
     state::AppState,
     storage::Storage,
 };
@@ -86,6 +87,8 @@ async fn main() -> anyhow::Result<()> {
         image_upload_slots,
         cache,
     };
+    // Orphaned-image cleanup: once at startup, then hourly, in the background.
+    routes::uploads::spawn_orphan_cleanup_worker(state.clone());
     let app = build_router(state);
 
     let listener = tokio::net::TcpListener::bind(addr)

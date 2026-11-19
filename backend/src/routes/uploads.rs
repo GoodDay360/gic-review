@@ -181,29 +181,70 @@ async fn delete_image(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Admin only: remove R2 objects that no row references. Objects younger than one hour are
-/// kept, because an editor may have just uploaded them and not saved yet.
+/// Admin only: run the orphan cleanup now (see [`cleanup_orphans_now`]).
 async fn cleanup_orphans(
     _admin: RequireAdmin,
     State(state): State<AppState>,
 ) -> AppResult<Json<serde_json::Value>> {
-    let referenced = referenced_keys(&state).await?;
+    let report = cleanup_orphans_now(&state).await?;
+    Ok(Json(json!({
+        "scanned": report.scanned,
+        "deleted": report.deleted_keys.len(),
+        "deleted_keys": report.deleted_keys,
+    })))
+}
+
+pub struct CleanupReport {
+    pub scanned: usize,
+    pub deleted_keys: Vec<String>,
+}
+
+/// Serializes cleanup runs, so the admin button and the hourly worker never scan/delete at
+/// the same time. A caller that arrives mid-run waits, then does its own (usually quick) run.
+static CLEANUP_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Remove R2 objects that no row references. Objects younger than one hour are kept,
+/// because an editor may have just uploaded them and not saved yet.
+pub async fn cleanup_orphans_now(state: &AppState) -> AppResult<CleanupReport> {
+    let _guard = CLEANUP_LOCK.lock().await;
+    let referenced = referenced_keys(state).await?;
     let cutoff = Utc::now() - chrono::Duration::hours(1);
 
     let mut scanned = 0usize;
-    let mut deleted = Vec::new();
+    let mut deleted_keys = Vec::new();
     for prefix in ["quizzes/", "images/", "reviews/"] {
         for obj in state.storage.list(prefix).await? {
             scanned += 1;
             let old_enough = obj.last_modified.is_none_or(|t| t < cutoff);
             if !referenced.contains(&obj.key) && old_enough {
                 state.storage.delete(&obj.key).await?;
-                deleted.push(obj.key);
+                deleted_keys.push(obj.key);
             }
         }
     }
-    tracing::info!(scanned, deleted = deleted.len(), "orphan cleanup finished");
-    Ok(Json(
-        json!({ "scanned": scanned, "deleted": deleted.len(), "deleted_keys": deleted }),
-    ))
+    tracing::info!(
+        scanned,
+        deleted = deleted_keys.len(),
+        "orphan cleanup finished"
+    );
+    Ok(CleanupReport {
+        scanned,
+        deleted_keys,
+    })
+}
+
+/// Background worker: runs the orphan cleanup once right away (at startup), then every hour.
+/// Failures are logged and retried on the next tick; they never stop the server.
+pub fn spawn_orphan_cleanup_worker(state: AppState) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60 * 60));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            // The first tick completes immediately, so this also covers the startup run.
+            interval.tick().await;
+            if let Err(err) = cleanup_orphans_now(&state).await {
+                tracing::warn!(error = ?err, "scheduled orphan cleanup failed");
+            }
+        }
+    })
 }

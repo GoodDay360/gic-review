@@ -108,35 +108,40 @@ impl Storage {
         }
     }
 
-    pub async fn list(&self, prefix: &str) -> anyhow::Result<Vec<StoredObject>> {
-        let mut out = Vec::new();
-        let mut token: Option<String> = None;
-        loop {
-            let resp = self
-                .client
-                .list_objects_v2()
-                .bucket(&self.bucket)
-                .prefix(prefix)
-                .set_continuation_token(token.clone())
-                .send()
-                .await
-                .context("R2 list_objects_v2 failed")?;
-            for obj in resp.contents() {
-                if let Some(key) = obj.key() {
-                    let last_modified = obj
+    /// List one page of at most `max_keys` objects under `prefix`. Pass the returned token
+    /// back to get the next page; `None` means this was the last page.
+    pub async fn list_page(
+        &self,
+        prefix: &str,
+        token: Option<String>,
+        max_keys: i32,
+    ) -> anyhow::Result<(Vec<StoredObject>, Option<String>)> {
+        let resp = self
+            .client
+            .list_objects_v2()
+            .bucket(&self.bucket)
+            .prefix(prefix)
+            .max_keys(max_keys)
+            .set_continuation_token(token)
+            .send()
+            .await
+            .context("R2 list_objects_v2 failed")?;
+        let objects = resp
+            .contents()
+            .iter()
+            .filter_map(|obj| {
+                Some(StoredObject {
+                    key: obj.key()?.to_string(),
+                    last_modified: obj
                         .last_modified()
-                        .and_then(|t| DateTime::<Utc>::from_timestamp(t.secs(), 0));
-                    out.push(StoredObject {
-                        key: key.to_string(),
-                        last_modified,
-                    });
-                }
-            }
-            match resp.next_continuation_token() {
-                Some(next) if resp.is_truncated() == Some(true) => token = Some(next.to_string()),
-                _ => break,
-            }
-        }
-        Ok(out)
+                        .and_then(|t| DateTime::<Utc>::from_timestamp(t.secs(), 0)),
+                })
+            })
+            .collect();
+        let next = match resp.next_continuation_token() {
+            Some(next) if resp.is_truncated() == Some(true) => Some(next.to_string()),
+            _ => None,
+        };
+        Ok((objects, next))
     }
 }

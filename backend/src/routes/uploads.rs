@@ -148,18 +148,34 @@ async fn upload_image(
 }
 
 /// Every image/review key currently referenced by a database row.
-async fn referenced_keys(state: &AppState) -> AppResult<HashSet<String>> {
-    let rows: Vec<(Option<String>,)> = sqlx::query_as(
-        "SELECT cover_image_key FROM quizzes \
-         UNION ALL SELECT image_key FROM questions \
-         UNION ALL SELECT answer_image_key FROM questions \
-         UNION ALL SELECT explanation_image_key FROM questions \
-         UNION ALL SELECT image_key FROM question_options \
-         UNION ALL SELECT r2_key FROM interactive_reviews",
-    )
-    .fetch_all(&state.db)
-    .await?;
-    Ok(rows.into_iter().filter_map(|(k,)| k).collect())
+/// Which of `keys` some row still references. Each key column is indexed, so this stays
+/// cheap however many rows there are.
+async fn referenced_among(state: &AppState, keys: &[String]) -> AppResult<HashSet<String>> {
+    if keys.is_empty() {
+        return Ok(HashSet::new());
+    }
+    let sources = [
+        ("quizzes", "cover_image_key"),
+        ("questions", "image_key"),
+        ("questions", "answer_image_key"),
+        ("questions", "explanation_image_key"),
+        ("question_options", "image_key"),
+        ("interactive_reviews", "r2_key"),
+    ];
+    let mut qb = sqlx::QueryBuilder::<sqlx::MySql>::new("");
+    for (i, (table, column)) in sources.iter().enumerate() {
+        if i > 0 {
+            qb.push(" UNION ");
+        }
+        qb.push(format!("SELECT {column} FROM {table} WHERE {column} IN ("));
+        let mut list = qb.separated(", ");
+        for key in keys {
+            list.push_bind(key);
+        }
+        list.push_unseparated(")");
+    }
+    let rows: Vec<(String,)> = qb.build_query_as().fetch_all(&state.db).await?;
+    Ok(rows.into_iter().map(|(k,)| k).collect())
 }
 
 /// Delete an uploaded image that is not (or no longer) used by any row, e.g. when an
@@ -172,7 +188,7 @@ async fn delete_image(
     if !is_image_key(&key) {
         return Err(AppError::Validation("not a valid image key".into()));
     }
-    if referenced_keys(&state).await?.contains(&key) {
+    if !referenced_among(&state, std::slice::from_ref(&key)).await?.is_empty() {
         return Err(AppError::Conflict(
             "this image is still used; remove it from the quiz/question and save instead".into(),
         ));
@@ -196,48 +212,61 @@ async fn cleanup_orphans(
     let report = cleanup_orphans_now(&state).await?;
     Ok(Json(json!({
         "scanned": report.scanned,
-        "deleted": report.deleted_keys.len(),
-        "deleted_keys": report.deleted_keys,
+        "deleted": report.deleted,
     })))
 }
 
 pub struct CleanupReport {
     pub scanned: usize,
-    pub deleted_keys: Vec<String>,
+    pub deleted: usize,
 }
 
 /// Serializes cleanup runs, so the admin button and the hourly worker never scan/delete at
 /// the same time. A caller that arrives mid-run waits, then does its own (usually quick) run.
 static CLEANUP_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+/// How many R2 objects the cleanup lists, checks and deletes per step.
+const CLEANUP_BATCH: i32 = 50;
+
 /// Remove R2 objects that no row references. Objects younger than one hour are kept,
 /// because an editor may have just uploaded them and not saved yet.
+///
+/// Works in steps of [`CLEANUP_BATCH`] objects: list one page from R2, ask the database
+/// which of those keys are still used, delete the rest, then move to the next page. Memory
+/// and query size stay constant however many objects the bucket holds.
 pub async fn cleanup_orphans_now(state: &AppState) -> AppResult<CleanupReport> {
     let _guard = CLEANUP_LOCK.lock().await;
-    let referenced = referenced_keys(state).await?;
     let cutoff = Utc::now() - chrono::Duration::hours(1);
 
     let mut scanned = 0usize;
-    let mut deleted_keys = Vec::new();
+    let mut deleted = 0usize;
     for prefix in ["quizzes/", "images/", "reviews/"] {
-        for obj in state.storage.list(prefix).await? {
-            scanned += 1;
-            let old_enough = obj.last_modified.is_none_or(|t| t < cutoff);
-            if !referenced.contains(&obj.key) && old_enough {
-                state.storage.delete(&obj.key).await?;
-                deleted_keys.push(obj.key);
+        let mut token = None;
+        loop {
+            let (objects, next) = state
+                .storage
+                .list_page(prefix, token, CLEANUP_BATCH)
+                .await?;
+            scanned += objects.len();
+            let candidates: Vec<String> = objects
+                .into_iter()
+                .filter(|obj| obj.last_modified.is_none_or(|t| t < cutoff))
+                .map(|obj| obj.key)
+                .collect();
+            let referenced = referenced_among(state, &candidates).await?;
+            for key in candidates.iter().filter(|k| !referenced.contains(*k)) {
+                state.storage.delete(key).await?;
+                tracing::info!(key, "deleted orphaned R2 object");
+                deleted += 1;
+            }
+            match next {
+                Some(next) => token = Some(next),
+                None => break,
             }
         }
     }
-    tracing::info!(
-        scanned,
-        deleted = deleted_keys.len(),
-        "orphan cleanup finished"
-    );
-    Ok(CleanupReport {
-        scanned,
-        deleted_keys,
-    })
+    tracing::info!(scanned, deleted, "orphan cleanup finished");
+    Ok(CleanupReport { scanned, deleted })
 }
 
 /// Background worker: runs the orphan cleanup once right away (at startup), then every hour.

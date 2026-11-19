@@ -1,5 +1,7 @@
 # Build "GIC Review" — Exam Review Website
 
+> **Frozen:** this is the original build brief, kept for reference only. It is **not** kept in sync with the code. For the current state of the project see `docs/AI-SPEC.md`, and update only that file when features change.
+
 You are working inside an **existing Git repository** (`gic-review`). Before writing code, inspect the repo (README, existing folders, `.gitignore`) and build on what is there. Do not delete or overwrite existing files unless they conflict with this spec; if they do, explain what you changed.
 
 Work in the phases listed at the bottom. At the end of every phase the project must build and run.

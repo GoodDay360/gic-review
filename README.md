@@ -1,6 +1,6 @@
 # GIC Review
 
-> **AI assistants:** read `prompt.md` (build brief) and `docs/AI-SPEC.md` (current status) first. When you add or change a feature, update the feature/requirement list in both.
+> **AI assistants:** read `docs/AI-SPEC.md` (current status) first and keep it up to date when you add or change a feature. `prompt.md` is the frozen original build brief: don't read or update it for routine work.
 
 A study website for exam review. Students pick their category (e.g. I3, I4), then a subject, then read its **Interactive
 Review** or practise with **Quizzes** in **QCM** or **Flashcard** mode, with no account
@@ -122,7 +122,7 @@ for user, key or subject management. Details: `docs/AI-HOW-ADD-QUIZ.md`.
 
 ## Documentation
 
-- `prompt.md`: build brief (requirements and how to build the project)
+- `prompt.md`: original build brief (frozen, reference only; not kept in sync)
 - `docs/AI-SPEC.md`: status sheet (features checklist, schema, endpoints, limitations, changelog)
 - `docs/README.md`: **start here to let an AI create content**: what you need, a ready-to-use prompt, and keeping your API key safe
 - `docs/AI-HOW-ADD-QUIZ.md`: **give this to an AI** (with an API key) to create quizzes through the API, e.g. from a PDF; self-contained, no code access needed

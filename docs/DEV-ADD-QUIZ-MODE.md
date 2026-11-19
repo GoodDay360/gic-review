@@ -1,9 +1,9 @@
 # Developer guide: adding a new quiz mode
 
 Audience: developers (and coding assistants) working **inside this repository**. This is not
-for API clients; those use `docs/AI-HOW-ADD-QUIZ.md`. Read `prompt.md` (build brief) and
-`docs/AI-SPEC.md` (status) first, and follow the "Keep features in sync" rules: a new mode is
-a feature, so add it to `prompt.md` and to the Features list in `AI-SPEC.md` in the same commit.
+for API clients; those use `docs/AI-HOW-ADD-QUIZ.md`. Read `docs/AI-SPEC.md` (status) first
+and follow its "Keep this file up to date" rules: a new mode is a feature, so add it to the
+Features list in `AI-SPEC.md` in the same commit (`prompt.md` is frozen; don't update it).
 
 Quiz data is mode-agnostic: one quiz can be played in several modes. Adding a mode means
 writing a new **player** and an **availability rule**; the stored data normally stays the same.
@@ -27,7 +27,7 @@ writing a new **player** and an **availability rule**; the stored data normally 
 6. **Schema (only if needed):** add a **new** migration in `backend/migrations/`
    (never edit old ones), update `backend/src/models.rs`, the import format in
    `backend/src/routes/import.rs`, and this document.
-7. **Docs:** add the mode as a requirement in `prompt.md`, as a Features line in
+7. **Docs:** add the mode as a Features line in
    `docs/AI-SPEC.md` (✅ + a Changelog entry), and list it under "Quiz modes" in
    `docs/AI-HOW-ADD-QUIZ.md` so API clients know when it becomes available.
 

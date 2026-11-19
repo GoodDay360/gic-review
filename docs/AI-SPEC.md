@@ -1,31 +1,19 @@
 # GIC Review: AI-SPEC (project status sheet)
 
-## Keep features in sync (rules for every AI or developer)
+## Keep this file up to date (rules for every AI or developer)
 
-1. **The two files are different documents with different jobs. Do not copy one into the other.**
-   - `prompt.md` (repo root) is the **build brief**: full instructions on how to build the project
-     (tech stack, folder layout, `.gitignore`, `.env` templates, UI/theme rules, security rules,
-     schema design, API design, build phases).
-   - `docs/AI-SPEC.md` (this file) is the **project status sheet**: what has actually been built so
-     far, the current schema and endpoints, how to run it, known limitations, and the changelog.
-2. **Only the features/requirements list is kept in sync.** Every user-facing feature or requirement
-   must appear in both files:
-   - in `prompt.md`, described as a requirement in its matching section (what it should do);
-   - here, as one line in the **"Features"** checklist with its status (✅ built / 🚧 in progress / ⏳ planned).
-
-   Everything else stays in its own file and is **not** duplicated: build instructions only in
-   `prompt.md`; schema, endpoints, run steps and changelog only here.
-3. **Adding or changing a feature:** add or update the requirement in `prompt.md` → add or update its
-   line in the Features list below (⏳ or 🚧) → implement it → mark it ✅. Do all of this in the
-   **same commit/PR** as the code.
-4. **Removing a feature:** remove it from both files and say so in the commit message. Never delete a
-   requirement silently.
-5. **Sync check:** every feature line here must correspond to a requirement in `prompt.md`, and every
-   requirement in `prompt.md` must have a line here (⏳ if not built yet). If one is missing, add it.
-6. If a change affects how quizzes or interactive reviews are added (schema, JSON import format,
+1. **`prompt.md` is frozen.** It is the original build brief, kept for reference only. Do **not**
+   read it for routine work and do **not** update it when features change (saves tokens). This
+   file is the single source of truth for the current state of the project.
+2. **Adding or changing a feature:** add or update its line in the **"Features"** checklist below
+   (⏳ or 🚧) → implement it → mark it ✅. Do this in the **same commit/PR** as the code.
+3. **Removing a feature:** remove its line here and say so in the commit message. Never delete a
+   feature line silently.
+4. Keep schema, endpoints, run steps and known limitations here accurate when they change.
+5. If a change affects how quizzes or interactive reviews are added (schema, JSON import format,
    image fields, quiz modes, HTML rules, API keys), also update `docs/AI-HOW-ADD-QUIZ.md` and/or
    `docs/AI-HOW-ADD-INTERACTIVE-REVIEW.md`.
-7. Add a dated entry to the **Changelog** at the bottom of this file.
+6. Add a dated entry to the **Changelog** at the bottom of this file.
 
 ---
 
@@ -254,6 +242,8 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-19: `prompt.md` frozen as the original build brief; only this file is kept up to date
+  (no more syncing the Features list into `prompt.md`).
 - 2026-11-19: **Share with all managers.** Category owners and admins can share a category or a subject with every
   manager at once (switch in the Share dialog; `PUT /admin/{categories|subjects}/:id/shares/all`). Same rights as an
   email share; recipients can't leave it. Migration `20261119000002_share_with_all_managers`.

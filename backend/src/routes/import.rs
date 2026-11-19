@@ -36,6 +36,8 @@ const MAX_QUESTIONS: usize = 500;
 #[serde(deny_unknown_fields)]
 pub struct ImportQuiz {
     pub subject_slug: Option<String>,
+    /// Needed with `subject_slug` when several categories have a subject with that slug.
+    pub category_slug: Option<String>,
     pub subject_id: Option<i64>,
     pub title: String,
     pub description: Option<String>,
@@ -198,9 +200,15 @@ async fn import_quiz(
     let subject_id = match (&body.subject_id, clean(body.subject_slug.clone())) {
         (Some(id), _) => *id,
         (None, Some(slug)) => {
-            repo::subject_by_slug(&state.db, &slug)
+            let category = clean(body.category_slug.clone());
+            repo::subject_by_slug(&state.db, category.as_deref(), &slug)
                 .await?
-                .ok_or_else(|| AppError::Validation(format!("subject_slug '{slug}' not found")))?
+                .ok_or_else(|| match &category {
+                    Some(c) => AppError::Validation(format!(
+                        "subject_slug '{slug}' not found in category '{c}'"
+                    )),
+                    None => AppError::Validation(format!("subject_slug '{slug}' not found")),
+                })?
                 .id
         }
         (None, None) => {

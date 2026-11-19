@@ -16,8 +16,8 @@ use crate::{
     auth::MaybeEditor,
     error::{AppError, AppResult},
     models::{
-        Page, PageQuery, ReviewDto, ReviewRow, SubjectDto, SubjectRow, CategoryRow, review_columns,
-        subject_columns, category_columns,
+        CategoryRow, Page, PageQuery, ReviewDto, ReviewRow, SubjectDto, SubjectRow,
+        category_columns, review_columns, subject_columns,
     },
     repo,
     state::AppState,
@@ -27,9 +27,20 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/health", get(health))
         .route("/subjects", get(list_subjects))
-        .route("/subjects/{slug}", get(get_subject))
-        .route("/subjects/{slug}/reviews", get(list_reviews))
-        .route("/subjects/{slug}/quizzes", get(list_quizzes))
+        // Subject slugs are unique per category, so subjects are addressed by both slugs.
+        .route("/categories/{slug}/subjects/{subject}", get(get_subject))
+        .route(
+            "/categories/{slug}/subjects/{subject}/reviews",
+            get(list_reviews),
+        )
+        .route(
+            "/categories/{slug}/subjects/{subject}/quizzes",
+            get(list_quizzes),
+        )
+        // Legacy (pre per-category slugs): only works while the slug is used by one category.
+        .route("/subjects/{slug}", get(get_subject_legacy))
+        .route("/subjects/{slug}/reviews", get(list_reviews_legacy))
+        .route("/subjects/{slug}/quizzes", get(list_quizzes_legacy))
         .route("/quizzes/{id}", get(get_quiz))
 }
 
@@ -96,7 +107,10 @@ async fn subjects_from_rows(state: &AppState, rows: Vec<SubjectRow>) -> AppResul
     let mut subjects: Vec<(usize, SubjectDto)> = rows
         .into_iter()
         .filter_map(|r| {
-            let (pos, category) = categories.iter().enumerate().find(|(_, y)| y.id == r.category_id)?;
+            let (pos, category) = categories
+                .iter()
+                .enumerate()
+                .find(|(_, y)| y.id == r.category_id)?;
             let s = stats.iter().find(|s| s.id == r.id);
             Some((
                 pos,
@@ -173,26 +187,89 @@ async fn list_subjects(
     }))
 }
 
-async fn get_subject(
-    State(state): State<AppState>,
-    Path(slug): Path<String>,
-) -> AppResult<Json<SubjectDto>> {
-    all_subjects(&state)
+/// `/categories/{slug}/subjects/{subject}` path params (`slug` is the category's slug).
+#[derive(Debug, Deserialize)]
+struct SubjectPath {
+    slug: String,
+    subject: String,
+}
+
+async fn find_subject(
+    state: &AppState,
+    category: Option<&str>,
+    slug: &str,
+) -> AppResult<SubjectRow> {
+    repo::subject_by_slug(&state.db, category, slug)
+        .await?
+        .ok_or(AppError::NotFound("subject"))
+}
+
+async fn subject_dto(state: &AppState, subject: SubjectRow) -> AppResult<Json<SubjectDto>> {
+    all_subjects(state)
         .await?
         .into_iter()
-        .find(|s| s.slug == slug)
+        .find(|s| s.id == subject.id)
         .map(Json)
         .ok_or(AppError::NotFound("subject"))
 }
 
-async fn list_reviews(
+async fn get_subject(
+    State(state): State<AppState>,
+    Path(p): Path<SubjectPath>,
+) -> AppResult<Json<SubjectDto>> {
+    let subject = find_subject(&state, Some(&p.slug), &p.subject).await?;
+    subject_dto(&state, subject).await
+}
+
+async fn get_subject_legacy(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    Query(q): Query<PageQuery>,
+) -> AppResult<Json<SubjectDto>> {
+    let subject = find_subject(&state, None, &slug).await?;
+    subject_dto(&state, subject).await
+}
+
+async fn list_reviews(
+    State(state): State<AppState>,
+    Path(p): Path<SubjectPath>,
+    query: Query<PageQuery>,
 ) -> AppResult<axum::response::Response> {
-    let subject = repo::subject_by_slug(&state.db, &slug)
-        .await?
-        .ok_or(AppError::NotFound("subject"))?;
+    let subject = find_subject(&state, Some(&p.slug), &p.subject).await?;
+    reviews_of(&state, subject, query.0).await
+}
+
+async fn list_reviews_legacy(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    query: Query<PageQuery>,
+) -> AppResult<axum::response::Response> {
+    let subject = find_subject(&state, None, &slug).await?;
+    reviews_of(&state, subject, query.0).await
+}
+
+async fn list_quizzes(
+    State(state): State<AppState>,
+    Path(p): Path<SubjectPath>,
+    query: Query<PageQuery>,
+) -> AppResult<axum::response::Response> {
+    let subject = find_subject(&state, Some(&p.slug), &p.subject).await?;
+    quizzes_of(&state, subject, query.0).await
+}
+
+async fn list_quizzes_legacy(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    query: Query<PageQuery>,
+) -> AppResult<axum::response::Response> {
+    let subject = find_subject(&state, None, &slug).await?;
+    quizzes_of(&state, subject, query.0).await
+}
+
+async fn reviews_of(
+    state: &AppState,
+    subject: SubjectRow,
+    q: PageQuery,
+) -> AppResult<axum::response::Response> {
     if q.search.is_none() && q.slug.is_none() && q.offset.is_none() && q.limit.is_none() {
         let rows: Vec<ReviewRow> = sqlx::query_as(concat!(
             "SELECT ",
@@ -240,14 +317,11 @@ async fn list_reviews(
     Ok(Json(Page { items, has_more }).into_response())
 }
 
-async fn list_quizzes(
-    State(state): State<AppState>,
-    Path(slug): Path<String>,
-    Query(q): Query<PageQuery>,
+async fn quizzes_of(
+    state: &AppState,
+    subject: SubjectRow,
+    q: PageQuery,
 ) -> AppResult<axum::response::Response> {
-    let subject = repo::subject_by_slug(&state.db, &slug)
-        .await?
-        .ok_or(AppError::NotFound("subject"))?;
     if q.search.is_none() && q.offset.is_none() && q.limit.is_none() {
         let quizzes =
             repo::quiz_summaries(&state.db, &state.storage, Some(subject.id), true).await?;

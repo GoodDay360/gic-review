@@ -2,6 +2,7 @@
 import { useRouter } from 'vue-router'
 
 import type { Subject } from '@/api/types'
+import { subjectPagePath, type SubjectPage } from '@/utils/subjectPaths'
 
 import BaseModal from './BaseModal.vue'
 
@@ -9,9 +10,10 @@ const props = defineProps<{ subject: Subject | null }>()
 const emit = defineEmits<{ close: [] }>()
 const router = useRouter()
 
-function go(path: string) {
+function go(page: SubjectPage) {
+  if (!props.subject) return
   emit('close')
-  router.push(path)
+  router.push(subjectPagePath(props.subject.category_slug, props.subject.slug, page))
 }
 </script>
 
@@ -29,7 +31,7 @@ function go(path: string) {
         hover
         class="w-full card-lift flex flex-col items-start gap-2 p-5 text-left"
         :disabled="!props.subject.has_review"
-        @click="go(`/subjects/${props.subject.slug}/review`)"
+        @click="go('review')"
       >
         <v-avatar color="primary" variant="tonal" rounded="lg">
           <v-icon icon="mdi-book-open-page-variant-outline" />
@@ -44,7 +46,7 @@ function go(path: string) {
         type="button"
         hover
         class="w-full card-lift flex flex-col items-start gap-2 p-5 text-left"
-        @click="go(`/subjects/${props.subject.slug}/quizzes`)"
+        @click="go('quizzes')"
       >
         <v-avatar color="primary" variant="tonal" rounded="lg">
           <v-icon icon="mdi-format-list-checks" />

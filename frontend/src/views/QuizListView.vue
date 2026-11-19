@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import { api } from '@/api/client'
 import type { Page, QuizSummary, Subject } from '@/api/types'
@@ -11,17 +11,16 @@ import SearchBar from '@/components/SearchBar.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
 import { useInfiniteSearch } from '@/composables/useInfiniteSearch'
 import { useAsync } from '@/composables/useAsync'
+import { subjectApiPath } from '@/utils/subjectPaths'
 
-const props = defineProps<{ subjectSlug: string }>()
+const props = defineProps<{ categorySlug: string; subjectSlug: string }>()
+const apiPath = computed(() => subjectApiPath(props.categorySlug, props.subjectSlug))
 const {
   data: subject,
   loading,
   error,
   run,
-} = useAsync(
-  () => api.get<Subject>(`/subjects/${encodeURIComponent(props.subjectSlug)}`),
-  null as Subject | null,
-)
+} = useAsync(() => api.get<Subject>(apiPath.value), null as Subject | null)
 const {
   search,
   items: quizzes,
@@ -34,20 +33,15 @@ const {
   reset,
 } = useInfiniteSearch<QuizSummary>((search, offset, limit) => {
   const query = new URLSearchParams({ search, offset: String(offset), limit: String(limit) })
-  return api.get<Page<QuizSummary>>(
-    `/subjects/${encodeURIComponent(props.subjectSlug)}/quizzes?${query}`,
-  )
+  return api.get<Page<QuizSummary>>(`${apiPath.value}/quizzes?${query}`)
 })
 const selected = ref<QuizSummary | null>(null)
-watch(
-  () => props.subjectSlug,
-  () => {
-    selected.value = null
-    if (search.value) search.value = ''
-    else reset()
-    run()
-  },
-)
+watch(apiPath, () => {
+  selected.value = null
+  if (search.value) search.value = ''
+  else reset()
+  run()
+})
 onMounted(run)
 </script>
 

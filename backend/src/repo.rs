@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use sqlx::{MySqlPool, QueryBuilder};
 
 use crate::{
-    error::AppResult,
+    error::{AppError, AppResult},
     models::{
         OptionRow, Page, QuestionDto, QuestionRow, QuizDetail, QuizRow, QuizSummary, SubjectRow,
         option_columns, question_columns, quiz_columns, subject_columns,
@@ -201,6 +201,10 @@ pub async fn quiz_detail(
     .bind(quiz.subject_id)
     .fetch_one(db)
     .await?;
+    let (category_slug,): (String,) = sqlx::query_as("SELECT slug FROM categories WHERE id = ?")
+        .bind(subject.category_id)
+        .fetch_one(db)
+        .await?;
 
     let questions = load_questions(db, storage, None, Some(quiz_id), None)
         .await?
@@ -211,17 +215,35 @@ pub async fn quiz_detail(
         summary,
         subject_slug: subject.slug,
         subject_name: subject.name,
+        category_slug,
         questions,
     }))
 }
 
-pub async fn subject_by_slug(db: &MySqlPool, slug: &str) -> AppResult<Option<SubjectRow>> {
-    Ok(sqlx::query_as(concat!(
+/// A subject by its slug. Slugs are only unique inside a category, so pass `category_slug`
+/// whenever you have it. Without it, the slug must match exactly one subject: if several
+/// categories use it, this is a validation error asking for the category.
+pub async fn subject_by_slug(
+    db: &MySqlPool,
+    category_slug: Option<&str>,
+    slug: &str,
+) -> AppResult<Option<SubjectRow>> {
+    let mut rows: Vec<SubjectRow> = sqlx::query_as(concat!(
         "SELECT ",
         subject_columns!(),
-        " FROM subjects WHERE slug = ?"
+        " FROM subjects WHERE slug = ? \
+         AND (? IS NULL OR category_id = (SELECT c.id FROM categories c WHERE c.slug = ?)) \
+         LIMIT 2"
     ))
     .bind(slug)
-    .fetch_optional(db)
-    .await?)
+    .bind(category_slug)
+    .bind(category_slug)
+    .fetch_all(db)
+    .await?;
+    if rows.len() > 1 {
+        return Err(AppError::Validation(format!(
+            "several categories have a subject '{slug}': give the category slug too"
+        )));
+    }
+    Ok(rows.pop())
 }

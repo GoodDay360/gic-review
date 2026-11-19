@@ -226,7 +226,12 @@ async fn own_subject(app: &axum::Router, cookie: &str, tag: &str) -> i64 {
         Some(json!({ "name": format!("Category {tag}") })),
     )
     .await;
-    assert_eq!(y.status, StatusCode::CREATED, "create category: {:?}", y.json);
+    assert_eq!(
+        y.status,
+        StatusCode::CREATED,
+        "create category: {:?}",
+        y.json
+    );
     let s = send(app, "POST", "/api/admin/subjects", Some(cookie),
         Some(json!({ "category_id": y.json["id"], "name": format!("Subject {tag}"), "slug": format!("subject-{tag}") }))).await;
     assert_eq!(
@@ -982,9 +987,23 @@ async fn db_sharing_a_category_or_subject_gives_access_to_its_content() {
     // Sharing with all managers: only the category's owner (or an admin) can turn it on.
     let s1_all = format!("{s1_shares}/all");
     let category_all = format!("{category_shares}/all");
-    let r = send(&app, "PUT", &s1_all, Some(&b), Some(json!({ "enabled": true }))).await;
+    let r = send(
+        &app,
+        "PUT",
+        &s1_all,
+        Some(&b),
+        Some(json!({ "enabled": true })),
+    )
+    .await;
     assert_eq!(r.json["error"]["code"], "owner_only");
-    let r = send(&app, "PUT", &s1_all, Some(&a), Some(json!({ "enabled": true }))).await;
+    let r = send(
+        &app,
+        "PUT",
+        &s1_all,
+        Some(&a),
+        Some(json!({ "enabled": true })),
+    )
+    .await;
     assert_eq!(r.status, StatusCode::OK);
     assert_eq!(r.json["shared_with_all"], true);
     let get_as_b = |path: String| {
@@ -992,29 +1011,82 @@ async fn db_sharing_a_category_or_subject_gives_access_to_its_content() {
         let b = b.clone();
         async move { send(&app, "GET", &path, Some(&b), None).await.status }
     };
-    assert_eq!(get_as_b(format!("/api/admin/quizzes/{q1}")).await, StatusCode::OK);
-    assert_eq!(get_as_b(format!("/api/admin/quizzes/{q2}")).await, StatusCode::NOT_FOUND);
+    assert_eq!(
+        get_as_b(format!("/api/admin/quizzes/{q1}")).await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        get_as_b(format!("/api/admin/quizzes/{q2}")).await,
+        StatusCode::NOT_FOUND
+    );
     let r = send(&app, "GET", "/api/admin/categories", Some(&b), None).await;
-    let y = r.json.as_array().unwrap().iter().find(|y| y["id"] == category).unwrap();
-    let s1_dto = y["subjects"].as_array().unwrap().iter().find(|s| s["id"] == s1).unwrap();
+    let y = r
+        .json
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|y| y["id"] == category)
+        .unwrap();
+    let s1_dto = y["subjects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == s1)
+        .unwrap();
     assert_eq!(s1_dto["shared_with_you"], true);
     assert_eq!(s1_dto["can_add_content"], true);
-    send(&app, "PUT", &s1_all, Some(&a), Some(json!({ "enabled": false }))).await;
-    assert_eq!(get_as_b(format!("/api/admin/quizzes/{q1}")).await, StatusCode::NOT_FOUND);
+    send(
+        &app,
+        "PUT",
+        &s1_all,
+        Some(&a),
+        Some(json!({ "enabled": false })),
+    )
+    .await;
+    assert_eq!(
+        get_as_b(format!("/api/admin/quizzes/{q1}")).await,
+        StatusCode::NOT_FOUND
+    );
     // The whole category, for every manager: B can add content anywhere in it.
-    let r = send(&app, "PUT", &category_all, Some(&a), Some(json!({ "enabled": true }))).await;
+    let r = send(
+        &app,
+        "PUT",
+        &category_all,
+        Some(&a),
+        Some(json!({ "enabled": true })),
+    )
+    .await;
     assert_eq!(r.json["shared_with_all"], true);
-    assert_eq!(get_as_b(format!("/api/admin/quizzes/{q2}")).await, StatusCode::OK);
+    assert_eq!(
+        get_as_b(format!("/api/admin/quizzes/{q2}")).await,
+        StatusCode::OK
+    );
     let r = send(&app, "GET", &s1_shares, Some(&b), None).await;
     assert_eq!(r.json["category_shared_with_all"], true);
     assert_eq!(
-        send(&app, "POST", "/api/admin/quizzes", Some(&b), Some(quiz(s2, "B in s2 via all")))
-            .await
-            .status,
+        send(
+            &app,
+            "POST",
+            "/api/admin/quizzes",
+            Some(&b),
+            Some(quiz(s2, "B in s2 via all"))
+        )
+        .await
+        .status,
         StatusCode::CREATED
     );
-    send(&app, "PUT", &category_all, Some(&a), Some(json!({ "enabled": false }))).await;
-    assert_eq!(get_as_b(format!("/api/admin/quizzes/{q2}")).await, StatusCode::NOT_FOUND);
+    send(
+        &app,
+        "PUT",
+        &category_all,
+        Some(&a),
+        Some(json!({ "enabled": false })),
+    )
+    .await;
+    assert_eq!(
+        get_as_b(format!("/api/admin/quizzes/{q2}")).await,
+        StatusCode::NOT_FOUND
+    );
 
     // Admins see everything and can manage any category's sharing; an API key can't share.
     let r = send(
@@ -1155,10 +1227,24 @@ async fn db_categories_group_subjects() {
     assert_eq!(subj.status, StatusCode::CREATED);
     assert_eq!(subj.json["category_slug"], "very-cool-category");
 
-    let mine = send(&app, "GET", "/api/categories/very-cool-category", None, None).await;
+    let mine = send(
+        &app,
+        "GET",
+        "/api/categories/very-cool-category",
+        None,
+        None,
+    )
+    .await;
     assert_eq!(mine.json["subject_count"], 1);
     assert_eq!(mine.json["subjects"][0]["slug"], "ip");
-    let filtered = send(&app, "GET", "/api/subjects?category=very-cool-category", None, None).await;
+    let filtered = send(
+        &app,
+        "GET",
+        "/api/subjects?category=very-cool-category",
+        None,
+        None,
+    )
+    .await;
     assert_eq!(filtered.json.as_array().unwrap().len(), 1);
 
     // A subject needs a category; a category with subjects can't be deleted.
@@ -1193,7 +1279,9 @@ async fn db_categories_group_subjects() {
     .await;
     assert_eq!(r.status, StatusCode::OK);
     assert_eq!(
-        send(&app, "GET", "/api/categories/i4", None, None).await.json["subjects"][0]["slug"],
+        send(&app, "GET", "/api/categories/i4", None, None)
+            .await
+            .json["subjects"][0]["slug"],
         "hci"
     );
 
@@ -1784,5 +1872,121 @@ async fn db_cache_serves_students_but_never_outlives_an_update() {
             .as_deref(),
         Some("hit")
     );
+    tdb.cleanup().await;
+}
+
+#[tokio::test]
+async fn db_subject_slugs_are_unique_per_category_only() {
+    let Some(tdb) = common::test_db().await else {
+        return;
+    };
+    let db = tdb.pool.clone();
+    bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
+    insert_manager(&db, "slug-m@example.com", "manager-pass-s", true).await;
+    let app = app_with_pool(db);
+    let m = cookie_from(
+        &login(&app, "slug-m@example.com", "manager-pass-s")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+
+    // Two categories, each with an "algo" subject.
+    let mut categories = Vec::new();
+    for slug in ["i3", "i4"] {
+        let c = send(
+            &app,
+            "POST",
+            "/api/admin/categories",
+            Some(&m),
+            Some(json!({ "name": slug.to_uppercase(), "slug": slug })),
+        )
+        .await;
+        assert_eq!(
+            c.status,
+            StatusCode::CREATED,
+            "create category: {:?}",
+            c.json
+        );
+        let s = send(&app, "POST", "/api/admin/subjects", Some(&m),
+            Some(json!({ "category_id": c.json["id"], "name": format!("Algo {slug}"), "slug": "algo" }))).await;
+        assert_eq!(
+            s.status,
+            StatusCode::CREATED,
+            "create subject: {:?}",
+            s.json
+        );
+        categories.push((
+            c.json["slug"].as_str().unwrap().to_string(),
+            c.json["id"].clone(),
+        ));
+    }
+    // ...but still only one "algo" per category.
+    let dup = send(
+        &app,
+        "POST",
+        "/api/admin/subjects",
+        Some(&m),
+        Some(json!({ "category_id": categories[0].1, "name": "Algo again", "slug": "algo" })),
+    )
+    .await;
+    assert_eq!(dup.status, StatusCode::CONFLICT);
+
+    // Each is reachable through its category.
+    for (cat, _) in &categories {
+        let r = send(
+            &app,
+            "GET",
+            &format!("/api/categories/{cat}/subjects/algo"),
+            None,
+            None,
+        )
+        .await;
+        assert_eq!(r.status, StatusCode::OK);
+        assert_eq!(r.json["name"], format!("Algo {cat}"));
+        let q = send(
+            &app,
+            "GET",
+            &format!("/api/categories/{cat}/subjects/algo/quizzes"),
+            None,
+            None,
+        )
+        .await;
+        assert_eq!(q.status, StatusCode::OK);
+    }
+    // The legacy slug-only route can't tell them apart.
+    let legacy = send(&app, "GET", "/api/subjects/algo", None, None).await;
+    assert_eq!(
+        legacy.status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "{:?}",
+        legacy.json
+    );
+
+    // Import: subject_slug alone is ambiguous; with category_slug it lands in the right one.
+    let quiz = json!({ "title": "Sorting", "subject_slug": "algo",
+        "questions": [{ "prompt": "Fastest?", "answer_text": "Quick",
+                        "options": [{ "text": "Quick", "is_correct": true }, { "text": "Bubble" }] }] });
+    let r = send(
+        &app,
+        "POST",
+        "/api/admin/quizzes/import",
+        Some(&m),
+        Some(quiz.clone()),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY, "{:?}", r.json);
+    let mut with_cat = quiz;
+    with_cat["category_slug"] = json!(categories[1].0);
+    let r = send(
+        &app,
+        "POST",
+        "/api/admin/quizzes/import",
+        Some(&m),
+        Some(with_cat),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::CREATED, "{:?}", r.json);
+    assert_eq!(r.json["category_slug"], categories[1].0);
     tdb.cleanup().await;
 }

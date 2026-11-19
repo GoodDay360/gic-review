@@ -54,7 +54,7 @@ Full URL = `BASE` + path. `{id}` = a review id.
 | 6 | `POST` | `/admin/reviews` | yes | **create a NEW review** (upload its page) ← main endpoint |
 | 7 | `PUT` | `/admin/reviews/{id}` | yes | replace the HTML and/or change title, slug, order, published |
 | 8 | `DELETE` | `/admin/reviews/{id}` | yes | delete a review (owner only; **ask the human first**) |
-| 9 | `GET` | `/subjects/{slug}/reviews` | no | see what students see (published reviews only) |
+| 9 | `GET` | `/categories/{category_slug}/subjects/{subject_slug}/reviews` | no | see what students see (published reviews only) |
 | 10 | `GET` | `/admin/categories` | yes | **list categories and subjects with `can_add_content`** (where you may add content) |
 
 **Most jobs only need #1, #10, #3, #5 (if there are images) and #6.**
@@ -193,7 +193,7 @@ Response `200`: the review object.
 Deletes the review and its file. Response `204`. **Owner only.** Never do this without the
 human's explicit request.
 
-### #9 `GET /subjects/{slug}/reviews` (no key)
+### #9 `GET /categories/{category_slug}/subjects/{subject_slug}/reviews` (no key)
 Published reviews of the subject, as students see them.
 
 ### #10 `GET /admin/categories`
@@ -221,7 +221,7 @@ The public `GET /categories` and `GET /categories/{category_slug}` (no key) show
 ```
 
 On the website, students pick the category, then the subject, then "Interactive Review"
-(direct link: `/subjects/<subject-slug>/review` ; with `?r=<slug>` when the subject has several reviews).
+(direct link: `/categories/<category-slug>/<subject-slug>/review` ; with `?r=<slug>` when the subject has several reviews).
 
 ---
 

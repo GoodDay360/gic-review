@@ -1,6 +1,9 @@
 import { createRouter, createWebHistory, type RouteLocationNormalized } from 'vue-router'
 
+import { api } from '@/api/client'
+import type { Subject } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
+import { subjectPagePath, type SubjectPage } from '@/utils/subjectPaths'
 import HomeView from '@/views/HomeView.vue'
 
 declare module 'vue-router' {
@@ -10,6 +13,33 @@ declare module 'vue-router' {
     requiresEditor?: boolean
     requiresAdmin?: boolean
     title?: string
+  }
+}
+
+/**
+ * Old `/subjects/<slug>/<page>` links (from before slugs were per category): look the subject
+ * up and redirect to its `/categories/<category>/<subject>/<page>` URL. If the slug is unknown,
+ * or several categories use it, show the not-found page.
+ */
+function legacySubjectRedirect(page: SubjectPage) {
+  return async (to: RouteLocationNormalized) => {
+    const slug = String(to.params.subjectSlug)
+    try {
+      const subject = await api.get<Subject>(`/subjects/${encodeURIComponent(slug)}`)
+      return {
+        path: subjectPagePath(subject.category_slug, subject.slug, page),
+        query: to.query,
+        hash: to.hash,
+        replace: true,
+      }
+    } catch {
+      return {
+        name: 'not-found',
+        params: { pathMatch: to.path.slice(1).split('/') },
+        query: to.query,
+        hash: to.hash,
+      }
+    }
   }
 }
 
@@ -31,18 +61,29 @@ const router = createRouter({
       meta: { title: 'Subjects' },
     },
     {
-      path: '/subjects/:subjectSlug/review',
+      path: '/categories/:categorySlug/:subjectSlug/review',
       name: 'review',
       component: () => import('@/views/ReviewView.vue'),
       props: true,
       meta: { title: 'Interactive Review' },
     },
     {
-      path: '/subjects/:subjectSlug/quizzes',
+      path: '/categories/:categorySlug/:subjectSlug/quizzes',
       name: 'quizzes',
       component: () => import('@/views/QuizListView.vue'),
       props: true,
       meta: { title: 'Quizzes' },
+    },
+    // Old links: redirect to the per-category URLs above.
+    {
+      path: '/subjects/:subjectSlug/review',
+      component: () => import('@/views/NotFoundView.vue'),
+      beforeEnter: legacySubjectRedirect('review'),
+    },
+    {
+      path: '/subjects/:subjectSlug/quizzes',
+      component: () => import('@/views/NotFoundView.vue'),
+      beforeEnter: legacySubjectRedirect('quizzes'),
     },
     {
       path: '/quizzes/:quizId/play',

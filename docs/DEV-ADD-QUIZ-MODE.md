@@ -16,7 +16,7 @@ writing a new **player** and an **availability rule**; the stored data normally 
    - add it to `QuizMode::ALL` (order = display order),
    - write its rule in `QuizMode::is_available` and add a unit test in the same file.
 2. **API:** nothing else to do: `available_modes` is computed from `QuizMode::ALL` for
-   every quiz in `GET /api/subjects/:slug/quizzes` and `GET /api/quizzes/:id`.
+   every quiz in `GET /api/categories/:slug/subjects/:subject/quizzes` and `GET /api/quizzes/:id`.
 3. **Frontend type:** add the id to `QuizModeId` in `frontend/src/api/types.ts`.
 4. **Player component:** `frontend/src/quiz-modes/<Name>Player.vue`. It receives
    `quiz: QuizDetail` as a prop. Reuse `ResultScreen`, `ZoomableImage`,

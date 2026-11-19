@@ -159,7 +159,7 @@ users               id, email UNIQUE, password_hash, session_version, env_passwo
                     is_active, created_by NULL → users (SET NULL), created_at, updated_at
 categories               id, slug UNIQUE, name, description NULL, sort_order, created_by NULL → users (SET NULL)
                     (owner; NULL = admins only), shared_with_all (every manager has shared access), created_at, updated_at
-subjects            id, category_id → categories (RESTRICT), slug UNIQUE, name, description NULL, color (accent name), sort_order,
+subjects            id, category_id → categories (RESTRICT), slug (UNIQUE per category), name, description NULL, color (accent name), sort_order,
                     shared_with_all, created_at, updated_at
 interactive_reviews id, subject_id → subjects (RESTRICT), title, slug (UNIQUE per subject), r2_key,
                     sort_order, is_published, created_by NULL → users (SET NULL), created_at, updated_at
@@ -193,9 +193,11 @@ or admin session only, **A-s** = admin session only, **any** = any session or AP
 |---|---|---|
 | `GET /health` | public | 503 when the DB is down |
 | `GET /categories`, `GET /categories/:slug` | public | categories with `subject_count`; one category with its `subjects` |
-| `GET /subjects[?category=slug]`, `GET /subjects/:slug` | public | `category_id`, `category_slug`, `category_name`, `has_review`, `quiz_count` |
-| `GET /subjects/:slug/reviews` | public | published reviews with `url` (`?v=` cache-buster) |
-| `GET /subjects/:slug/quizzes` | public | published, with `question_count`, `available_modes` |
+| `GET /subjects[?category=slug]` | public | `category_id`, `category_slug`, `category_name`, `has_review`, `quiz_count` |
+| `GET /categories/:slug/subjects/:subject` | public | one subject (subject slugs are unique per category) |
+| `GET /categories/:slug/subjects/:subject/reviews` | public | published reviews with `url` (`?v=` cache-buster) |
+| `GET /categories/:slug/subjects/:subject/quizzes` | public | published, with `question_count`, `available_modes` |
+| `GET /subjects/:slug[/reviews\|/quizzes]` | public | legacy: only while one category uses the slug, else `422` |
 | `GET /quizzes/:id` | public / M | unpublished only for managers |
 | `POST /auth/login`, `POST /auth/logout` | public | login is rate-limited |
 | `GET /auth/me` | any | adds `auth_method` and `api_key_scopes` |

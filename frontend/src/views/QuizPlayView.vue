@@ -10,6 +10,7 @@ import SkeletonBlock from '@/components/SkeletonBlock.vue'
 import { useProgressStore, type ActiveQuizProgress } from '@/stores/progress'
 import { useAsync } from '@/composables/useAsync'
 import { availableModes, getQuizMode } from '@/quiz-modes/registry'
+import { subjectPagePath } from '@/utils/subjectPaths'
 
 const props = defineProps<{ quizId: string; mode?: string }>()
 const router = useRouter()
@@ -26,6 +27,9 @@ const {
 )
 onMounted(run)
 watch(() => props.quizId, run)
+const quizzesPath = computed(() =>
+  quiz.value ? subjectPagePath(quiz.value.category_slug, quiz.value.subject_slug, 'quizzes') : '/',
+)
 
 const mode = computed(() => getQuizMode(props.mode))
 const modeOk = computed(() => !!quiz.value && !!mode.value && mode.value.isAvailable(quiz.value))
@@ -73,7 +77,7 @@ function clearAndStartSelected() {
 }
 
 function cancelNewQuiz() {
-  if (quiz.value) router.replace(`/subjects/${quiz.value.subject_slug}/quizzes`)
+  if (quiz.value) router.replace(quizzesPath.value)
   else router.back()
 }
 </script>
@@ -84,7 +88,7 @@ function cancelNewQuiz() {
       <v-btn
         variant="text"
         prepend-icon="mdi-arrow-left"
-        :to="quiz ? `/subjects/${quiz.subject_slug}/quizzes` : '/'"
+        :to="quiz ? quizzesPath : '/'"
         class="-ml-3"
         >Back to quizzes
       </v-btn>

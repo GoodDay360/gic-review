@@ -16,6 +16,7 @@ import SearchBar from '@/components/SearchBar.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
 import { useInfiniteSearch } from '@/composables/useInfiniteSearch'
 import { useAsync } from '@/composables/useAsync'
+import { subjectApiPath } from '@/utils/subjectPaths'
 import { useThemeStore } from '@/stores/theme'
 import {
   getReviewScrollPosition,
@@ -23,7 +24,8 @@ import {
   saveReviewScrollPosition,
 } from '@/utils/reviewProgress'
 
-const props = defineProps<{ subjectSlug: string }>()
+const props = defineProps<{ categorySlug: string; subjectSlug: string }>()
+const apiPath = computed(() => subjectApiPath(props.categorySlug, props.subjectSlug))
 const route = useRoute()
 const router = useRouter()
 const theme = useThemeStore()
@@ -36,10 +38,7 @@ const {
   loading,
   error,
   run,
-} = useAsync(
-  () => api.get<Subject>(`/subjects/${encodeURIComponent(props.subjectSlug)}`),
-  null as Subject | null,
-)
+} = useAsync(() => api.get<Subject>(apiPath.value), null as Subject | null)
 const {
   search,
   items: reviews,
@@ -52,34 +51,27 @@ const {
   reset,
 } = useInfiniteSearch<Review>((search, offset, limit) => {
   const query = new URLSearchParams({ search, offset: String(offset), limit: String(limit) })
-  return api.get<Page<Review>>(
-    `/subjects/${encodeURIComponent(props.subjectSlug)}/reviews?${query}`,
-  )
+  return api.get<Page<Review>>(`${apiPath.value}/reviews?${query}`)
 })
-watch(
-  () => props.subjectSlug,
-  () => {
-    if (search.value) search.value = ''
-    else reset()
-    run()
-  },
-)
+watch(apiPath, () => {
+  if (search.value) search.value = ''
+  else reset()
+  run()
+})
 
 const selected = computed<Review | null>(() => {
   const r = route.query.r
   return reviews.value.find((x) => x.slug === r) ?? directReview.value
 })
 watch(
-  () => [props.subjectSlug, route.query.r] as const,
-  async ([subjectSlug, slug]) => {
+  () => [apiPath.value, route.query.r] as const,
+  async ([path, slug]) => {
     directReview.value = null
     directReviewError.value = null
     if (typeof slug !== 'string' || reviews.value.some((review) => review.slug === slug)) return
     const query = new URLSearchParams({ slug, offset: '0', limit: '1' })
     try {
-      const page = await api.get<Page<Review>>(
-        `/subjects/${encodeURIComponent(subjectSlug)}/reviews?${query}`,
-      )
+      const page = await api.get<Page<Review>>(`${path}/reviews?${query}`)
       if (route.query.r === slug) directReview.value = page.items[0] ?? null
     } catch (err) {
       if (route.query.r === slug) directReviewError.value = errorMessage(err)

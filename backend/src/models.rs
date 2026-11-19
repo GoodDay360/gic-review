@@ -110,7 +110,12 @@ pub struct SubjectDto {
 }
 
 impl SubjectDto {
-    pub fn from_row(r: SubjectRow, category: &CategoryRow, has_review: bool, quiz_count: i64) -> Self {
+    pub fn from_row(
+        r: SubjectRow,
+        category: &CategoryRow,
+        has_review: bool,
+        quiz_count: i64,
+    ) -> Self {
         Self {
             id: r.id,
             category_id: r.category_id,
@@ -344,6 +349,8 @@ pub struct QuizDetail {
     pub summary: QuizSummary,
     pub subject_slug: String,
     pub subject_name: String,
+    /// Subject slugs are unique per category: links need both.
+    pub category_slug: String,
     pub questions: Vec<QuestionDto>,
 }
 

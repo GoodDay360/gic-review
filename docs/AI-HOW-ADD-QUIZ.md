@@ -67,7 +67,7 @@ Full URL = `BASE` + path. `{id}` = a quiz id, `{qid}` = a question id.
 | 12 | `PUT` | `/admin/quizzes/{id}/questions/reorder` | yes | change the question order |
 | 13 | `DELETE` | `/admin/quizzes/{id}` | yes | delete a whole quiz (owner only; **ask the human first**) |
 | 14 | `DELETE` | `/admin/uploads/image/{key}` | yes | delete an uploaded image you didn't end up using |
-| 15 | `GET` | `/subjects/{slug}/quizzes` | no | see what students see (published quizzes only) |
+| 15 | `GET` | `/categories/{category_slug}/subjects/{subject_slug}/quizzes` | no | see what students see (published quizzes only) |
 | 16 | `GET` | `/admin/categories` | yes | **list categories and subjects with `can_add_content`** (where you may add content) |
 | 17 | `POST` | `/admin/quizzes` | yes | create a NEW **empty** quiz (title, description, cover), then add questions with #9 |
 
@@ -242,7 +242,7 @@ shared quizzes). Never do this without the human's explicit request.
 `{key}` is the full key, e.g. `/admin/uploads/image/tmp/2f1c7a8e-….png`. Response `204`.
 `409` if a quiz still uses it.
 
-### #15 `GET /subjects/{slug}/quizzes` (no key)
+### #15 `GET /categories/{category_slug}/subjects/{subject_slug}/quizzes` (no key)
 What students see: published quizzes of the subject.
 
 ### #16 `GET /admin/categories`
@@ -259,6 +259,7 @@ The public `GET /categories` and `GET /categories/{category_slug}` (no key) show
 {
   "id": 15,
   "subject_id": 1, "subject_slug": "hci", "subject_name": "Human Computer Interaction",
+  "category_slug": "i4",              // subject slugs are unique per category, links need both
   "title": "…", "description": "…",
   "cover_image_key": null, "cover_image_url": null,
   "is_published": false,
@@ -289,6 +290,7 @@ The public `GET /categories` and `GET /categories/{category_slug}` (no key) show
 ```jsonc
 {
   "subject_slug": "hci",              // required (or "subject_id": 1)
+  "category_slug": "i4",              // needed when several categories have a subject with this slug
   "title": "string",                  // required, 1–200 chars
   "description": "string | null",     // optional
   "cover_image_key": "…",             // optional cover image: EITHER an uploaded key (#5)…

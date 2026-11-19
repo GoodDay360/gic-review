@@ -9,6 +9,7 @@ pub mod config;
 pub mod csrf;
 pub mod error;
 pub mod extract;
+pub mod html_minify;
 pub mod images;
 pub mod models;
 pub mod quiz_modes;

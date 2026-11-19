@@ -15,6 +15,7 @@ use crate::{
     auth::{RequireEditor, ReviewManager},
     config::Config,
     error::{AppError, AppResult},
+    html_minify::minify_review_html_async,
     models::{ReviewDto, ReviewRow, review_columns},
     state::AppState,
     validation::{is_slug, slugify},
@@ -234,6 +235,7 @@ async fn create_review(
     }
     access::check_can_add_to_subject(&state.db, Actor::of(&user), subject_id).await?;
 
+    let html = minify_review_html_async(html).await;
     let key = format!("reviews/{subject_id}/{}.html", uuid::Uuid::new_v4());
     state
         .storage
@@ -284,6 +286,7 @@ async fn update_review(
     }
 
     if let Some(html) = form.html {
+        let html = minify_review_html_async(html).await;
         state
             .storage
             .put(&existing.r2_key, html, HTML_CONTENT_TYPE, HTML_CACHE)

@@ -3,6 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Cascade layer order: must come before every stylesheet. In production Vite emits the
+         split Vuetify CSS chunks (<link>s) before index.css, so without this the first layer seen
+         would be `vuetify-components` and Tailwind's preflight would override Vuetify. Keep in
+         sync with src/styles/main.css. -->
+    <style>
+      @layer theme, base, vuetify-core, vuetify-components, vuetify-overrides, components,
+        vuetify-utilities, utilities, vuetify-final;
+    </style>
     <title>%VITE_APP_NAME% · Study smarter for your exams</title>
     <meta
       name="description"

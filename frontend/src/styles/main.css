@@ -1,4 +1,4 @@
-/* Cascade layer order. Vuetify 4 ships all its CSS in `vuetify-*` layers; Tailwind's base sits
+/* Cascade layer order (also declared first in index.html, see there). Vuetify 4 ships all its CSS in `vuetify-*` layers; Tailwind's base sits
    below Vuetify, and Tailwind utilities sit above Vuetify's components/utilities so classes like
    `mt-4` or `text-ctp-subtext0` on a Vuetify component always win. */
 @layer theme, base, vuetify-core, vuetify-components, vuetify-overrides, components,

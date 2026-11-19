@@ -83,11 +83,30 @@ const field = {
   rounded: 'lg',
 } as const
 
+/**
+ * Start Vuetify on the flavor/accent the inline script in index.html already put on <html>
+ * (saved choice or OS preference), so the first render matches and nothing flashes.
+ */
+function initialTheme(): { flavor: FlavorName; accent: AccentName } {
+  const root = document.documentElement
+  const flavorAttr = root.getAttribute('data-flavor')
+  const accentAttr = root.getAttribute('data-accent')
+  const flavor = flavorEntries.some(([n]) => n === flavorAttr)
+    ? (flavorAttr as FlavorName)
+    : 'latte'
+  const isAccent = flavors.mocha.colorEntries.some(([n, c]) => c.accent && n === accentAttr)
+  return { flavor, accent: isAccent ? (accentAttr as AccentName) : 'mauve' }
+}
+
+const initial = initialTheme()
+
 export const vuetify = createVuetify({
   icons: { defaultSet: 'mdi', aliases, sets: { mdi } },
   theme: {
-    defaultTheme: 'latte',
-    themes: Object.fromEntries(flavorEntries.map(([name]) => [name, themeFor(name, 'mauve')])),
+    defaultTheme: initial.flavor,
+    themes: Object.fromEntries(
+      flavorEntries.map(([name]) => [name, themeFor(name, initial.accent)]),
+    ),
   },
   defaults: {
     VBtn: { rounded: 'lg', class: 'font-weight-semibold', style: 'letter-spacing: normal' },

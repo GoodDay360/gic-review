@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
+const route = useRoute()
 
 // Everyone gets content, categories (their own), subjects (in their categories) and their API key;
 // admins also manage accounts and everyone's API keys.
 const links = computed(() => [
   { to: '/admin/quizzes', label: 'Quizzes', icon: 'mdi-format-list-checks' },
-  { to: '/admin/import', label: 'Bulk import', icon: 'mdi-import' },
   {
     to: '/admin/reviews',
     label: 'Interactive reviews',
@@ -26,6 +27,11 @@ const links = computed(() => [
       ]
     : []),
 ])
+
+/** Bulk import has no menu entry of its own (it's opened from Quizzes), so keep Quizzes lit there. */
+function activeOverride(to: string): true | undefined {
+  return to === '/admin/quizzes' && route.path.startsWith('/admin/import') ? true : undefined
+}
 </script>
 
 <template>
@@ -60,6 +66,7 @@ const links = computed(() => [
             v-for="l in links"
             :key="l.to"
             :to="l.to"
+            :active="activeOverride(l.to)"
             :prepend-icon="l.icon"
             :title="l.label"
             rounded="lg"

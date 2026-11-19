@@ -9,6 +9,10 @@ import {
   type ManagedCategory,
 } from '@/api/categories'
 import type { Review, Subject } from '@/api/types'
+import CategorySubjectFilter, {
+  filterBySubject,
+  type FilterId,
+} from '@/components/admin/CategorySubjectFilter.vue'
 import OwnershipBadge from '@/components/admin/OwnershipBadge.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -42,6 +46,12 @@ async function load() {
   }
 }
 onMounted(load)
+
+const categoryFilter = ref<FilterId>('')
+const subjectFilter = ref<FilterId>('')
+const filteredReviews = computed(() =>
+  filterBySubject(reviews.value, categories.value, categoryFilter.value, subjectFilter.value),
+)
 
 const subjectName = (id: number) => subjects.value.find((s) => s.id === id)?.name ?? '?'
 
@@ -121,6 +131,24 @@ async function save() {
   }
 }
 
+const publishingId = ref<number | null>(null)
+async function togglePublish(r: Review) {
+  if (publishingId.value !== null) return
+  publishingId.value = r.id
+  try {
+    // The update endpoint takes a partial form: only the published flag changes.
+    const data = new FormData()
+    data.append('is_published', String(!r.is_published))
+    const updated = await api.put<Review>(`/admin/reviews/${r.id}`, data)
+    toast.success(r.is_published ? 'Review unpublished' : 'Review published')
+    reviews.value = reviews.value.map((x) => (x.id === updated.id ? updated : x))
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    publishingId.value = null
+  }
+}
+
 const deleting = ref<Review | null>(null)
 async function confirmDelete() {
   if (!deleting.value || deletingReview.value) return
@@ -155,6 +183,12 @@ async function confirmDelete() {
       the rules and a starter template. Replacing the file keeps the same URL.
     </v-alert>
 
+    <CategorySubjectFilter
+      v-model:category="categoryFilter"
+      v-model:subject="subjectFilter"
+      :categories="categories"
+    />
+
     <div v-if="loading" class="space-y-2">
       <SkeletonBlock v-for="i in 3" :key="i" class="h-14" />
     </div>
@@ -163,9 +197,15 @@ async function confirmDelete() {
       title="No interactive reviews yet"
       icon="mdi-book-open-page-variant-outline"
     />
+    <EmptyState
+      v-else-if="!filteredReviews.length"
+      title="No matching reviews"
+      message="No interactive review matches the selected category and subject."
+      icon="mdi-filter-remove-outline"
+    />
     <ul v-else class="space-y-2">
       <v-card
-        v-for="(r, i) in reviews"
+        v-for="(r, i) in filteredReviews"
         :key="r.id"
         tag="li"
         class="card-lift flex flex-wrap items-center gap-3 p-3"
@@ -189,6 +229,17 @@ async function confirmDelete() {
         >
           {{ r.is_published ? 'Published' : 'Hidden' }}
         </v-chip>
+        <v-btn
+          variant="tonal"
+          size="small"
+          :color="r.is_published ? undefined : 'success'"
+          :prepend-icon="r.is_published ? 'mdi-eye-off-outline' : 'mdi-publish'"
+          :loading="publishingId === r.id"
+          :disabled="publishingId !== null && publishingId !== r.id"
+          @click="togglePublish(r)"
+        >
+          {{ r.is_published ? 'Unpublish' : 'Publish' }}
+        </v-btn>
         <v-btn
           variant="text"
           size="small"

@@ -5,6 +5,10 @@ import { useRouter } from 'vue-router'
 import { api, errorMessage } from '@/api/client'
 import { addableSubjects, loadManagedCategories, type ManagedCategory } from '@/api/categories'
 import type { QuizDetail, QuizSummary, Subject } from '@/api/types'
+import CategorySubjectFilter, {
+  filterBySubject,
+  type FilterId,
+} from '@/components/admin/CategorySubjectFilter.vue'
 import OwnershipBadge from '@/components/admin/OwnershipBadge.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -16,22 +20,13 @@ import { useToastStore } from '@/stores/toast'
 const router = useRouter()
 const toast = useToastStore()
 
-const subjectFilter = ref<number | ''>('')
+const categoryFilter = ref<FilterId>('')
+const subjectFilter = ref<FilterId>('')
 const subjects = ref<Subject[]>([])
 const categories = ref<ManagedCategory[]>([])
 /** New quizzes may only go into subjects of categories you own (admins: any). */
 const addable = computed(() => addableSubjects(categories.value))
-const {
-  data: quizzes,
-  loading,
-  run,
-} = useAsync(
-  () =>
-    api.get<QuizSummary[]>(
-      `/admin/quizzes${subjectFilter.value ? `?subject_id=${subjectFilter.value}` : ''}`,
-    ),
-  [],
-)
+const { data: quizzes, loading, run } = useAsync(() => api.get<QuizSummary[]>('/admin/quizzes'), [])
 
 onMounted(async () => {
   categories.value = await loadManagedCategories().catch(() => [])
@@ -39,10 +34,9 @@ onMounted(async () => {
   run()
 })
 
-const subjectItems = computed(() => [
-  { title: 'All subjects', value: '' as number | '' },
-  ...subjects.value.map((s) => ({ title: `${s.category_name} · ${s.name}`, value: s.id })),
-])
+const filteredQuizzes = computed(() =>
+  filterBySubject(quizzes.value, categories.value, categoryFilter.value, subjectFilter.value),
+)
 const addableItems = computed(() =>
   addable.value.map((s) => ({ title: `${s.category_name} · ${s.name}`, value: s.id })),
 )
@@ -116,6 +110,7 @@ async function confirmDelete() {
         Quizzes
       </h1>
       <div class="flex flex-wrap gap-2">
+        <v-btn variant="tonal" prepend-icon="mdi-import" to="/admin/import">Bulk import</v-btn>
         <v-btn
           color="primary"
           prepend-icon="mdi-plus"
@@ -129,14 +124,10 @@ async function confirmDelete() {
       </div>
     </div>
 
-    <v-select
-      v-model="subjectFilter"
-      :items="subjectItems"
-      label="Subject"
-      prepend-inner-icon="mdi-filter-variant"
-      hide-details
-      class="max-w-sm"
-      @update:model-value="run"
+    <CategorySubjectFilter
+      v-model:category="categoryFilter"
+      v-model:subject="subjectFilter"
+      :categories="categories"
     />
 
     <div v-if="loading" class="space-y-2">
@@ -148,9 +139,15 @@ async function confirmDelete() {
       message="Create one, or use Bulk import to paste a whole quiz as JSON."
       icon="mdi-format-list-checks"
     />
+    <EmptyState
+      v-else-if="!filteredQuizzes.length"
+      title="No matching quizzes"
+      message="No quiz matches the selected category and subject."
+      icon="mdi-filter-remove-outline"
+    />
     <ul v-else class="space-y-2">
       <v-card
-        v-for="(q, i) in quizzes"
+        v-for="(q, i) in filteredQuizzes"
         :key="q.id"
         tag="li"
         class="card-lift flex flex-wrap items-center gap-3 p-3"

@@ -5,6 +5,7 @@ import { discardUpload } from '@/api/admin'
 import { api, errorMessage } from '@/api/client'
 import { loadManagedCategories, subjectsForEdit } from '@/api/categories'
 import type { Question, QuizDetail, Subject } from '@/api/types'
+import SubjectPicker from '@/components/admin/SubjectPicker.vue'
 import ImageUploader from '@/components/admin/ImageUploader.vue'
 import QuestionEditor from '@/components/admin/QuestionEditor.vue'
 import QuestionPreview from '@/components/admin/QuestionPreview.vue'
@@ -221,13 +222,7 @@ function onDrop(target: number) {
       <div class="grid gap-4 md:grid-cols-2">
         <div class="space-y-4">
           <v-text-field v-model="meta.title" label="Title" required maxlength="200" />
-          <v-select
-            v-model="meta.subject_id"
-            :items="subjects"
-            :item-title="(s) => `${s.category_name} · ${s.name}`"
-            item-value="id"
-            label="Subject"
-          />
+          <SubjectPicker v-model="meta.subject_id" :subjects="subjects" />
           <v-textarea v-model="meta.description" label="Description" rows="3" />
         </div>
         <ImageUploader

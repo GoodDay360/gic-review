@@ -9,6 +9,7 @@ import CategorySubjectFilter, {
   filterBySubject,
   type FilterId,
 } from '@/components/admin/CategorySubjectFilter.vue'
+import SubjectPicker from '@/components/admin/SubjectPicker.vue'
 import OwnershipBadge from '@/components/admin/OwnershipBadge.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -37,10 +38,6 @@ onMounted(async () => {
 const filteredQuizzes = computed(() =>
   filterBySubject(quizzes.value, categories.value, categoryFilter.value, subjectFilter.value),
 )
-const addableItems = computed(() =>
-  addable.value.map((s) => ({ title: `${s.category_name} · ${s.name}`, value: s.id })),
-)
-
 const subjectName = computed(() => new Map(subjects.value.map((s) => [s.id, s.name])))
 
 // ----- create -----
@@ -219,7 +216,7 @@ async function confirmDelete() {
 
     <BaseModal :open="creating" title="New quiz" @close="creating = false">
       <v-form id="create-quiz" class="space-y-4" @submit.prevent="create">
-        <v-select v-model="newQuiz.subject_id" :items="addableItems" label="Subject" />
+        <SubjectPicker v-model="newQuiz.subject_id" :subjects="addable" />
         <v-text-field v-model="newQuiz.title" label="Title" required maxlength="200" />
         <v-textarea v-model="newQuiz.description" label="Description" rows="3" />
       </v-form>

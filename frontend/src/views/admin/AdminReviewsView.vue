@@ -13,6 +13,7 @@ import CategorySubjectFilter, {
   filterBySubject,
   type FilterId,
 } from '@/components/admin/CategorySubjectFilter.vue'
+import SubjectPicker from '@/components/admin/SubjectPicker.vue'
 import OwnershipBadge from '@/components/admin/OwnershipBadge.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -93,10 +94,6 @@ function onFile(picked: File | File[] | null | undefined) {
   }
   file.value = f
 }
-
-const formSubjectItems = computed(() =>
-  formSubjects.value.map((s) => ({ title: `${s.category_name} · ${s.name}`, value: s.id })),
-)
 
 async function save() {
   if (progress.value !== null) return
@@ -275,7 +272,7 @@ async function confirmDelete() {
       @close="editing = null"
     >
       <v-form id="review-form" class="space-y-4" @submit.prevent="save">
-        <v-select v-model="form.subject_id" :items="formSubjectItems" label="Subject" />
+        <SubjectPicker v-model="form.subject_id" :subjects="formSubjects" />
         <v-text-field v-model="form.title" label="Title" required maxlength="200" />
         <div class="grid grid-cols-2 gap-3">
           <v-text-field

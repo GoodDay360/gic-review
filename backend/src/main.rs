@@ -87,8 +87,14 @@ async fn main() -> anyhow::Result<()> {
         image_upload_slots,
         cache,
     };
-    // Orphaned-image cleanup: once at startup, then hourly, in the background.
-    routes::uploads::spawn_orphan_cleanup_worker(state.clone());
+    // Orphaned-image cleanup: once at startup, then hourly, in the background. Production
+    // only: a dev database doesn't know production's images, so running it locally against
+    // a shared bucket would delete images that live quizzes still use.
+    if state.config.is_production() {
+        routes::uploads::spawn_orphan_cleanup_worker(state.clone());
+    } else {
+        tracing::info!("orphan cleanup worker disabled outside production");
+    }
     let app = build_router(state);
 
     let listener = tokio::net::TcpListener::bind(addr)

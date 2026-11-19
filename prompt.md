@@ -175,7 +175,7 @@ Before the first commit, run `git status` and confirm that no `.env`, `node_modu
 - Options can be single-answer or multi-answer (the question has a flag).
 - The user submits an answer, sees right or wrong plus the explanation, then clicks Next.
 - Shows a progress bar and score. End screen: score, percentage, list of missed questions, "Retry" and "Retry missed only" buttons.
-- Option order is shuffled each attempt; question order can be shuffled with a toggle.
+- Option order is shuffled each attempt; question order is shuffled by default (toggle to turn off).
 - Save question order, option order, current selection, submitted answers, and position so an unfinished attempt can resume.
 
 **Flashcard mode**

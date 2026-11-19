@@ -68,7 +68,7 @@ function saveProgress() {
 
 function start(subset?: Question[]) {
   const base = subset ?? props.quiz.questions
-  const questions = progress.state.shuffleQuestions ? shuffle(base) : base.slice()
+  const questions = progress.state.shuffleQuestionOrder ? shuffle(base) : base.slice()
   // Option order is shuffled on every attempt.
   const options: Record<number, QuestionOption[]> = {}
   for (const q of questions) options[q.id] = shuffle(q.options)
@@ -209,7 +209,7 @@ onMounted(() => {
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 function toggleShuffle() {
-  progress.state.shuffleQuestions = !progress.state.shuffleQuestions
+  progress.state.shuffleQuestionOrder = !progress.state.shuffleQuestionOrder
   start()
 }
 </script>
@@ -222,14 +222,14 @@ function toggleShuffle() {
           <span>Question {{ index + 1 }} / {{ total }}</span>
           <span class="font-medium text-ctp-text">Score: {{ score }} / {{ answeredCount }}</span>
           <v-btn
-            :variant="progress.state.shuffleQuestions ? 'tonal' : 'text'"
-            :color="progress.state.shuffleQuestions ? 'primary' : undefined"
+            :variant="progress.state.shuffleQuestionOrder ? 'tonal' : 'text'"
+            :color="progress.state.shuffleQuestionOrder ? 'primary' : undefined"
             size="small"
             prepend-icon="mdi-shuffle-variant"
-            :aria-pressed="progress.state.shuffleQuestions"
+            :aria-pressed="progress.state.shuffleQuestionOrder"
             title="Shuffle question order (restarts the quiz)"
             @click="toggleShuffle"
-            >Shuffle questions: {{ progress.state.shuffleQuestions ? 'on' : 'off' }}
+            >Shuffle questions: {{ progress.state.shuffleQuestionOrder ? 'on' : 'off' }}
           </v-btn>
         </div>
         <v-progress-linear

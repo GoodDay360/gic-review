@@ -46,7 +46,7 @@ export type ActiveQuizProgress = QcmProgress | FlashcardProgress
 
 interface ProgressState {
   results: Record<string, Partial<Record<QuizModeId, ModeResult>>>
-  shuffleQuestions: boolean
+  shuffleQuestionOrder: boolean
   activeQuiz: ActiveQuizProgress | null
 }
 
@@ -156,8 +156,10 @@ function load(): ProgressState {
         const wasPruned = pruneOldestResults(results, MAX_SAVED_RESULTS)
         const progress = {
           results,
-          shuffleQuestions:
-            typeof saved.shuffleQuestions === 'boolean' ? saved.shuffleQuestions : false,
+          // Renamed from `shuffleQuestions` (default off) so the new on-by-default
+          // applies to everyone; the old key is ignored.
+          shuffleQuestionOrder:
+            typeof saved.shuffleQuestionOrder === 'boolean' ? saved.shuffleQuestionOrder : true,
           activeQuiz: isActiveQuizProgress(saved.activeQuiz) ? saved.activeQuiz : null,
         }
         if (wasPruned) {
@@ -173,7 +175,7 @@ function load(): ProgressState {
   } catch {
     /* ignore */
   }
-  return { activeQuiz: null, results: {}, shuffleQuestions: false }
+  return { activeQuiz: null, results: {}, shuffleQuestionOrder: true }
 }
 
 export const useProgressStore = defineStore('progress', () => {

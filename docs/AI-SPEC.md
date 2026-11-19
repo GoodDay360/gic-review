@@ -86,7 +86,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 
 ### Quiz modes
 - ✅ Mode registry `frontend/src/quiz-modes/registry.ts` + backend `QuizMode` enum, `available_modes` computed by the backend
-- ✅ QCM: one question at a time, optional question image, text/image options (image grid), single or multi answer, explanation text + image, progress bar and score, shuffled options, question-shuffle toggle, resumable in-progress attempts, end screen with score, percentage, missed list, Retry and Retry missed only
+- ✅ QCM: one question at a time, optional question image, text/image options (image grid), single or multi answer, explanation text + image, progress bar and score, shuffled options, question-shuffle toggle (on by default), resumable in-progress attempts, end screen with score, percentage, missed list, Retry and Retry missed only
 - ✅ Flashcard: text/image front and back (falls back to the correct options), explanation, `object-contain` images with tap-to-zoom that doesn't flip, click/Space to flip, "I knew it" / "Didn't know" with missed cards returning once at the end of the round, resumable in-progress attempts, Space/←/→/1/2 shortcuts, end screen with "Study missed cards again"
 - ⏳ More modes (True/False, Matching, Fill-in-the-blank), see `docs/AI-HOW-ADD-QUIZ.md`
 

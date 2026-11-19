@@ -61,7 +61,7 @@ function saveProgress() {
 
 function start(subset?: Question[]) {
   const base = subset ?? props.quiz.questions
-  queue.value = progress.state.shuffleQuestions ? shuffle(base) : base.slice()
+  queue.value = progress.state.shuffleQuestionOrder ? shuffle(base) : base.slice()
   deckSize.value = queue.value.length
   index.value = 0
   flipped.value = false

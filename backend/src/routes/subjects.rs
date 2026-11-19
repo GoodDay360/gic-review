@@ -78,7 +78,8 @@ async fn find(state: &AppState, id: i64) -> AppResult<SubjectDto> {
         .ok_or(AppError::NotFound("subject"))
 }
 
-/// Editors create subjects in categories they own (admins: any category). Dashboard only.
+/// Editors create subjects in categories they own or that are shared with them (admins: any
+/// category). Dashboard only.
 async fn create_subject(
     RequireEditorSession(user): RequireEditorSession,
     State(state): State<AppState>,
@@ -86,7 +87,7 @@ async fn create_subject(
 ) -> AppResult<(StatusCode, Json<SubjectDto>)> {
     let body = body.normalize()?;
     ensure_category(&state, body.category_id).await?;
-    access::require_category(
+    access::require_category_contributor(
         &state.db,
         Actor::of(&user),
         body.category_id,

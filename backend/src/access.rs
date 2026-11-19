@@ -244,6 +244,31 @@ pub async fn require_category(db: &MySqlPool, actor: Actor, category_id: i64, wh
     }
 }
 
+/// Add subjects to a category: its owner, an admin, or anyone the whole category is shared with
+/// (by email or with all managers). `404` if it doesn't exist, `403 owner_only` otherwise.
+pub async fn require_category_contributor(
+    db: &MySqlPool,
+    actor: Actor,
+    category_id: i64,
+    what: &str,
+) -> AppResult<()> {
+    let row: Option<(Option<i64>, i64)> = sqlx::query_as(
+        "SELECT y.created_by, CAST(y.shared_with_all \
+           OR EXISTS(SELECT 1 FROM category_shares ys WHERE ys.category_id = y.id AND ys.user_id = ?) AS SIGNED) \
+         FROM categories y WHERE y.id = ?",
+    )
+    .bind(actor.id)
+    .bind(category_id)
+    .fetch_optional(db)
+    .await?;
+    let (owner, shared) = row.ok_or(AppError::NotFound("category"))?;
+    if can_manage_category(actor, owner) || shared > 0 {
+        Ok(())
+    } else {
+        Err(AppError::OwnerOnly(what.to_string()))
+    }
+}
+
 /// The categories and subjects shared with a user (by email, or with all managers).
 #[derive(Debug, Default)]
 pub struct SharedWithMe {

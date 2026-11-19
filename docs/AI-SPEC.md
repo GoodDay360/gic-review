@@ -112,7 +112,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Categories belong to their creator: any editor creates categories in the dashboard ("Yours" / "Owned by …"), only the owner or an admin edits/deletes them; seeded "General" has no owner (admins only)
 - ✅ Categories and subjects can only be created in the dashboard (API keys get `403 api_key_not_allowed`)
 - ✅ New quizzes/reviews only in subjects of categories you own or that are shared with you (category or subject); `403 not_your_category` lists where you can add; admins: all; `GET /admin/categories` (works with API keys) shows `can_manage`, `shared_with_you` and `can_add_content` per category and subject
-- ✅ Subjects: managers create/edit/delete them in their own categories, admins in all (category, name, slug, description, color, order; delete when empty); subject pickers show `Category · Subject` and only offer your own categories for new content
+- ✅ Subjects: managers create/edit/delete them in their own categories, and can also create them in categories shared with them (by email or with all managers); admins in all (category, name, slug, description, color, order; delete when empty); subject pickers show `Category · Subject` and only offer your own categories for new content
 - ✅ "Clean up orphaned images" (admin only, on the Subjects page)
 - ✅ Frontend route guards per role, mirrored by the backend
 
@@ -213,7 +213,7 @@ or admin session only, **A-s** = admin session only, **any** = any session or AP
 | `DELETE /admin/api-keys/:id` (also `POST …/:id/revoke`) | M-s own / A-s any | |
 | `GET /admin/api-keys[?user_id=]` | A-s | all managers' keys |
 | `GET/POST /admin/users`, `PATCH/DELETE /admin/users/:id`, `POST …/:id/reset-password` | A-s | managers only |
-| `POST /admin/subjects`, `PUT/DELETE /admin/subjects/:id` | M-s | `category_id` required; only in categories you own (admins: any) |
+| `POST /admin/subjects`, `PUT/DELETE /admin/subjects/:id` | M-s | `category_id` required; create in categories you own or that are shared with you, edit/delete only in categories you own (admins: any) |
 | `GET /admin/categories` | M (any scope) | every category with `owner_id`, `owner_name`, `can_manage`, `subjects` |
 | `POST /admin/categories`, `PUT/DELETE /admin/categories/:id` | M-s | create: you become owner; edit/delete: owner or admin; delete refused (409) while it has subjects |
 | `POST /admin/uploads/cleanup-orphans` | A-s | |

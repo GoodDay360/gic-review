@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * Subjects live inside categories. You can add/edit subjects only in categories you own (admins: all).
+ * Subjects live inside categories. You can add subjects to categories you own or that are shared with
+ * you, and edit/delete them only in categories you own (admins: all).
  * Subjects can only be created here, never through the API.
  */
 import { computed, onMounted, reactive, ref } from 'vue'
@@ -22,7 +23,9 @@ const { data: categories, loading, run } = useAsync(loadManagedCategories, [] as
 onMounted(run)
 const subjects = computed<ManagedSubject[]>(() => categories.value.flatMap((y) => y.subjects))
 /** Categories you can add subjects to. */
-const myCategories = computed(() => categories.value.filter((y) => y.can_manage))
+const myCategories = computed(() =>
+  categories.value.filter((y) => y.can_manage || y.shared_with_you),
+)
 const canManage = (s: Subject) =>
   categories.value.some((y) => y.id === s.category_id && y.can_manage)
 const sharing = ref<ManagedSubject | null>(null)
@@ -143,7 +146,7 @@ async function cleanupOrphans() {
           color="primary"
           prepend-icon="mdi-plus"
           :disabled="!myCategories.length"
-          :title="myCategories.length ? '' : 'Create a category first (Categories page)'"
+          :title="myCategories.length ? '' : 'Create a category first (Categories page), or ask an owner to share one'"
           @click="openNew"
           >New subject
         </v-btn>
@@ -242,8 +245,8 @@ async function cleanupOrphans() {
           prepend-inner-icon="mdi-layers-outline"
         />
         <v-alert v-if="!myCategories.length" type="warning" density="compact">
-          Create a category first (Categories page). You can only add subjects to your own
-          categories.
+          Create a category first (Categories page). You can add subjects to your own categories
+          and to categories shared with you.
         </v-alert>
         <v-text-field v-model="form.name" label="Name" required maxlength="150" @input="onName" />
         <div class="grid grid-cols-2 gap-3">

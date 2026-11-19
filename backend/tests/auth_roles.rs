@@ -915,6 +915,20 @@ async fn db_sharing_a_category_or_subject_gives_access_to_its_content() {
         StatusCode::CREATED
     );
 
+    // A shared category also lets B add subjects to it (but not edit or delete them).
+    assert_eq!(
+        send(
+            &app,
+            "POST",
+            "/api/admin/subjects",
+            Some(&b),
+            Some(json!({ "category_id": category, "name": "B's subject", "slug": "b-subject" }))
+        )
+        .await
+        .status,
+        StatusCode::CREATED
+    );
+
     // B leaves the category and the subject: access is gone.
     assert_eq!(
         send(

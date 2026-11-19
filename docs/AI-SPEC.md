@@ -181,7 +181,7 @@ api_keys            id, user_id → users (CASCADE), name, key_prefix, key_hash 
 
 Migrations: `20261118000001_init_schema.sql`, `20261118000002_seed_hci_subject.sql`,
 `20261118000003_api_keys.sql`, `20261118000004_content_shares.sql`, `20261118000005_years.sql` (creates the default category "General"), `20261118000006_year_owners.sql`, `20261118000007_year_subject_shares.sql` (adds category/subject shares, drops the item share tables),
-`20261118000008_session_version.sql`, `20261118000009_admin_env_password.sql`, `20261119000001_rename_years_to_categories.sql` (renames years → categories: tables `categories`, `category_shares`, column `subjects.category_id`), `20261119000002_share_with_all_managers.sql` (adds `categories.shared_with_all`, `subjects.shared_with_all`). R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
+`20261118000008_session_version.sql`, `20261118000009_admin_env_password.sql`, `20261119000001_rename_years_to_categories.sql` (renames years → categories: tables `categories`, `category_shares`, column `subjects.category_id`), `20261119000002_share_with_all_managers.sql` (adds `categories.shared_with_all`, `subjects.shared_with_all`). R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `images/{uuid}.{ext}` (images uploaded without a quiz),
 `reviews/{subject_id}/{uuid}.html`.
 
 ## API endpoints (current, prefix `/api`)
@@ -248,7 +248,7 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 - With `DB_SSL_REQUIRED=true` the connection is encrypted but the server certificate is not verified
   (managed MySQL services use self-signed certificates); there is no CA-pinning option yet.
 - Import URL downloads check for private IPs before connecting (DNS rebinding could race it).
-- `tmp/` image keys are not moved under `quizzes/{id}/` once the quiz exists.
+- `images/` image keys are not moved under `quizzes/{id}/` once the quiz exists.
 
 ---
 

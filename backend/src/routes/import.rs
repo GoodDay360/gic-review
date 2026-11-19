@@ -101,7 +101,7 @@ enum ImageSource {
 /// A syntactically valid placeholder used during the validation pass.
 fn placeholder(src: &Option<ImageSource>) -> Option<String> {
     src.as_ref()
-        .map(|_| format!("tmp/{}.png", uuid::Uuid::nil()))
+        .map(|_| format!("images/{}.png", uuid::Uuid::nil()))
 }
 
 struct PlannedQuestion {

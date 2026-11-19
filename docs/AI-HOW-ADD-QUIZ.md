@@ -132,9 +132,9 @@ If a quiz on the same topic exists, ask whether to add to it (#9) instead of cre
 
 ```bash
 curl -H "Authorization: Bearer $KEY" -F "file=@figure-3.png" $BASE/admin/uploads/image
-# 201 → { "key": "tmp/2f1c7a8e-….png", "url": "https://files.example.com/tmp/2f1c7a8e-….png" }
+# 201 → { "key": "images/2f1c7a8e-….png", "url": "https://files.example.com/images/2f1c7a8e-….png" }
 ```
-Keep the returned `key`; you put it in the quiz JSON (e.g. `"image_key": "tmp/2f1c…png"`).
+Keep the returned `key`; you put it in the quiz JSON (e.g. `"image_key": "images/2f1c…png"`).
 
 **Step 6. Create the quiz in one call** (#6). JSON format in section 5.
 
@@ -239,7 +239,7 @@ Deletes the quiz, its questions and images. Response `204`. **Owner only** (`403
 shared quizzes). Never do this without the human's explicit request.
 
 ### #14 `DELETE /admin/uploads/image/{key}`
-`{key}` is the full key, e.g. `/admin/uploads/image/tmp/2f1c7a8e-….png`. Response `204`.
+`{key}` is the full key, e.g. `/admin/uploads/image/images/2f1c7a8e-….png`. Response `204`.
 `409` if a quiz still uses it.
 
 ### #15 `GET /categories/{category_slug}/subjects/{subject_slug}/quizzes` (no key)
@@ -368,7 +368,7 @@ The public `GET /categories` and `GET /categories/{category_slug}` (no key) show
   "questions": [
     {
       "prompt": "Which heuristic does this dialog violate?",
-      "image_key": "tmp/2f1c7a8e-3b5d-4c1e-9f0a-6d2b8e4c7a11.png",
+      "image_key": "images/2f1c7a8e-3b5d-4c1e-9f0a-6d2b8e4c7a11.png",
       "image_alt": "A dialog with Delete and Save buttons styled identically side by side",
       "answer_text": "Error prevention",
       "explanation": "Destructive actions should be visually distinct and confirmed.",
@@ -391,7 +391,7 @@ The public `GET /categories` and `GET /categories/{category_slug}` (no key) show
     {
       "prompt": "What shape does Fitts's law have (movement time vs. index of difficulty)?",
       "answer_text": "A straight line.",
-      "answer_image_key": "tmp/9d1e0c55-6a2b-4f3c-8e7d-1a2b3c4d5e6f.png",
+      "answer_image_key": "images/9d1e0c55-6a2b-4f3c-8e7d-1a2b3c4d5e6f.png",
       "answer_image_alt": "Line chart where movement time rises linearly",
       "options": [
         { "text": "A straight line", "is_correct": true },
@@ -401,7 +401,7 @@ The public `GET /categories` and `GET /categories/{category_slug}` (no key) show
   ]
 }
 ```
-(The `tmp/…` keys are placeholders; use the keys returned by your own uploads in step 5.)
+(The `images/…` keys are placeholders; use the keys returned by your own uploads in step 5.)
 
 ---
 

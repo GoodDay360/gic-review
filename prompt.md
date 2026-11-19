@@ -305,7 +305,7 @@ Requirements:
 - **Upload flow:** the image goes to `POST /api/admin/uploads/image` first, which returns `{ key, url }`; the key is then saved on the quiz, question or option.
 - **Validation:** only png, jpg/jpeg, webp and gif are accepted. The backend checks real file bytes (magic numbers), not just the extension, and enforces `MAX_IMAGE_SIZE_MB`.
 - **Re-encoding:** images are optionally re-encoded and resized server-side (for example max 1600px wide, using the `image` crate) to strip EXIF metadata and keep pages fast.
-- **Object keys:** use the form `quizzes/{quiz_id}/{uuid}.{ext}` for quiz images (use a `tmp/` prefix if the quiz doesn't exist yet).
+- **Object keys:** use the form `quizzes/{quiz_id}/{uuid}.{ext}` for quiz images (use an `images/` prefix if the quiz doesn't exist yet).
 - **Cleanup:** when an image is replaced or removed, or its question, option or quiz is deleted, delete the old object from R2 as well. Add an admin-only "clean up orphaned images" action that removes R2 objects no row references.
 - **Alt text:** encourage alt text with an optional field in the editor, used for accessibility.
 

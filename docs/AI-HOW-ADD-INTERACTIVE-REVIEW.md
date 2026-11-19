@@ -112,9 +112,9 @@ instead. For figures from the source file (exported as PNG, cropped):
 
 ```bash
 curl -H "Authorization: Bearer $KEY" -F "file=@figure-3.png" $BASE/admin/uploads/image
-# 201 → { "key": "tmp/2f1c…png", "url": "https://files.example.com/tmp/2f1c…png" }
+# 201 → { "key": "images/2f1c…png", "url": "https://files.example.com/images/2f1c…png" }
 ```
-Use the **`url`** in the page: `<img src="https://files.example.com/tmp/2f1c…png" alt="…">`.
+Use the **`url`** in the page: `<img src="https://files.example.com/images/2f1c…png" alt="…">`.
 
 **Step 5. Write the HTML.** Copy the template in section 6, keep its `<style>` and `<script>`
 theme block **unchanged**, and replace the content inside `<main>`. Follow the rules in section 5.

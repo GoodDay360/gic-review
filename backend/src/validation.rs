@@ -48,13 +48,13 @@ pub fn clean(s: Option<String>) -> Option<String> {
     s.map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
 }
 
-/// An image key produced by our upload endpoint: `quizzes/{id}/{uuid}.{ext}` or `tmp/{uuid}.{ext}`.
+/// An image key produced by our upload endpoint: `quizzes/{id}/{uuid}.{ext}` or `images/{uuid}.{ext}`.
 pub fn is_image_key(key: &str) -> bool {
     let (dir, file) = match key.rsplit_once('/') {
         Some(parts) => parts,
         None => return false,
     };
-    let dir_ok = dir == "tmp"
+    let dir_ok = dir == "images"
         || dir
             .strip_prefix("quizzes/")
             .is_some_and(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()));
@@ -102,10 +102,10 @@ mod tests {
     #[test]
     fn image_keys() {
         let id = uuid::Uuid::new_v4();
-        assert!(is_image_key(&format!("tmp/{id}.png")));
+        assert!(is_image_key(&format!("images/{id}.png")));
         assert!(is_image_key(&format!("quizzes/12/{id}.webp")));
         assert!(!is_image_key(&format!("quizzes/x/{id}.png")));
         assert!(!is_image_key(&format!("reviews/1/{id}.html")));
-        assert!(!is_image_key("tmp/../../etc/passwd.png"));
+        assert!(!is_image_key("images/../../etc/passwd.png"));
     }
 }

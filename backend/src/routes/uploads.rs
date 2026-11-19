@@ -66,7 +66,7 @@ pub async fn store_image(
     let ext = processed.kind.ext();
     let key = match quiz_id {
         Some(qid) => format!("quizzes/{qid}/{id}.{ext}"),
-        None => format!("tmp/{id}.{ext}"),
+        None => format!("images/{id}.{ext}"),
     };
     state
         .storage
@@ -185,7 +185,7 @@ async fn cleanup_orphans(
 
     let mut scanned = 0usize;
     let mut deleted = Vec::new();
-    for prefix in ["quizzes/", "tmp/", "reviews/"] {
+    for prefix in ["quizzes/", "images/", "reviews/"] {
         for obj in state.storage.list(prefix).await? {
             scanned += 1;
             let old_enough = obj.last_modified.is_none_or(|t| t < cutoff);

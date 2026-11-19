@@ -158,9 +158,9 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 users               id, email UNIQUE, password_hash, session_version, env_password_hash NULL, display_name, role ENUM('admin','manager'),
                     is_active, created_by NULL → users (SET NULL), created_at, updated_at
 categories               id, slug UNIQUE, name, description NULL, sort_order, created_by NULL → users (SET NULL)
-                    (owner; NULL = admins only), created_at, updated_at
+                    (owner; NULL = admins only), shared_with_all (every manager has shared access), created_at, updated_at
 subjects            id, category_id → categories (RESTRICT), slug UNIQUE, name, description NULL, color (accent name), sort_order,
-                    created_at, updated_at
+                    shared_with_all, created_at, updated_at
 interactive_reviews id, subject_id → subjects (RESTRICT), title, slug (UNIQUE per subject), r2_key,
                     sort_order, is_published, created_by NULL → users (SET NULL), created_at, updated_at
 quizzes             id, subject_id → subjects (RESTRICT), title, description NULL, cover_image_key NULL,
@@ -181,7 +181,7 @@ api_keys            id, user_id → users (CASCADE), name, key_prefix, key_hash 
 
 Migrations: `20261118000001_init_schema.sql`, `20261118000002_seed_hci_subject.sql`,
 `20261118000003_api_keys.sql`, `20261118000004_content_shares.sql`, `20261118000005_years.sql` (creates the default category "General"), `20261118000006_year_owners.sql`, `20261118000007_year_subject_shares.sql` (adds category/subject shares, drops the item share tables),
-`20261118000008_session_version.sql`, `20261118000009_admin_env_password.sql`, `20261119000001_rename_years_to_categories.sql` (renames years → categories: tables `categories`, `category_shares`, column `subjects.category_id`). R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
+`20261118000008_session_version.sql`, `20261118000009_admin_env_password.sql`, `20261119000001_rename_years_to_categories.sql` (renames years → categories: tables `categories`, `category_shares`, column `subjects.category_id`), `20261119000002_share_with_all_managers.sql` (adds `categories.shared_with_all`, `subjects.shared_with_all`). R2 key formats: `quizzes/{quiz_id}/{uuid}.{ext}`, `tmp/{uuid}.{ext}`,
 `reviews/{subject_id}/{uuid}.html`.
 
 ## API endpoints (current, prefix `/api`)
@@ -208,6 +208,7 @@ or admin session only, **A-s** = admin session only, **any** = any session or AP
 | `GET/POST /admin/reviews`, `GET/PUT/DELETE /admin/reviews/:id` | M `reviews:write` | multipart `.html`; delete owner-only |
 | `GET/POST /admin/categories/:id/shares`, `DELETE …/shares/:user_id` | M-s | view: category owner/admin/recipients; add (`{email}`): category owner or admin; delete: category owner/admin, or yourself to leave |
 | `GET/POST /admin/subjects/:id/shares`, `DELETE …/shares/:user_id` | M-s | same rules (managed by the subject's category owner or an admin) |
+| `PUT /admin/{categories\|subjects}/:id/shares/all` `{enabled}` | M-s | category owner or admin: share with every manager at once (response = shares list with `shared_with_all`, `category_shared_with_all`) |
 | `GET /admin/api-keys/mine`, `POST /admin/api-keys` | M-s | 409 when an active key exists (unless `replace_existing`) |
 | `DELETE /admin/api-keys/:id` (also `POST …/:id/revoke`) | M-s own / A-s any | |
 | `GET /admin/api-keys[?user_id=]` | A-s | all managers' keys |
@@ -251,6 +252,9 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-19: **Share with all managers.** Category owners and admins can share a category or a subject with every
+  manager at once (switch in the Share dialog; `PUT /admin/{categories|subjects}/:id/shares/all`). Same rights as an
+  email share; recipients can't leave it. Migration `20261119000002_share_with_all_managers`.
 - 2026-11-19: **Vuetify 4 UI.** All buttons, forms, inputs, selects, switches, dialogs, menus, alerts, chips,
   progress bars and toasts (`v-snackbar-queue`) are Vuetify components; icons are Material Design Icons
   (`@mdi/font`, `mdi-*` names, `AppIcon.vue` removed). CSS layer order in `main.css` keeps Tailwind utilities

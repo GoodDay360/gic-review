@@ -965,6 +965,43 @@ async fn db_sharing_a_category_or_subject_gives_access_to_its_content() {
         StatusCode::NOT_FOUND
     );
 
+    // Sharing with all managers: only the category's owner (or an admin) can turn it on.
+    let s1_all = format!("{s1_shares}/all");
+    let category_all = format!("{category_shares}/all");
+    let r = send(&app, "PUT", &s1_all, Some(&b), Some(json!({ "enabled": true }))).await;
+    assert_eq!(r.json["error"]["code"], "owner_only");
+    let r = send(&app, "PUT", &s1_all, Some(&a), Some(json!({ "enabled": true }))).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json["shared_with_all"], true);
+    let get_as_b = |path: String| {
+        let app = app.clone();
+        let b = b.clone();
+        async move { send(&app, "GET", &path, Some(&b), None).await.status }
+    };
+    assert_eq!(get_as_b(format!("/api/admin/quizzes/{q1}")).await, StatusCode::OK);
+    assert_eq!(get_as_b(format!("/api/admin/quizzes/{q2}")).await, StatusCode::NOT_FOUND);
+    let r = send(&app, "GET", "/api/admin/categories", Some(&b), None).await;
+    let y = r.json.as_array().unwrap().iter().find(|y| y["id"] == category).unwrap();
+    let s1_dto = y["subjects"].as_array().unwrap().iter().find(|s| s["id"] == s1).unwrap();
+    assert_eq!(s1_dto["shared_with_you"], true);
+    assert_eq!(s1_dto["can_add_content"], true);
+    send(&app, "PUT", &s1_all, Some(&a), Some(json!({ "enabled": false }))).await;
+    assert_eq!(get_as_b(format!("/api/admin/quizzes/{q1}")).await, StatusCode::NOT_FOUND);
+    // The whole category, for every manager: B can add content anywhere in it.
+    let r = send(&app, "PUT", &category_all, Some(&a), Some(json!({ "enabled": true }))).await;
+    assert_eq!(r.json["shared_with_all"], true);
+    assert_eq!(get_as_b(format!("/api/admin/quizzes/{q2}")).await, StatusCode::OK);
+    let r = send(&app, "GET", &s1_shares, Some(&b), None).await;
+    assert_eq!(r.json["category_shared_with_all"], true);
+    assert_eq!(
+        send(&app, "POST", "/api/admin/quizzes", Some(&b), Some(quiz(s2, "B in s2 via all")))
+            .await
+            .status,
+        StatusCode::CREATED
+    );
+    send(&app, "PUT", &category_all, Some(&a), Some(json!({ "enabled": false }))).await;
+    assert_eq!(get_as_b(format!("/api/admin/quizzes/{q2}")).await, StatusCode::NOT_FOUND);
+
     // Admins see everything and can manage any category's sharing; an API key can't share.
     let r = send(
         &app,

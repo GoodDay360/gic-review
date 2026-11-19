@@ -61,6 +61,10 @@ export interface SharePerson {
 export interface Shares {
   owner: SharePerson | null
   shared_with: (SharePerson & { shared_at: string })[]
+  /** Shared with every manager (on top of `shared_with`). */
+  shared_with_all: boolean
+  /** For a subject: its whole category is shared with every manager. */
+  category_shared_with_all: boolean
   you_are_owner: boolean
   /** Category owner or admin: may add/remove people. */
   can_manage: boolean

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * Share a whole category, or one subject of a category, with other people by email.
- * Category owner / admin: add and remove people. Someone it is shared with: see who has access, or leave.
+ * Category owner / admin: add and remove people, or share it with every manager at once.
+ * Someone it is shared with: see who has access, or leave.
  */
 import { ref, watch } from 'vue'
 
@@ -67,13 +68,36 @@ async function add() {
   }
 }
 
+async function setAll(enabled: boolean | null) {
+  if (busy.value) return
+  busy.value = true
+  try {
+    shares.value = await api.put<Shares>(`${base()}/all`, { enabled: !!enabled })
+    toast.success(
+      enabled
+        ? 'Every manager can now add and edit content here.'
+        : 'No longer shared with all managers.',
+      enabled ? 'Shared' : undefined,
+    )
+    emit('changed')
+  } catch (err) {
+    toast.error(errorMessage(err))
+  } finally {
+    busy.value = false
+  }
+}
+
 async function remove(userId: number) {
   if (busy.value) return
   const leaving = userId === auth.user?.id
   busy.value = true
   try {
     shares.value = await api.delete<Shares>(`${base()}/${userId}`)
-    if (leaving && !shares.value?.can_manage) {
+    const stillShared = shares.value?.shared_with_all || shares.value?.category_shared_with_all
+    if (leaving && !shares.value?.can_manage && stillShared) {
+      toast.success('Removed — you still have access because it is shared with all managers')
+      emit('changed')
+    } else if (leaving && !shares.value?.can_manage) {
       toast.success('You no longer have access to it')
       emit('left')
       emit('close')
@@ -123,6 +147,38 @@ async function remove(userId: number) {
         >
       </v-form>
 
+      <div
+        v-if="shares.can_manage"
+        class="flex items-center gap-3 rounded-lg border border-ctp-surface0 p-3"
+      >
+        <v-avatar color="secondary" variant="tonal" size="36">
+          <v-icon icon="mdi-account-group-outline" size="20" />
+        </v-avatar>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-medium text-ctp-text">Share with all managers</p>
+          <p class="text-xs text-ctp-subtext0">
+            Every manager can add, edit and publish content here, without adding them one by one.
+          </p>
+        </div>
+        <v-switch
+          :model-value="shares.shared_with_all"
+          color="primary"
+          inset
+          hide-details
+          density="compact"
+          :disabled="busy"
+          aria-label="Share with all managers"
+          @update:model-value="setAll"
+        />
+      </div>
+      <p
+        v-if="kind === 'subjects' && shares.category_shared_with_all"
+        class="flex items-center gap-2 text-sm text-ctp-subtext0"
+      >
+        <v-icon icon="mdi-information-outline" size="18" />
+        Its whole category is shared with all managers, so every manager already has access.
+      </p>
+
       <ul class="divide-y divide-ctp-surface0 rounded-lg border border-ctp-surface0">
         <li v-if="shares.owner" class="flex items-center gap-3 p-3">
           <v-avatar color="primary" variant="tonal" size="36">
@@ -138,6 +194,18 @@ async function remove(userId: number) {
             <p class="text-xs text-ctp-subtext0">{{ shares.owner.email }}</p>
           </div>
           <v-chip size="small" color="primary" variant="tonal">Category owner</v-chip>
+        </li>
+        <li v-if="shares.shared_with_all && !shares.can_manage" class="flex items-center gap-3 p-3">
+          <v-avatar color="secondary" variant="tonal" size="36">
+            <v-icon icon="mdi-account-group-outline" size="20" />
+          </v-avatar>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-medium text-ctp-text">All managers</p>
+            <p class="text-xs text-ctp-subtext0">Everyone with a manager account</p>
+          </div>
+          <v-chip size="x-small" color="success" variant="tonal" prepend-icon="mdi-check"
+            >Has access</v-chip
+          >
         </li>
         <li
           v-for="p in shares.shared_with"
@@ -181,7 +249,7 @@ async function remove(userId: number) {
           </v-btn>
         </li>
         <li
-          v-if="!shares.shared_with.length"
+          v-if="!shares.shared_with.length && !(shares.shared_with_all && !shares.can_manage)"
           class="flex items-center gap-2 p-3 text-sm text-ctp-subtext0"
         >
           <v-icon icon="mdi-account-off-outline" size="18" /> Not shared with anyone yet.

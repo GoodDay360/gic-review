@@ -2,14 +2,14 @@
 //!
 //! **Categories** belong to their creator. The category owner (or an admin) manages the category, its
 //! subjects, and who it is shared with. A category, or one subject of a category, can be **shared** with
-//! other users by email (dashboard only). There is no per-item sharing: access to a category or
+//! other users by email, or with every manager at once (dashboard only). There is no per-item sharing: access to a category or
 //! subject covers every quiz and interactive review inside it.
 //!
 //! Access to a quiz/review, from strongest to weakest:
 //! - `owner`: you created the item;
 //! - `admin`: you are an admin (every item);
 //! - `category_owner`: the item is in a category you own;
-//! - `shared`: its category, or its subject, is shared with you.
+//! - `shared`: its category, or its subject, is shared with you (or with all managers).
 //!
 //! The first three have full rights (edit, publish, delete). `shared` can view, edit and publish
 //! but not delete. Without any of them the item is invisible (`404`).
@@ -133,7 +133,8 @@ pub async fn require(
         Content::Quiz => {
             sqlx::query_as(
                 "SELECT z.created_by, u.display_name, y.created_by, \
-                 CAST(EXISTS(SELECT 1 FROM category_shares ys WHERE ys.category_id = y.id AND ys.user_id = ?) \
+                 CAST(y.shared_with_all OR sj.shared_with_all \
+                   OR EXISTS(SELECT 1 FROM category_shares ys WHERE ys.category_id = y.id AND ys.user_id = ?) \
                    OR EXISTS(SELECT 1 FROM subject_shares ss WHERE ss.subject_id = sj.id AND ss.user_id = ?) AS SIGNED) \
                  FROM quizzes z JOIN subjects sj ON sj.id = z.subject_id JOIN categories y ON y.id = sj.category_id \
                  LEFT JOIN users u ON u.id = z.created_by WHERE z.id = ?",
@@ -147,7 +148,8 @@ pub async fn require(
         Content::Review => {
             sqlx::query_as(
                 "SELECT r.created_by, u.display_name, y.created_by, \
-                 CAST(EXISTS(SELECT 1 FROM category_shares ys WHERE ys.category_id = y.id AND ys.user_id = ?) \
+                 CAST(y.shared_with_all OR sj.shared_with_all \
+                   OR EXISTS(SELECT 1 FROM category_shares ys WHERE ys.category_id = y.id AND ys.user_id = ?) \
                    OR EXISTS(SELECT 1 FROM subject_shares ss WHERE ss.subject_id = sj.id AND ss.user_id = ?) AS SIGNED) \
                  FROM interactive_reviews r JOIN subjects sj ON sj.id = r.subject_id JOIN categories y ON y.id = sj.category_id \
                  LEFT JOIN users u ON u.id = r.created_by WHERE r.id = ?",
@@ -179,7 +181,8 @@ pub async fn accessible(
         Content::Quiz => {
             sqlx::query_as(
                 "SELECT z.id, z.created_by, u.display_name, y.created_by, \
-                 CAST(EXISTS(SELECT 1 FROM category_shares ys WHERE ys.category_id = y.id AND ys.user_id = ?) \
+                 CAST(y.shared_with_all OR sj.shared_with_all \
+                   OR EXISTS(SELECT 1 FROM category_shares ys WHERE ys.category_id = y.id AND ys.user_id = ?) \
                    OR EXISTS(SELECT 1 FROM subject_shares ss WHERE ss.subject_id = sj.id AND ss.user_id = ?) AS SIGNED) \
                  FROM quizzes z JOIN subjects sj ON sj.id = z.subject_id JOIN categories y ON y.id = sj.category_id \
                  LEFT JOIN users u ON u.id = z.created_by",
@@ -192,7 +195,8 @@ pub async fn accessible(
         Content::Review => {
             sqlx::query_as(
                 "SELECT r.id, r.created_by, u.display_name, y.created_by, \
-                 CAST(EXISTS(SELECT 1 FROM category_shares ys WHERE ys.category_id = y.id AND ys.user_id = ?) \
+                 CAST(y.shared_with_all OR sj.shared_with_all \
+                   OR EXISTS(SELECT 1 FROM category_shares ys WHERE ys.category_id = y.id AND ys.user_id = ?) \
                    OR EXISTS(SELECT 1 FROM subject_shares ss WHERE ss.subject_id = sj.id AND ss.user_id = ?) AS SIGNED) \
                  FROM interactive_reviews r JOIN subjects sj ON sj.id = r.subject_id JOIN categories y ON y.id = sj.category_id \
                  LEFT JOIN users u ON u.id = r.created_by",
@@ -240,7 +244,7 @@ pub async fn require_category(db: &MySqlPool, actor: Actor, category_id: i64, wh
     }
 }
 
-/// The categories and subjects shared with a user.
+/// The categories and subjects shared with a user (by email, or with all managers).
 #[derive(Debug, Default)]
 pub struct SharedWithMe {
     pub categories: HashSet<i64>,
@@ -248,15 +252,20 @@ pub struct SharedWithMe {
 }
 
 pub async fn shared_with(db: &MySqlPool, user_id: i64) -> AppResult<SharedWithMe> {
-    let categories: Vec<(i64,)> = sqlx::query_as("SELECT category_id FROM category_shares WHERE user_id = ?")
-        .bind(user_id)
-        .fetch_all(db)
-        .await?;
-    let subjects: Vec<(i64,)> =
-        sqlx::query_as("SELECT subject_id FROM subject_shares WHERE user_id = ?")
-            .bind(user_id)
-            .fetch_all(db)
-            .await?;
+    let categories: Vec<(i64,)> = sqlx::query_as(
+        "SELECT category_id FROM category_shares WHERE user_id = ? \
+         UNION SELECT id FROM categories WHERE shared_with_all",
+    )
+    .bind(user_id)
+    .fetch_all(db)
+    .await?;
+    let subjects: Vec<(i64,)> = sqlx::query_as(
+        "SELECT subject_id FROM subject_shares WHERE user_id = ? \
+         UNION SELECT id FROM subjects WHERE shared_with_all",
+    )
+    .bind(user_id)
+    .fetch_all(db)
+    .await?;
     Ok(SharedWithMe {
         categories: categories.into_iter().map(|(y,)| y).collect(),
         subjects: subjects.into_iter().map(|(s,)| s).collect(),
@@ -290,12 +299,12 @@ pub async fn check_can_add_to_subject(
         return Ok(());
     }
     let places: Vec<(String,)> = sqlx::query_as(
-        "SELECT y.name FROM categories y WHERE y.created_by = ? \
+        "SELECT y.name FROM categories y WHERE y.created_by = ? OR y.shared_with_all \
            OR EXISTS(SELECT 1 FROM category_shares ys WHERE ys.category_id = y.id AND ys.user_id = ?) \
          UNION \
-         SELECT CONCAT(y.name, ' · ', s.name) FROM subject_shares ss \
-           JOIN subjects s ON s.id = ss.subject_id JOIN categories y ON y.id = s.category_id \
-         WHERE ss.user_id = ?",
+         SELECT CONCAT(y.name, ' · ', s.name) FROM subjects s JOIN categories y ON y.id = s.category_id \
+         WHERE s.shared_with_all \
+           OR EXISTS(SELECT 1 FROM subject_shares ss WHERE ss.subject_id = s.id AND ss.user_id = ?)",
     )
     .bind(actor.id)
     .bind(actor.id)

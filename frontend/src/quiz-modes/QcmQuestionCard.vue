@@ -118,7 +118,7 @@ const letter = (i: number) => String.fromCharCode(65 + i)
       :title="isCorrect ? 'Correct!' : 'Not quite.'"
       border="start"
       class="animate__animated"
-      :class="isCorrect ? 'animate__tada' : 'animate__headShake'"
+      :class="isCorrect ? 'animate__fadeInUp animate__faster' : 'animate__headShake'"
       aria-live="polite"
     >
       <p v-if="question.explanation" class="mt-1 whitespace-pre-line text-ctp-text">

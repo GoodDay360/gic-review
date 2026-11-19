@@ -121,7 +121,9 @@ async function confirmDelete() {
   }
 }
 
-// Maintenance: remove R2 files that no row references (admin only).
+// Maintenance: remove R2 files that no row references (admin only, production builds only:
+// a dev server may share the bucket with production but not its database).
+const cleanupAllowed = import.meta.env.PROD
 const cleaning = ref(false)
 async function cleanupOrphans() {
   if (cleaning.value) return
@@ -150,7 +152,12 @@ async function cleanupOrphans() {
           v-if="auth.isAdmin"
           variant="tonal"
           prepend-icon="mdi-broom"
-          title="Delete R2 files that no quiz, question, option or review uses (keeps files younger than 1 hour)"
+          :title="
+            cleanupAllowed
+              ? 'Delete R2 files that no quiz, question, option or review uses (keeps files younger than 1 hour)'
+              : 'Only available in production: a dev server could delete images production still uses'
+          "
+          :disabled="!cleanupAllowed"
           :loading="cleaning"
           @click="cleanupOrphans"
           >Clean up orphaned images</v-btn

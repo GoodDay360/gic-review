@@ -181,11 +181,18 @@ async fn delete_image(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Admin only: run the orphan cleanup now (see [`cleanup_orphans_now`]).
+/// Admin only, production only: run the orphan cleanup now (see [`cleanup_orphans_now`]).
 async fn cleanup_orphans(
     _admin: RequireAdmin,
     State(state): State<AppState>,
 ) -> AppResult<Json<serde_json::Value>> {
+    // A dev server has its own database but may share the R2 bucket with production, so a
+    // cleanup there would delete images that live quizzes still use.
+    if !state.config.is_production() {
+        return Err(AppError::BadRequest(
+            "image cleanup is only available in production (APP_ENV=production)".into(),
+        ));
+    }
     let report = cleanup_orphans_now(&state).await?;
     Ok(Json(json!({
         "scanned": report.scanned,

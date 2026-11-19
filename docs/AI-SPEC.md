@@ -101,7 +101,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Categories and subjects can only be created in the dashboard (API keys get `403 api_key_not_allowed`)
 - ✅ New quizzes/reviews only in subjects of categories you own or that are shared with you (category or subject); `403 not_your_category` lists where you can add; admins: all; `GET /admin/categories` (works with API keys) shows `can_manage`, `shared_with_you` and `can_add_content` per category and subject
 - ✅ Subjects: managers create/edit/delete them in their own categories, and can also create them in categories shared with them (by email or with all managers); admins in all (category, name, slug, description, color, order; delete when empty); subject pickers show `Category · Subject` and only offer your own categories for new content
-- ✅ "Clean up orphaned images" (admin only, on the Subjects page); the backend also runs it automatically at startup and every hour (production only, `APP_ENV=production`)
+- ✅ "Clean up orphaned images" (admin only, on the Subjects page); the backend also runs it automatically at startup and every hour. Both the button and the worker are production only (`APP_ENV=production` on the backend; the button is disabled in a Vite dev build)
 - ✅ Frontend route guards per role, mirrored by the backend
 
 ### Security
@@ -206,7 +206,7 @@ or admin session only, **A-s** = admin session only, **any** = any session or AP
 | `POST /admin/subjects`, `PUT/DELETE /admin/subjects/:id` | M-s | `category_id` required; create in categories you own or that are shared with you, edit/delete only in categories you own (admins: any) |
 | `GET /admin/categories` | M (any scope) | every category with `owner_id`, `owner_name`, `can_manage`, `subjects` |
 | `POST /admin/categories`, `PUT/DELETE /admin/categories/:id` | M-s | create: you become owner; edit/delete: owner or admin; delete refused (409) while it has subjects |
-| `POST /admin/uploads/cleanup-orphans` | A-s | |
+| `POST /admin/uploads/cleanup-orphans` | A-s | production only (`400` otherwise) |
 
 All editor content endpoints only reach items the caller created, items in their categories, or items in a
 category/subject shared with them (admins: all; 404 otherwise), and return `access`
@@ -243,7 +243,7 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 ## Changelog
 
 - 2026-11-19: Orphaned-image cleanup also runs in a background worker: once at startup, then every hour (failures are logged, never fatal). Same rules as the manual button: only unreferenced files older than one hour. A lock ensures the button and the worker never run at the same time.
-- 2026-11-20: The automatic cleanup worker only runs when `APP_ENV=production`, so a local dev server (local DB, shared bucket) never deletes images that production still uses. The manual admin button is unchanged.
+- 2026-11-20: The automatic cleanup worker only runs when `APP_ENV=production`, so a local dev server (local DB, shared bucket) never deletes images that production still uses. The manual admin button is also production only: the backend refuses it with `400` outside production, and the dashboard disables it in a dev build.
 - 2026-11-19: `prompt.md` frozen as the original build brief; only this file is kept up to date
   (no more syncing the Features list into `prompt.md`).
 - 2026-11-19: **Share with all managers.** Category owners and admins can share a category or a subject with every

@@ -292,13 +292,15 @@ async function cleanupOrphans() {
       @close="editing = null"
     >
       <v-form id="subject-form" class="space-y-4" @submit.prevent="save">
-        <v-select
+        <v-autocomplete
           v-model="form.category_id"
           :items="myCategories"
           item-title="name"
           item-value="id"
           label="Category"
           prepend-inner-icon="mdi-layers-outline"
+          auto-select-first
+          no-data-text="No matching category"
         />
         <v-alert v-if="!myCategories.length" type="warning" density="compact">
           Create a category first (Categories page). You can add subjects to your own categories and

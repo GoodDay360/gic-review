@@ -5,7 +5,7 @@ import { useRoute } from 'vue-router'
 import { getQuizMode } from '@/quiz-modes/registry'
 import { useProgressStore } from '@/stores/progress'
 
-/** Floating shortcut back to the unfinished quiz, shown on every page except the dashboard. */
+/** Floating shortcut back to the unfinished quiz, shown on every page except the dashboard and interactive reviews. */
 const route = useRoute()
 const progress = useProgressStore()
 
@@ -16,6 +16,8 @@ const visible = computed(() => {
   if (!quiz) return false
   // Hidden on the staff dashboard.
   if (route.path === '/admin' || route.path.startsWith('/admin/')) return false
+  // Hidden while reading an interactive review, so it doesn't cover the content.
+  if (route.name === 'review') return false
   // Already playing this quiz: the button would point at the current page.
   if (route.name === 'play' && Number(route.params.quizId) === quiz.quizId) return false
   return true

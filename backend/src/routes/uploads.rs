@@ -269,18 +269,33 @@ pub async fn cleanup_orphans_now(state: &AppState) -> AppResult<CleanupReport> {
     Ok(CleanupReport { scanned, deleted })
 }
 
-/// Background worker: runs the orphan cleanup once right away (at startup), then every 24 hours.
-/// Failures are logged and retried on the next tick; they never stop the server.
-pub fn spawn_orphan_cleanup_worker(state: AppState) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(24 * 60 * 60));
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            // The first tick completes immediately, so this also covers the startup run.
-            interval.tick().await;
-            if let Err(err) = cleanup_orphans_now(&state).await {
-                tracing::warn!(error = ?err, "scheduled orphan cleanup failed");
-            }
+/// Runs the startup orphan cleanup on its own thread, then starts the daily worker.
+///
+/// The startup run is polled on a dedicated blocking thread (driven by the main runtime's
+/// I/O, so the database pool and R2 client keep working), so it never takes the async
+/// worker threads away from the first requests after a cold start. Only once that run has
+/// finished is the daily worker spawned; its first run is 24 hours later.
+/// Failures are logged and never stop the server.
+pub fn spawn_orphan_cleanup_worker(state: AppState) {
+    let handle = tokio::runtime::Handle::current();
+    tokio::task::spawn_blocking(move || {
+        if let Err(err) = handle.block_on(cleanup_orphans_now(&state)) {
+            tracing::warn!(error = ?err, "startup orphan cleanup failed");
         }
-    })
+        handle.spawn(daily_orphan_cleanup(state));
+    });
+}
+
+/// Daily worker: runs the orphan cleanup every 24 hours, starting 24 hours from now.
+/// Failures are logged and retried on the next tick.
+async fn daily_orphan_cleanup(state: AppState) {
+    let period = std::time::Duration::from_secs(24 * 60 * 60);
+    let mut interval = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        interval.tick().await;
+        if let Err(err) = cleanup_orphans_now(&state).await {
+            tracing::warn!(error = ?err, "scheduled orphan cleanup failed");
+        }
+    }
 }

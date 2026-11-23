@@ -243,6 +243,7 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 ## Changelog
 
 - 2026-11-19: Orphaned-image cleanup also runs in a background worker: once at startup, then every hour (failures are logged, never fatal). Same rules as the manual button: only unreferenced files older than one hour. A lock ensures the button and the worker never run at the same time.
+- 2026-11-23: The startup orphan cleanup runs on its own thread (a blocking-pool thread driven by the main runtime), started only after the listener is bound, so it doesn't compete with the first requests after a cold start. The daily worker is spawned only once that startup run has finished; its first run is 24 hours later.
 - 2026-11-20: The automatic cleanup worker runs once at startup and then every 24 hours (was every hour).
 - 2026-11-20: Orphan cleanup runs in batches of 50 (one R2 page, one DB lookup for just those keys, then delete) instead of loading every R2 key and every referenced key into memory. New migration indexes all image key columns; the endpoint no longer returns `deleted_keys` (deleted keys are logged instead).
 - 2026-11-20: The automatic cleanup worker only runs when `APP_ENV=production`, so a local dev server (local DB, shared bucket) never deletes images that production still uses. The manual admin button is also production only: the backend refuses it with `400` outside production, and the dashboard disables it in a dev build.

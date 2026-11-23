@@ -87,20 +87,24 @@ async fn main() -> anyhow::Result<()> {
         image_upload_slots,
         cache,
     };
-    // Orphaned-image cleanup: once at startup, then daily, in the background. Production
-    // only: a dev database doesn't know production's images, so running it locally against
-    // a shared bucket would delete images that live quizzes still use.
-    if state.config.is_production() {
-        routes::uploads::spawn_orphan_cleanup_worker(state.clone());
-    } else {
-        tracing::info!("orphan cleanup worker disabled outside production");
-    }
+    let run_cleanup = state.config.is_production();
+    let cleanup_state = state.clone();
     let app = build_router(state);
 
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .with_context(|| format!("could not bind {addr}"))?;
     tracing::info!("GIC Review API listening on http://{addr}");
+
+    // Orphaned-image cleanup: once at startup on its own thread (started after the listener
+    // is bound, so it doesn't delay the first request), then daily. Production only: a dev
+    // database doesn't know production's images, so running it locally against a shared
+    // bucket would delete images that live quizzes still use.
+    if run_cleanup {
+        routes::uploads::spawn_orphan_cleanup_worker(cleanup_state);
+    } else {
+        tracing::info!("orphan cleanup worker disabled outside production");
+    }
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),

@@ -44,7 +44,7 @@ https://github.com/GoodDay360/gic-review/blob/main/docs/AI-HOW-ADD-INTERACTIVE-R
 https://github.com/GoodDay360/gic-review/blob/main/docs/AI-HOW-ADD-QUIZ.md
 
 - Make sure it covers all the lessons and is not too short.
-- For interactive review, you can generate some images or use some images from files and visual explanations to make it easy to prepare for the exam.
+- For interactive review, you can generate some images or use some images from files and generate visual explanations to make it easy to prepare for the exam.
 - For a quiz, you can generate some images or use some images from files. Inside the quiz there should be more than just questions and answers, there should be handwritten exercises too.
 - Keep everything unpublished (draft). I will review it and publish it myself (if it is already public, no need to change it to draft).
 - When you are done, tell me the quiz and review IDs and titles.

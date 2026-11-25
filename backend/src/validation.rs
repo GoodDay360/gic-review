@@ -61,7 +61,28 @@ pub fn is_image_key(key: &str) -> bool {
     let Some((stem, ext)) = file.rsplit_once('.') else {
         return false;
     };
-    dir_ok && matches!(ext, "avif" | "png" | "jpg" | "webp" | "gif") && uuid::Uuid::parse_str(stem).is_ok()
+    dir_ok
+        && matches!(ext, "avif" | "png" | "jpg" | "webp" | "gif")
+        && uuid::Uuid::parse_str(stem).is_ok()
+}
+
+/// Every uploaded-image key that appears in `text`, e.g. inside a full public URL
+/// (`https://cdn.example/images/{uuid}.avif`) or as a bare key. Errs on the side of finding
+/// too many (a false match only keeps an extra image alive).
+pub fn find_image_keys(text: &str) -> std::collections::BTreeSet<String> {
+    let is_key_char = |c: char| c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '-' | '_');
+    let mut keys = std::collections::BTreeSet::new();
+    for prefix in ["images/", "quizzes/"] {
+        for (start, _) in text.match_indices(prefix) {
+            let rest = &text[start..];
+            let end = rest.find(|c| !is_key_char(c)).unwrap_or(rest.len());
+            let candidate = &rest[..end];
+            if is_image_key(candidate) {
+                keys.insert(candidate.to_string());
+            }
+        }
+    }
+    keys
 }
 
 /// Validate an optional image key field.
@@ -108,5 +129,21 @@ mod tests {
         assert!(!is_image_key(&format!("quizzes/x/{id}.png")));
         assert!(!is_image_key(&format!("reviews/1/{id}.html")));
         assert!(!is_image_key("images/../../etc/passwd.png"));
+    }
+
+    #[test]
+    fn finds_image_keys_in_html() {
+        let a = uuid::Uuid::new_v4();
+        let b = uuid::Uuid::new_v4();
+        let html = format!(
+            r#"<img src="https://cdn.example.com/images/{a}.avif"><img src=https://cdn.example.com/quizzes/7/{b}.webp>
+               <div style="background:url('images/{a}.avif')"></div><a href="/images/not-a-key.png">x</a>"#
+        );
+        let keys = find_image_keys(&html);
+        assert_eq!(keys.into_iter().collect::<Vec<_>>(), {
+            let mut v = vec![format!("images/{a}.avif"), format!("quizzes/7/{b}.webp")];
+            v.sort();
+            v
+        });
     }
 }

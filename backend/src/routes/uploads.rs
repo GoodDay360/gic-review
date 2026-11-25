@@ -161,6 +161,7 @@ async fn referenced_among(state: &AppState, keys: &[String]) -> AppResult<HashSe
         ("questions", "explanation_image_key"),
         ("question_options", "image_key"),
         ("interactive_reviews", "r2_key"),
+        ("review_images", "image_key"),
     ];
     let mut qb = sqlx::QueryBuilder::<sqlx::MySql>::new("");
     for (i, (table, column)) in sources.iter().enumerate() {
@@ -188,7 +189,10 @@ async fn delete_image(
     if !is_image_key(&key) {
         return Err(AppError::Validation("not a valid image key".into()));
     }
-    if !referenced_among(&state, std::slice::from_ref(&key)).await?.is_empty() {
+    if !referenced_among(&state, std::slice::from_ref(&key))
+        .await?
+        .is_empty()
+    {
         return Err(AppError::Conflict(
             "this image is still used; remove it from the quiz/question and save instead".into(),
         ));
@@ -236,6 +240,8 @@ const CLEANUP_BATCH: i32 = 50;
 /// and query size stay constant however many objects the bucket holds.
 pub async fn cleanup_orphans_now(state: &AppState) -> AppResult<CleanupReport> {
     let _guard = CLEANUP_LOCK.lock().await;
+    // Images embedded in review HTML are only known once that HTML has been scanned.
+    super::reviews::index_unindexed_reviews(state).await?;
     let cutoff = Utc::now() - chrono::Duration::hours(1);
 
     let mut scanned = 0usize;

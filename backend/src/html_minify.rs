@@ -57,7 +57,11 @@ pub fn minify_review_html(html: Vec<u8>) -> Vec<u8> {
     {
         return html;
     }
-    tracing::debug!(before = html.len(), after = out.len(), "minified review HTML");
+    tracing::debug!(
+        before = html.len(),
+        after = out.len(),
+        "minified review HTML"
+    );
     out
 }
 

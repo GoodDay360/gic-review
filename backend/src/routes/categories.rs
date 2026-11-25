@@ -20,8 +20,10 @@ use crate::{
     auth::{ContentManager, RequireEditor, RequireEditorSession},
     error::{AppError, AppResult},
     extract::AppJson,
-    models::{AdminListQuery, Page, PageQuery, SubjectDto, CategoryDto, CategoryRow, category_columns},
-    routes::public::{all_subjects, all_categories},
+    models::{
+        AdminListQuery, CategoryDto, CategoryRow, Page, PageQuery, SubjectDto, category_columns,
+    },
+    routes::public::{all_categories, all_subjects},
     state::AppState,
     validation::{check_len, clean, is_slug, slugify},
 };
@@ -30,8 +32,14 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/categories", get(list_categories))
         .route("/categories/{slug}", get(get_category))
-        .route("/admin/categories", get(list_managed_categories).post(create_category))
-        .route("/admin/categories/{id}", put(update_category).delete(delete_category))
+        .route(
+            "/admin/categories",
+            get(list_managed_categories).post(create_category),
+        )
+        .route(
+            "/admin/categories/{id}",
+            put(update_category).delete(delete_category),
+        )
 }
 
 async fn categories_with_counts(state: &AppState) -> AppResult<Vec<CategoryDto>> {
@@ -227,40 +235,40 @@ pub(crate) async fn managed_categories(
     let subjects = all_subjects(state).await?;
     let categories = categories_with_counts(state).await?;
     Ok(categories
-            .into_iter()
-            .map(|category| {
-                let owner_id = category.category.created_by;
-                let owner_name = owners
-                    .iter()
-                    .find(|(id, _)| *id == category.category.id)
-                    .and_then(|(_, n)| n.clone());
-                let can_manage = access::can_manage_category(actor, owner_id);
-                let category_shared = shared.categories.contains(&category.category.id);
-                let subjects: Vec<ManagedSubject> = subjects
-                    .iter()
-                    .filter(|s| s.category_id == category.category.id)
-                    .map(|s| {
-                        let subject_shared = shared.subjects.contains(&s.id);
-                        ManagedSubject {
-                            can_add_content: can_manage || category_shared || subject_shared,
-                            shared_with_you: subject_shared,
-                            subject: s.clone(),
-                        }
-                    })
-                    .collect();
-                ManagedCategory {
-                    can_add_content: can_manage
-                        || category_shared
-                        || subjects.iter().any(|s| s.can_add_content),
-                    can_manage,
-                    shared_with_you: category_shared,
-                    owner_id,
-                    owner_name,
-                    subjects,
-                    category,
-                }
-            })
-            .collect())
+        .into_iter()
+        .map(|category| {
+            let owner_id = category.category.created_by;
+            let owner_name = owners
+                .iter()
+                .find(|(id, _)| *id == category.category.id)
+                .and_then(|(_, n)| n.clone());
+            let can_manage = access::can_manage_category(actor, owner_id);
+            let category_shared = shared.categories.contains(&category.category.id);
+            let subjects: Vec<ManagedSubject> = subjects
+                .iter()
+                .filter(|s| s.category_id == category.category.id)
+                .map(|s| {
+                    let subject_shared = shared.subjects.contains(&s.id);
+                    ManagedSubject {
+                        can_add_content: can_manage || category_shared || subject_shared,
+                        shared_with_you: subject_shared,
+                        subject: s.clone(),
+                    }
+                })
+                .collect();
+            ManagedCategory {
+                can_add_content: can_manage
+                    || category_shared
+                    || subjects.iter().any(|s| s.can_add_content),
+                can_manage,
+                shared_with_you: category_shared,
+                owner_id,
+                owner_name,
+                subjects,
+                category,
+            }
+        })
+        .collect())
 }
 
 #[derive(Debug, Deserialize)]

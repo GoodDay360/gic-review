@@ -161,7 +161,8 @@ pub async fn require(
             .await?
         }
     };
-    let (owner_id, owner_name, category_owner, shared) = row.ok_or(AppError::NotFound(kind.label()))?;
+    let (owner_id, owner_name, category_owner, shared) =
+        row.ok_or(AppError::NotFound(kind.label()))?;
     let access = access_for(actor, owner_id, category_owner, shared > 0)
         .ok_or(AppError::NotFound(kind.label()))?;
     Ok(AccessInfo {

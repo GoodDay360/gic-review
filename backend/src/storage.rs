@@ -82,6 +82,32 @@ impl Storage {
         Ok(())
     }
 
+    /// Read an object's bytes. `Ok(None)` when the key does not exist.
+    pub async fn get(&self, key: &str) -> anyhow::Result<Option<Vec<u8>>> {
+        let resp = match self
+            .client
+            .get_object()
+            .bucket(&self.bucket)
+            .key(key)
+            .send()
+            .await
+        {
+            Ok(resp) => resp,
+            Err(err) if err.as_service_error().is_some_and(|e| e.is_no_such_key()) => {
+                return Ok(None);
+            }
+            Err(err) => {
+                return Err(err).with_context(|| format!("R2 get_object failed for key {key}"));
+            }
+        };
+        let body = resp
+            .body
+            .collect()
+            .await
+            .with_context(|| format!("R2 get_object body failed for key {key}"))?;
+        Ok(Some(body.into_bytes().to_vec()))
+    }
+
     pub async fn delete(&self, key: &str) -> anyhow::Result<()> {
         self.client
             .delete_object()

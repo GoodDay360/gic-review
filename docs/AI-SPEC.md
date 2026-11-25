@@ -151,7 +151,8 @@ categories               id, slug UNIQUE, name, description NULL, sort_order, cr
 subjects            id, category_id → categories (RESTRICT), slug (UNIQUE per category), name, description NULL, color (accent name), sort_order,
                     shared_with_all, created_at, updated_at
 interactive_reviews id, subject_id → subjects (RESTRICT), title, slug (UNIQUE per subject), r2_key,
-                    sort_order, is_published, created_by NULL → users (SET NULL), created_at, updated_at
+                    sort_order, is_published, created_by NULL → users (SET NULL), images_indexed, created_at, updated_at
+review_images       review_id → interactive_reviews (CASCADE), image_key (indexed), PK (review_id, image_key)
 quizzes             id, subject_id → subjects (RESTRICT), title, description NULL, cover_image_key NULL,
                     is_published, created_by NULL → users (SET NULL), created_at, updated_at
 questions           id, quiz_id → quizzes (CASCADE), position, prompt NULL, image_key NULL,
@@ -244,6 +245,7 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-25: **Images embedded in interactive reviews are no longer deleted by the orphan cleanup.** Their keys only lived inside the review HTML, so the cleanup saw them as unreferenced. Creating or replacing a review's HTML now scans it for uploaded-image keys (full URLs or bare keys) and records them in the new `review_images` table, which the cleanup and `DELETE /admin/uploads/image` treat as references. Existing reviews are scanned (HTML read from R2) at the start of the next cleanup run, before anything is deleted (`interactive_reviews.images_indexed`). Migration `20261125000002_review_images`. Deleting a review leaves its images to the next cleanup.
 - 2026-11-25: **Markdown in questions, per question.** New `text_format` field on each question (`"plain"` default, or `"markdown"`) in the import JSON, the question endpoints and every quiz response; unknown values are rejected (`422`). Migration `20261125000001_question_text_format` (existing questions stay `plain`, so nothing changes for them). Markdown questions render code blocks with syntax highlighting, inline code, lists, tables, quotes and links in QCM, Flashcard and the admin preview; the editor has a Plain/Markdown toggle and the question list marks Markdown questions. AI quiz guide updated.
 - 2026-11-19: Orphaned-image cleanup also runs in a background worker: once at startup, then every hour (failures are logged, never fatal). Same rules as the manual button: only unreferenced files older than one hour. A lock ensures the button and the worker never run at the same time.
 - 2026-11-23: The startup orphan cleanup runs on its own thread (a blocking-pool thread driven by the main runtime), started only after the listener is bound, so it doesn't compete with the first requests after a cold start. The daily worker is spawned only once that startup run has finished; its first run is 24 hours later.

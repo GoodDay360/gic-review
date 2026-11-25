@@ -135,14 +135,22 @@ pub fn process(bytes: Vec<u8>, filename: Option<&str>) -> Result<ProcessedImage,
             let webp = encode_animated_webp(&frames)?;
             // Tiny pixel-art GIFs can beat lossy WebP; GIF has no EXIF, so keeping it is safe.
             return Ok(if webp.len() < bytes.len() {
-                ProcessedImage { bytes: webp, kind: StoredFormat::Webp }
+                ProcessedImage {
+                    bytes: webp,
+                    kind: StoredFormat::Webp,
+                }
             } else {
-                ProcessedImage { bytes, kind: StoredFormat::Gif }
+                ProcessedImage {
+                    bytes,
+                    kind: StoredFormat::Gif,
+                }
             });
         }
-        let still = frames.into_iter().next().map(|(img, _)| img).ok_or_else(|| {
-            AppError::BadRequest("the image could not be decoded".into())
-        })?;
+        let still = frames
+            .into_iter()
+            .next()
+            .map(|(img, _)| img)
+            .ok_or_else(|| AppError::BadRequest("the image could not be decoded".into()))?;
         return encode_avif(DynamicImage::ImageRgba8(still));
     }
 
@@ -206,7 +214,8 @@ fn decode_gif_frames(bytes: &[u8]) -> Result<Vec<(RgbaImage, u32)>, AppError> {
 }
 
 fn encode_animated_webp(frames: &[(RgbaImage, u32)]) -> Result<Vec<u8>, AppError> {
-    let fail = |what: &str| AppError::Internal(anyhow::anyhow!("animated WebP encode failed: {what}"));
+    let fail =
+        |what: &str| AppError::Internal(anyhow::anyhow!("animated WebP encode failed: {what}"));
     let frames: Vec<(RgbaImage, u32)> = frames
         .iter()
         .map(|(img, delay)| {
@@ -226,7 +235,12 @@ fn encode_animated_webp(frames: &[(RgbaImage, u32)]) -> Result<Vec<u8>, AppError
     encoder.set_loop_count(0); // loop forever, like GIFs
     let mut timestamp = 0i32;
     for (img, delay) in &frames {
-        encoder.add_frame(webp::AnimFrame::from_rgba(img.as_raw(), width, height, timestamp));
+        encoder.add_frame(webp::AnimFrame::from_rgba(
+            img.as_raw(),
+            width,
+            height,
+            timestamp,
+        ));
         timestamp += *delay as i32;
     }
     let mut out = encoder
@@ -416,10 +430,20 @@ mod tests {
             for (i, d) in delays_ms.iter().enumerate() {
                 // Busy pixels so the GIF is bigger than the WebP.
                 let img = RgbaImage::from_fn(120, 120, |x, y| {
-                    Rgba([(x * 7 + i as u32 * 40) as u8, (y * 5) as u8, ((x ^ y) * 3) as u8, 255])
+                    Rgba([
+                        (x * 7 + i as u32 * 40) as u8,
+                        (y * 5) as u8,
+                        ((x ^ y) * 3) as u8,
+                        255,
+                    ])
                 });
-                enc.encode_frame(Frame::from_parts(img, 0, 0, Delay::from_numer_denom_ms(*d, 1)))
-                    .unwrap();
+                enc.encode_frame(Frame::from_parts(
+                    img,
+                    0,
+                    0,
+                    Delay::from_numer_denom_ms(*d, 1),
+                ))
+                .unwrap();
             }
         }
         out

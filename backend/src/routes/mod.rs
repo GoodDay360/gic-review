@@ -3,6 +3,7 @@
 pub mod admin_quizzes;
 pub mod api_keys;
 pub mod auth;
+pub mod categories;
 pub mod import;
 pub mod public;
 pub mod reviews;
@@ -10,7 +11,6 @@ pub mod shares;
 pub mod subjects;
 pub mod uploads;
 pub mod users;
-pub mod categories;
 
 use axum::Router;
 

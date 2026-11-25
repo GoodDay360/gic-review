@@ -26,7 +26,10 @@ use crate::{
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/admin/subjects", get(list_managed_subjects).post(create_subject))
+        .route(
+            "/admin/subjects",
+            get(list_managed_subjects).post(create_subject),
+        )
         .route(
             "/admin/subjects/{id}",
             put(update_subject).delete(delete_subject),
@@ -55,7 +58,9 @@ async fn list_managed_subjects(
                     contains_ci(&s.name, needle)
                         || contains_ci(&s.slug, needle)
                         || contains_ci(&s.category_name, needle)
-                        || s.description.as_deref().is_some_and(|d| contains_ci(d, needle))
+                        || s.description
+                            .as_deref()
+                            .is_some_and(|d| contains_ci(d, needle))
                 })
         });
     Ok(if q.is_paged() {

@@ -115,6 +115,9 @@ curl -H "Authorization: Bearer $KEY" -F "file=@figure-3.png" $BASE/admin/uploads
 # 201 → { "key": "images/2f1c…avif", "url": "https://files.example.com/images/2f1c…avif" }
 ```
 Use the **`url`** in the page: `<img src="https://files.example.com/images/2f1c…avif" alt="…">`.
+Keep the URL exactly as returned (don't rename or re-host the file): the server finds the image
+keys in the HTML you upload and keeps those images. An uploaded image that no review or quiz uses
+is deleted after an hour, so upload the review HTML soon after its images.
 
 **Step 5. Write the HTML.** Copy the template in section 6, keep its `<style>` and `<script>`
 theme block **unchanged**, and replace the content inside `<main>`. Follow the rules in section 5.

@@ -9,6 +9,8 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
+use std::collections::BTreeSet;
+
 use serde::Serialize;
 use sqlx::{MySql, QueryBuilder};
 
@@ -20,7 +22,7 @@ use crate::{
     html_minify::minify_review_html_async,
     models::{AdminListQuery, Page, ReviewDto, ReviewRow, review_columns},
     state::AppState,
-    validation::{is_slug, slugify},
+    validation::{find_image_keys, is_slug, slugify},
 };
 
 pub fn router(config: &Config) -> Router<AppState> {
@@ -178,7 +180,9 @@ async fn list_reviews(
         " FROM interactive_reviews WHERE TRUE"
     ));
     if let Some(subject_id) = q.subject_id {
-        query.push(" AND interactive_reviews.subject_id = ").push_bind(subject_id);
+        query
+            .push(" AND interactive_reviews.subject_id = ")
+            .push_bind(subject_id);
     }
     if let Some(category_id) = q.category_id {
         query
@@ -270,6 +274,7 @@ async fn create_review(
     access::check_can_add_to_subject(&state.db, Actor::of(&user), subject_id).await?;
 
     let html = minify_review_html_async(html).await;
+    let image_keys = find_image_keys(&String::from_utf8_lossy(&html));
     let key = format!("reviews/{subject_id}/{}.html", uuid::Uuid::new_v4());
     state
         .storage
@@ -296,9 +301,11 @@ async fn create_review(
             return Err(e.into());
         }
     };
+    let id = res.last_insert_id() as i64;
+    set_review_images(&state.db, id, &image_keys).await?;
     Ok((
         StatusCode::CREATED,
-        Json(managed(&state, res.last_insert_id() as i64, Actor::of(&user)).await?),
+        Json(managed(&state, id, Actor::of(&user)).await?),
     ))
 }
 
@@ -321,10 +328,15 @@ async fn update_review(
 
     if let Some(html) = form.html {
         let html = minify_review_html_async(html).await;
+        let image_keys = find_image_keys(&String::from_utf8_lossy(&html));
+        // Record the new image references before the new HTML goes live, so the orphan
+        // cleanup never sees an image the live HTML uses as unreferenced.
+        add_review_images(&state.db, id, &image_keys).await?;
         state
             .storage
             .put(&existing.r2_key, html, HTML_CONTENT_TYPE, HTML_CACHE)
             .await?;
+        set_review_images(&state.db, id, &image_keys).await?;
     }
     let slug = form.slug.filter(|s| !s.is_empty()).unwrap_or(existing.slug);
     // Note: the R2 key keeps its original subject prefix even if the subject changes.
@@ -361,4 +373,68 @@ async fn delete_review(
         .delete_many_best_effort([existing.r2_key])
         .await;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Record that review `review_id` uses `keys`, keeping any rows it already has.
+async fn add_review_images<'e, E>(db: E, review_id: i64, keys: &BTreeSet<String>) -> AppResult<()>
+where
+    E: sqlx::Executor<'e, Database = MySql>,
+{
+    if keys.is_empty() {
+        return Ok(());
+    }
+    let mut qb =
+        QueryBuilder::<MySql>::new("INSERT IGNORE INTO review_images (review_id, image_key) ");
+    qb.push_values(keys, |mut row, key| {
+        row.push_bind(review_id).push_bind(key);
+    });
+    qb.build().execute(db).await?;
+    Ok(())
+}
+
+/// Replace the images review `review_id` uses with exactly `keys` (found in its stored
+/// HTML), and mark the review as indexed. The orphan cleanup treats these keys as in use.
+pub async fn set_review_images(
+    db: &sqlx::MySqlPool,
+    review_id: i64,
+    keys: &BTreeSet<String>,
+) -> AppResult<()> {
+    let mut tx = db.begin().await?;
+    sqlx::query("DELETE FROM review_images WHERE review_id = ?")
+        .bind(review_id)
+        .execute(&mut *tx)
+        .await?;
+    add_review_images(&mut *tx, review_id, keys).await?;
+    sqlx::query("UPDATE interactive_reviews SET images_indexed = TRUE WHERE id = ?")
+        .bind(review_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Scan every review whose HTML has not been indexed yet (reviews created before
+/// `review_images` existed) and record the images it embeds. Fails if a review's HTML
+/// cannot be read, so the cleanup never deletes images that an unscanned review may use.
+pub async fn index_unindexed_reviews(state: &AppState) -> AppResult<usize> {
+    let pending: Vec<(i64, String)> =
+        sqlx::query_as("SELECT id, r2_key FROM interactive_reviews WHERE images_indexed = FALSE")
+            .fetch_all(&state.db)
+            .await?;
+    for (id, key) in &pending {
+        let keys = match state.storage.get(key).await? {
+            Some(html) => find_image_keys(&String::from_utf8_lossy(&html)),
+            None => {
+                tracing::warn!(
+                    review_id = id,
+                    key,
+                    "review HTML missing in R2; indexing as no images"
+                );
+                BTreeSet::new()
+            }
+        };
+        set_review_images(&state.db, *id, &keys).await?;
+        tracing::info!(review_id = id, images = keys.len(), "indexed review images");
+    }
+    Ok(pending.len())
 }

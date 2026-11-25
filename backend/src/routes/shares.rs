@@ -161,7 +161,9 @@ async fn list(state: &AppState, target: Target, id: i64, actor: Actor) -> AppRes
         let mine = access::shared_with(&state.db, actor.id).await?;
         let allowed = match target {
             Target::Category => mine.categories.contains(&id),
-            Target::Subject => mine.subjects.contains(&id) || mine.categories.contains(&category_id),
+            Target::Subject => {
+                mine.subjects.contains(&id) || mine.categories.contains(&category_id)
+            }
         };
         if !allowed {
             return Err(AppError::OwnerOnly("see who this is shared with".into()));
@@ -347,7 +349,13 @@ async fn set_all(
                 .await?
         }
     };
-    tracing::info!(?target, id, by = actor.id, enabled, "shared with all managers");
+    tracing::info!(
+        ?target,
+        id,
+        by = actor.id,
+        enabled,
+        "shared with all managers"
+    );
     list(state, target, id, actor).await
 }
 

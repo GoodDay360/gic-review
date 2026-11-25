@@ -156,8 +156,11 @@ impl Config {
             parse_num::<i64>("JWT_EXPIRES_IN_HOURS", &jwt_hours_raw, &mut errors);
         let max_img_mb = parse_num::<usize>("MAX_IMAGE_SIZE_MB", &max_img_raw, &mut errors);
         let max_html_mb = parse_num::<usize>("MAX_REVIEW_HTML_SIZE_MB", &max_html_raw, &mut errors);
-        let max_uploads =
-            parse_num::<usize>("MAX_CONCURRENT_IMAGE_UPLOADS", &max_uploads_raw, &mut errors);
+        let max_uploads = parse_num::<usize>(
+            "MAX_CONCURRENT_IMAGE_UPLOADS",
+            &max_uploads_raw,
+            &mut errors,
+        );
         if max_uploads == 0 {
             errors.push("MAX_CONCURRENT_IMAGE_UPLOADS must be at least 1".into());
         }

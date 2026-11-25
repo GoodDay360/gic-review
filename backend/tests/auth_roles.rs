@@ -1991,3 +1991,77 @@ async fn db_subject_slugs_are_unique_per_category_only() {
     assert_eq!(r.json["category_name"], "I4");
     tdb.cleanup().await;
 }
+
+#[tokio::test]
+async fn db_question_text_format_defaults_to_plain_and_is_per_question() {
+    let Some(tdb) = common::test_db().await else {
+        return;
+    };
+    let db = tdb.pool.clone();
+    bootstrap::ensure_admin(&db, &test_config()).await.unwrap();
+    insert_manager(&db, "fmt-m@example.com", "manager-pass-f", true).await;
+    let app = app_with_pool(db);
+    let m = cookie_from(
+        &login(&app, "fmt-m@example.com", "manager-pass-f")
+            .await
+            .set_cookie
+            .unwrap(),
+    );
+    own_subject(&app, &m, "fmt").await;
+    let opts = json!([{ "text": "A", "is_correct": true }, { "text": "B" }]);
+
+    // Import: unspecified → plain, explicit markdown kept, per question.
+    let quiz = send(
+        &app,
+        "POST",
+        "/api/admin/quizzes/import",
+        Some(&m),
+        Some(json!({
+            "subject_slug": "subject-fmt", "title": "Formats",
+            "questions": [
+                { "prompt": "Plain __init__", "options": opts },
+                { "prompt": "```py\nprint(1)\n```", "text_format": "markdown", "options": opts }
+            ]
+        })),
+    )
+    .await;
+    assert_eq!(quiz.status, StatusCode::CREATED);
+    let qid = quiz.json["id"].as_i64().unwrap();
+    assert_eq!(quiz.json["questions"][0]["text_format"], "plain");
+    assert_eq!(quiz.json["questions"][1]["text_format"], "markdown");
+
+    // Unknown values are rejected.
+    let bad = send(
+        &app,
+        "POST",
+        &format!("/api/admin/quizzes/{qid}/questions"),
+        Some(&m),
+        Some(json!({ "prompt": "x", "text_format": "html", "options": opts })),
+    )
+    .await;
+    assert_eq!(bad.status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // Updating a question can switch its format; leaving it out resets to plain.
+    let first = quiz.json["questions"][0]["id"].clone();
+    let path = format!("/api/admin/quizzes/{qid}/questions/{first}");
+    let r = send(
+        &app,
+        "PUT",
+        &path,
+        Some(&m),
+        Some(json!({ "prompt": "`x`", "text_format": "markdown", "options": opts })),
+    )
+    .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json["questions"][0]["text_format"], "markdown");
+    assert_eq!(r.json["questions"][1]["text_format"], "markdown");
+    let r = send(
+        &app,
+        "PUT",
+        &path,
+        Some(&m),
+        Some(json!({ "prompt": "`x`", "options": opts })),
+    )
+    .await;
+    assert_eq!(r.json["questions"][0]["text_format"], "plain");
+}

@@ -301,6 +301,7 @@ function onDrop(target: number) {
               {{ q.options.length }} options ·
               {{ q.options.filter((o) => o.is_correct).length }} correct
               <span v-if="q.multi_select">· multi</span>
+              <span v-if="q.text_format === 'markdown'">· markdown</span>
               <span v-if="q.answer_text || q.answer_image_url">· flashcard answer</span>
             </p>
           </div>

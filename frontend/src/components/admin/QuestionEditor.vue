@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 
 import { discardUpload, questionKeys, saveQuestion } from '@/api/admin'
 import { errorMessage } from '@/api/client'
-import type { Question, QuestionInput, QuizDetail } from '@/api/types'
+import type { Question, QuestionInput, QuizDetail, TextFormat } from '@/api/types'
 import { useToastStore } from '@/stores/toast'
 
 import ImageUploader from './ImageUploader.vue'
@@ -44,6 +44,7 @@ const form = reactive({
     alt: null,
   } as Img,
   multi_select: q?.multi_select ?? false,
+  text_format: (q?.text_format ?? 'plain') as TextFormat,
   options: (q?.options ?? []).map<OptionForm>((o) => ({
     uid: uid++,
     text: o.text ?? '',
@@ -98,6 +99,7 @@ const input = computed<QuestionInput>(() => ({
   explanation: blank(form.explanation),
   explanation_image_key: form.explanation_image.key,
   multi_select: form.multi_select,
+  text_format: form.text_format,
   options: form.options
     .filter((o) => o.text.trim() || o.image.key)
     .map((o) => ({
@@ -135,6 +137,7 @@ function asQuestion(): Question {
     explanation_image_key: i.explanation_image_key,
     explanation_image_url: form.explanation_image.url,
     multi_select: i.multi_select,
+    text_format: i.text_format,
     options: form.options
       .filter((o) => o.text.trim() || o.image.key)
       .map((o, idx) => ({
@@ -188,11 +191,34 @@ onBeforeUnmount(() => {
         <v-icon icon="mdi-help-circle-outline" color="primary" size="20" /> Question (QCM question /
         flashcard front)
       </h3>
+      <div class="flex flex-wrap items-center gap-3">
+        <span class="text-sm text-ctp-subtext0">Text format</span>
+        <v-btn-toggle
+          v-model="form.text_format"
+          mandatory
+          density="compact"
+          variant="outlined"
+          color="primary"
+          divided
+        >
+          <v-btn value="plain" prepend-icon="mdi-text">Plain</v-btn>
+          <v-btn value="markdown" prepend-icon="mdi-language-markdown-outline">Markdown</v-btn>
+        </v-btn-toggle>
+        <span class="text-xs text-ctp-subtext0">
+          Applies to the prompt, options, answer and explanation. Use Markdown for code.
+        </span>
+      </div>
       <v-textarea
         v-model="form.prompt"
         label="Prompt"
         rows="3"
         placeholder="Leave empty for an image-only question"
+        :hint="
+          form.text_format === 'markdown'
+            ? 'Markdown: **bold**, `code`, ```lang code blocks```, lists, tables, links. Use Preview to check.'
+            : undefined
+        "
+        :persistent-hint="form.text_format === 'markdown'"
       />
       <ImageUploader
         v-model:image-key="form.image.key"

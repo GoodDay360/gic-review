@@ -278,6 +278,7 @@ The public `GET /categories` and `GET /categories/{category_slug}` (no key) show
       "answer_text": "…", "answer_image_key": null, "answer_image_url": null, "answer_image_alt": null,
       "explanation": "…", "explanation_image_key": null, "explanation_image_url": null,
       "multi_select": false,
+      "text_format": "plain",                   // "plain" or "markdown"
       "options": [
         { "id": 201, "position": 0, "text": "…", "image_key": null, "image_url": null,
           "image_alt": null, "is_correct": true }
@@ -310,6 +311,7 @@ The public `GET /categories` and `GET /categories/{category_slug}` (no key) show
       "explanation": "string | null",                 // why the answer is right
       "explanation_image_key": "…", "explanation_image_url": "…",
       "multi_select": false,                          // true = several correct options
+      "text_format": "plain",                         // "plain" (default) or "markdown", see below
       "options": [
         {
           "text": "string | null",                    // text and/or image required
@@ -325,6 +327,39 @@ The public `GET /categories` and `GET /categories/{category_slug}` (no key) show
 - Unknown fields are **rejected** (catches typos like `"is_corect"`).
 - Each image is a `*_key` / `*_url` pair: give at most one, or neither for no image.
 - `*_url` must be a public `http(s)` URL (no private addresses, no redirects).
+- `text_format` is set **per question** and applies to all its text (`prompt`, every option `text`,
+  `answer_text`, `explanation`). Leave it out (or `"plain"`) and the text is shown exactly as typed.
+  Use `"markdown"` when the question needs formatting, mostly **code**. See "Markdown questions" below.
+
+### Markdown questions (`"text_format": "markdown"`)
+
+Use Markdown for questions about code, commands, SQL, formulas written as text, or anything that
+reads better with formatting. Keep ordinary questions `"plain"`.
+
+What students see rendered:
+
+| Markdown | Shows as |
+|---|---|
+| ```` ```python ```` … ```` ``` ```` (a fenced code block, language after the backticks) | a code block with syntax highlighting |
+| `` `len(x)` `` | inline code |
+| `**bold**`, `*italic*`, `~~struck~~` | bold, italic, struck |
+| lines starting with `- ` or `1. ` | bulleted / numbered list |
+| `\| a \| b \|` rows with a `\|---\|---\|` line | a table |
+| `> text` | a quote |
+| `[text](https://…)` or a bare `https://…` | a link (opens in a new tab) |
+
+Rules:
+- **Raw HTML is not rendered** (it shows as text). Use Markdown only.
+- A single line break is kept as a line break; a blank line starts a new paragraph.
+- Always name the language on code fences (`python`, `javascript`, `typescript`, `java`, `c`, `cpp`,
+  `csharp`, `go`, `rust`, `php`, `sql`, `bash`, `json`, `yaml`, `xml`, `css`, `kotlin`, `swift`, …).
+- In JSON, newlines inside a string are written `\n` (and `"` as `\"`).
+- Options are one line in the dashboard editor: in options use inline code (`` `x = 1` ``) rather
+  than code blocks, unless the code really needs several lines.
+- In Markdown, `*`, `_`, `#`, `` ` `` and a leading `1. ` / `- ` have meaning. Wrap code-like text in
+  backticks so it shows as typed: write `` `__init__` ``, not `__init__` (which would become bold
+  "init"), and `` `a*b*c` ``, not `a*b*c`.
+- `"plain"` questions are never interpreted, so `__init__` there shows exactly as typed.
 
 ### Example A: text-only (most common)
 
@@ -406,6 +441,39 @@ The public `GET /categories` and `GET /categories/{category_slug}` (no key) show
 ```
 (The `images/…` keys are placeholders; use the keys returned by your own uploads in step 5.)
 
+### Example C: a Markdown question with code
+
+```json
+{
+  "subject_slug": "programming",
+  "title": "Python basics",
+  "questions": [
+    {
+      "text_format": "markdown",
+      "prompt": "What does this code print?\n\n```python\nnums = [1, 2, 3]\nprint(sum(n * 2 for n in nums))\n```",
+      "answer_text": "`12`",
+      "explanation": "The generator doubles each item (`2, 4, 6`) and `sum()` adds them: **12**.",
+      "options": [
+        { "text": "`12`", "is_correct": true },
+        { "text": "`6`" },
+        { "text": "`[2, 4, 6]`" },
+        { "text": "A `TypeError`" }
+      ]
+    },
+    {
+      "prompt": "Which keyword defines a function in Python?",
+      "answer_text": "def",
+      "options": [
+        { "text": "def", "is_correct": true },
+        { "text": "func" },
+        { "text": "function" }
+      ]
+    }
+  ]
+}
+```
+The second question has no `text_format`, so it is plain text.
+
 ---
 
 ## 6. Writing rules
@@ -418,6 +486,7 @@ The public `GET /categories` and `GET /categories/{category_slug}` (no key) show
 - Always add `explanation` (1–3 sentences; you may cite e.g. "(slide 12)") and a short `answer_text`.
 - 10–30 questions per quiz; split long documents into several quizzes (one per chapter).
 - Images: export figures from source files as PNG (or GIF for animations), crop them, upload (step 5), and always set `*_alt`.
+- Code in a question (source code, commands, queries, output): set `"text_format": "markdown"` and put it in a fenced code block with its language, or in backticks for short snippets. Don't paste code as plain text, and don't use screenshots of code when you can copy the text.
 
 **Format:**
 
@@ -456,6 +525,7 @@ Errors look like `{ "error": { "code": "…", "message": "…" } }`. The `messag
 
 - [ ] Every question: prompt or image, ≥ 2 options, ≥ 1 correct, `answer_text`, `explanation`.
 - [ ] Every image has `*_alt`.
+- [ ] Questions with code use `"text_format": "markdown"` with fenced, language-tagged code blocks; plain questions have no stray Markdown.
 - [ ] Response shows `"available_modes": ["qcm", "flashcard"]`.
 - [ ] Still a draft unless the human asked to publish.
 - [ ] Told the human the quiz `id`, `title` and question count. Never reveal the key.

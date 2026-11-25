@@ -3,6 +3,7 @@
 import { computed } from 'vue'
 
 import type { Question, QuestionOption } from '@/api/types'
+import QuizText from '@/components/QuizText.vue'
 import ZoomableImage from '@/components/ZoomableImage.vue'
 
 const props = defineProps<{
@@ -42,12 +43,12 @@ const letter = (i: number) => String.fromCharCode(65 + i)
 <template>
   <article class="space-y-5">
     <div class="space-y-3">
-      <p
+      <QuizText
         v-if="question.prompt"
-        class="text-lg leading-relaxed font-medium whitespace-pre-line text-ctp-text"
-      >
-        {{ question.prompt }}
-      </p>
+        :source="question.prompt"
+        :format="question.text_format"
+        class="text-lg leading-relaxed font-medium text-ctp-text"
+      />
       <ZoomableImage
         v-if="question.image_url"
         :src="question.image_url"
@@ -82,7 +83,7 @@ const letter = (i: number) => String.fromCharCode(65 + i)
         @click="!submitted && emit('toggle', o.id)"
         @keydown.enter.space.prevent="!submitted && emit('toggle', o.id)"
       >
-        <div class="flex items-center gap-3">
+        <div class="flex min-w-0 items-center gap-3">
           <span
             class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-ctp-surface2 text-xs font-semibold text-ctp-subtext1"
           >
@@ -100,7 +101,12 @@ const letter = (i: number) => String.fromCharCode(65 + i)
             />
             <template v-else>{{ letter(i) }}</template>
           </span>
-          <span v-if="o.text" class="text-ctp-text">{{ o.text }}</span>
+          <QuizText
+            v-if="o.text"
+            :source="o.text"
+            :format="question.text_format"
+            class="min-w-0 flex-1 text-ctp-text"
+          />
         </div>
         <ZoomableImage
           v-if="o.image_url"
@@ -121,9 +127,12 @@ const letter = (i: number) => String.fromCharCode(65 + i)
       :class="isCorrect ? 'animate__fadeInUp animate__faster' : 'animate__headShake'"
       aria-live="polite"
     >
-      <p v-if="question.explanation" class="mt-1 whitespace-pre-line text-ctp-text">
-        {{ question.explanation }}
-      </p>
+      <QuizText
+        v-if="question.explanation"
+        :source="question.explanation"
+        :format="question.text_format"
+        class="mt-1 text-ctp-text"
+      />
       <ZoomableImage
         v-if="question.explanation_image_url"
         :src="question.explanation_image_url"

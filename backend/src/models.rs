@@ -277,6 +277,7 @@ pub struct QuestionRow {
     pub explanation: Option<String>,
     pub explanation_image_key: Option<String>,
     pub multi_select: bool,
+    pub text_format: String,
 }
 
 /// Column list for SELECTs (a macro so queries stay `&'static str` literals).
@@ -284,7 +285,7 @@ macro_rules! question_columns {
     () => {
         "q.id, q.quiz_id, q.position, q.prompt, q.image_key, \
      q.image_alt, q.answer_text, q.answer_image_key, q.answer_image_alt, q.explanation, \
-     q.explanation_image_key, q.multi_select"
+     q.explanation_image_key, q.multi_select, q.text_format"
     };
 }
 pub(crate) use question_columns;
@@ -335,7 +336,37 @@ pub struct QuestionDto {
     pub explanation_image_key: Option<String>,
     pub explanation_image_url: Option<String>,
     pub multi_select: bool,
+    pub text_format: TextFormat,
     pub options: Vec<OptionDto>,
+}
+
+/// How a question's text is displayed. `Plain` (the default) shows it as typed; `Markdown`
+/// renders Markdown (code blocks, lists, tables, …). Applies to the prompt, options, answer and
+/// explanation together.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TextFormat {
+    #[default]
+    Plain,
+    Markdown,
+}
+
+impl TextFormat {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Plain => "plain",
+            Self::Markdown => "markdown",
+        }
+    }
+
+    /// Unknown stored values fall back to plain text (the safe display).
+    pub fn from_db(s: &str) -> Self {
+        if s == "markdown" {
+            Self::Markdown
+        } else {
+            Self::Plain
+        }
+    }
 }
 
 impl QuestionDto {
@@ -367,6 +398,7 @@ impl QuestionDto {
             explanation_image_url: storage.public_url_opt(q.explanation_image_key.as_deref()),
             explanation_image_key: q.explanation_image_key,
             multi_select: q.multi_select,
+            text_format: TextFormat::from_db(&q.text_format),
             options,
         }
     }

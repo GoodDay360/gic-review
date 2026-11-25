@@ -93,6 +93,7 @@ mod tests {
             explanation_image_key: None,
             explanation_image_url: None,
             multi_select: false,
+            text_format: Default::default(),
             options,
         }
     }

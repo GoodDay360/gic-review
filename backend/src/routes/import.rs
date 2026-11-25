@@ -14,7 +14,9 @@ use crate::{
     auth::{QuizManager, RequireEditor},
     error::{AppError, AppResult},
     extract::AppJson,
-    images, repo,
+    images,
+    models::TextFormat,
+    repo,
     routes::{
         admin_quizzes::{ManagedQuiz, OptionInput, QuestionInput, insert_question, load_quiz},
         uploads::store_image,
@@ -62,6 +64,8 @@ pub struct ImportQuestion {
     pub explanation_image_url: Option<String>,
     #[serde(default)]
     pub multi_select: bool,
+    #[serde(default)]
+    pub text_format: TextFormat,
     #[serde(default)]
     pub options: Vec<ImportOption>,
 }
@@ -153,6 +157,7 @@ fn plan(questions: Vec<ImportQuestion>) -> AppResult<Vec<PlannedQuestion>> {
             explanation: q.explanation,
             explanation_image_key: placeholder(&explanation_image),
             multi_select: q.multi_select,
+            text_format: q.text_format,
             options,
         }
         // Validation pass with placeholder keys: fail before downloading anything.

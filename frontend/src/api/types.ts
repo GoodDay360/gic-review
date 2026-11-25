@@ -1,6 +1,7 @@
 // Types mirroring the backend API (backend/src/models.rs, backend/src/auth.rs).
 
 export type QuizModeId = 'qcm' | 'flashcard'
+export type TextFormat = 'plain' | 'markdown'
 export type Role = 'admin' | 'manager'
 
 export interface Category {
@@ -127,6 +128,8 @@ export interface Question {
   explanation_image_key: string | null
   explanation_image_url: string | null
   multi_select: boolean
+  /** How the text is shown: `plain` (default) as typed, `markdown` rendered. */
+  text_format: TextFormat
   options: QuestionOption[]
 }
 
@@ -204,6 +207,7 @@ export interface QuestionInput {
   explanation: string | null
   explanation_image_key: string | null
   multi_select: boolean
+  text_format: TextFormat
   options: OptionInput[]
 }
 

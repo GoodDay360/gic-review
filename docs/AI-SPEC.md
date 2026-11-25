@@ -76,6 +76,7 @@ Legend: ✅ built · 🚧 in progress / partial · ⏳ planned
 - ✅ Mode registry `frontend/src/quiz-modes/registry.ts` + backend `QuizMode` enum, `available_modes` computed by the backend
 - ✅ QCM: one question at a time, optional question image, text/image options (image grid), single or multi answer, explanation text + image, progress bar and score, shuffled options, question-shuffle toggle (on by default), resumable in-progress attempts, end screen with score, percentage, missed list, Retry and Retry missed only
 - ✅ Flashcard: text/image front and back (falls back to the correct options), explanation, `object-contain` images with tap-to-zoom that doesn't flip, click/Space to flip, "I knew it" / "Didn't know" with missed cards returning once at the end of the round, resumable in-progress attempts, Space/←/→/1/2 shortcuts, end screen with "Study missed cards again"
+- ✅ Per-question text format (`questions.text_format`): `plain` (default; every question created before this, and any that doesn't say) shows text as typed; `markdown` renders the prompt, options, answer and explanation with markdown-it (raw HTML off, links in a new tab) and highlight.js code blocks in Catppuccin colors (`components/QuizText.vue`, `utils/markdown.ts`, `.md` styles in `main.css`). Plain/Markdown toggle in the question editor
 - ⏳ More modes (True/False, Matching, Fill-in-the-blank), see `docs/AI-HOW-ADD-QUIZ.md`
 
 ### Staff / Admin
@@ -155,7 +156,8 @@ quizzes             id, subject_id → subjects (RESTRICT), title, description N
                     is_published, created_by NULL → users (SET NULL), created_at, updated_at
 questions           id, quiz_id → quizzes (CASCADE), position, prompt NULL, image_key NULL,
                     image_alt NULL, answer_text NULL, answer_image_key NULL, answer_image_alt NULL,
-                    explanation NULL, explanation_image_key NULL, multi_select, created_at, updated_at
+                    explanation NULL, explanation_image_key NULL, multi_select,
+                    text_format ('plain' | 'markdown', default 'plain'), created_at, updated_at
 question_options    id, question_id → questions (CASCADE), position, text NULL, image_key NULL,
                     image_alt NULL, is_correct
 category_shares         category_id → categories (CASCADE), user_id → users (CASCADE), granted_by NULL → users,
@@ -242,6 +244,7 @@ Error codes worth knowing: `unauthorized` (401), `forbidden` (403, wrong role), 
 
 ## Changelog
 
+- 2026-11-25: **Markdown in questions, per question.** New `text_format` field on each question (`"plain"` default, or `"markdown"`) in the import JSON, the question endpoints and every quiz response; unknown values are rejected (`422`). Migration `20261125000001_question_text_format` (existing questions stay `plain`, so nothing changes for them). Markdown questions render code blocks with syntax highlighting, inline code, lists, tables, quotes and links in QCM, Flashcard and the admin preview; the editor has a Plain/Markdown toggle and the question list marks Markdown questions. AI quiz guide updated.
 - 2026-11-19: Orphaned-image cleanup also runs in a background worker: once at startup, then every hour (failures are logged, never fatal). Same rules as the manual button: only unreferenced files older than one hour. A lock ensures the button and the worker never run at the same time.
 - 2026-11-23: The startup orphan cleanup runs on its own thread (a blocking-pool thread driven by the main runtime), started only after the listener is bound, so it doesn't compete with the first requests after a cold start. The daily worker is spawned only once that startup run has finished; its first run is 24 hours later.
 - 2026-11-20: The automatic cleanup worker runs once at startup and then every 24 hours (was every hour).

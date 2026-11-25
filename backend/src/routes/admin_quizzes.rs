@@ -19,7 +19,8 @@ use crate::{
     error::{AppError, AppResult},
     extract::AppJson,
     models::{
-        AdminListQuery, Page, QuizDetail, QuizRow, QuizSummary, question_image_keys, quiz_columns,
+        AdminListQuery, Page, QuizDetail, QuizRow, QuizSummary, TextFormat, question_image_keys,
+        quiz_columns,
     },
     repo,
     state::AppState,
@@ -92,6 +93,9 @@ pub struct QuestionInput {
     pub explanation_image_key: Option<String>,
     #[serde(default)]
     pub multi_select: bool,
+    /// `"plain"` (default) or `"markdown"`.
+    #[serde(default)]
+    pub text_format: TextFormat,
     #[serde(default)]
     pub options: Vec<OptionInput>,
 }
@@ -189,8 +193,8 @@ pub async fn insert_question(
 ) -> AppResult<i64> {
     let res = sqlx::query(
         "INSERT INTO questions (quiz_id, position, prompt, image_key, image_alt, answer_text, \
-         answer_image_key, answer_image_alt, explanation, explanation_image_key, multi_select) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         answer_image_key, answer_image_alt, explanation, explanation_image_key, multi_select, \
+         text_format) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(quiz_id)
     .bind(position)
@@ -203,6 +207,7 @@ pub async fn insert_question(
     .bind(&q.explanation)
     .bind(&q.explanation_image_key)
     .bind(q.multi_select)
+    .bind(q.text_format.as_str())
     .execute(&mut **tx)
     .await?;
     let question_id = res.last_insert_id() as i64;
@@ -509,7 +514,7 @@ async fn update_question(
     sqlx::query(
         "UPDATE questions SET prompt = ?, image_key = ?, image_alt = ?, answer_text = ?, \
          answer_image_key = ?, answer_image_alt = ?, explanation = ?, explanation_image_key = ?, \
-         multi_select = ? WHERE id = ? AND quiz_id = ?",
+         multi_select = ?, text_format = ? WHERE id = ? AND quiz_id = ?",
     )
     .bind(&body.prompt)
     .bind(&body.image_key)
@@ -520,6 +525,7 @@ async fn update_question(
     .bind(&body.explanation)
     .bind(&body.explanation_image_key)
     .bind(body.multi_select)
+    .bind(body.text_format.as_str())
     .bind(qid)
     .bind(id)
     .execute(&mut *tx)

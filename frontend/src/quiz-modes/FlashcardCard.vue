@@ -3,6 +3,7 @@
 import { computed } from 'vue'
 
 import type { Question } from '@/api/types'
+import QuizText from '@/components/QuizText.vue'
 import ZoomableImage from '@/components/ZoomableImage.vue'
 
 import { correctOptions } from './utils'
@@ -35,19 +36,19 @@ const fallbackOptions = computed(() =>
       <!-- Front -->
       <v-card
         tag="section"
-        class="absolute inset-0 flex flex-col items-center justify-center gap-4 overflow-auto p-6 [backface-visibility:hidden]"
+        class="absolute inset-0 flex flex-col items-center justify-center-safe gap-4 overflow-auto p-6 [backface-visibility:hidden]"
         :aria-hidden="flipped"
       >
         <span
           class="absolute top-3 left-4 text-xs font-semibold tracking-wide text-ctp-overlay1 uppercase"
           >Question</span
         >
-        <p
+        <QuizText
           v-if="question.prompt"
-          class="text-center text-xl leading-relaxed font-medium whitespace-pre-line text-ctp-text"
-        >
-          {{ question.prompt }}
-        </p>
+          :source="question.prompt"
+          :format="question.text_format"
+          class="w-full text-center text-xl leading-relaxed font-medium text-ctp-text"
+        />
         <div v-if="question.image_url" class="w-full">
           <ZoomableImage
             :src="question.image_url"
@@ -63,19 +64,19 @@ const fallbackOptions = computed(() =>
       <!-- Back -->
       <v-card
         tag="section"
-        class="absolute inset-0 flex flex-col items-center justify-center gap-4 overflow-auto border-ctp-accent/50 p-6 [backface-visibility:hidden] [transform:rotateY(180deg)]"
+        class="absolute inset-0 flex flex-col items-center justify-center-safe gap-4 overflow-auto border-ctp-accent/50 p-6 [backface-visibility:hidden] [transform:rotateY(180deg)]"
         :aria-hidden="!flipped"
       >
         <span
           class="absolute top-3 left-4 text-xs font-semibold tracking-wide text-ctp-accent uppercase"
           >Answer</span
         >
-        <p
+        <QuizText
           v-if="question.answer_text"
-          class="text-center text-xl leading-relaxed font-medium whitespace-pre-line text-ctp-text"
-        >
-          {{ question.answer_text }}
-        </p>
+          :source="question.answer_text"
+          :format="question.text_format"
+          class="w-full text-center text-xl leading-relaxed font-medium text-ctp-text"
+        />
         <div v-if="question.answer_image_url" class="w-full">
           <ZoomableImage
             :src="question.answer_image_url"
@@ -89,9 +90,12 @@ const fallbackOptions = computed(() =>
             :key="o.id"
             class="flex w-full flex-col items-center gap-2"
           >
-            <span v-if="o.text" class="text-center text-xl font-medium text-ctp-text">{{
-              o.text
-            }}</span>
+            <QuizText
+              v-if="o.text"
+              :source="o.text"
+              :format="question.text_format"
+              class="w-full text-center text-xl font-medium text-ctp-text"
+            />
             <ZoomableImage
               v-if="o.image_url"
               :src="o.image_url"
@@ -104,12 +108,12 @@ const fallbackOptions = computed(() =>
           v-if="question.explanation || question.explanation_image_url"
           class="w-full border-t border-ctp-surface0 pt-3"
         >
-          <p
+          <QuizText
             v-if="question.explanation"
-            class="text-center text-sm whitespace-pre-line text-ctp-subtext1"
-          >
-            {{ question.explanation }}
-          </p>
+            :source="question.explanation"
+            :format="question.text_format"
+            class="text-center text-sm text-ctp-subtext1"
+          />
           <ZoomableImage
             v-if="question.explanation_image_url"
             :src="question.explanation_image_url"

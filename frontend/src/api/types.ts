@@ -36,6 +36,7 @@ export interface Subject {
   color: string
   sort_order: number
   has_review: boolean
+  review_count: number
   quiz_count: number
   created_at: string
   updated_at: string

@@ -151,7 +151,7 @@ Response `200`: `{ "id", "email", "display_name", "role": "manager" | "admin", "
 
 ### #2 `GET /subjects` (no key)
 Optional query `?category={category_slug}`. Response `200`: array of
-`{ "id", "category_id", "category_slug", "category_name", "slug", "name", "description", "has_review", "quiz_count", … }`.
+`{ "id", "category_id", "category_slug", "category_name", "slug", "name", "description", "has_review", "review_count", "quiz_count", … }`.
 
 ### #3 `GET /admin/reviews?subject_id={n}`
 `subject_id` optional. Response `200`: array of **review objects** (below), unpublished included.

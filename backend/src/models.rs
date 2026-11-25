@@ -135,6 +135,7 @@ pub struct SubjectDto {
     pub color: String,
     pub sort_order: i32,
     pub has_review: bool,
+    pub review_count: i64,
     pub quiz_count: i64,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
@@ -144,7 +145,7 @@ impl SubjectDto {
     pub fn from_row(
         r: SubjectRow,
         category: &CategoryRow,
-        has_review: bool,
+        review_count: i64,
         quiz_count: i64,
     ) -> Self {
         Self {
@@ -157,7 +158,8 @@ impl SubjectDto {
             description: r.description,
             color: r.color,
             sort_order: r.sort_order,
-            has_review,
+            has_review: review_count > 0,
+            review_count,
             quiz_count,
             created_at: r.created_at,
             updated_at: r.updated_at,

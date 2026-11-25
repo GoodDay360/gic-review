@@ -64,14 +64,14 @@ async fn health(State(state): State<AppState>) -> impl IntoResponse {
 struct SubjectStats {
     id: i64,
     // MySQL returns EXISTS/COUNT as BIGINT, so decode as integers.
-    has_review: i64,
+    review_count: i64,
     quiz_count: i64,
 }
 
 async fn subject_stats(state: &AppState) -> AppResult<Vec<SubjectStats>> {
     Ok(sqlx::query_as(
         "SELECT s.id, \
-           EXISTS(SELECT 1 FROM interactive_reviews r WHERE r.subject_id = s.id AND r.is_published = TRUE) AS has_review, \
+           (SELECT COUNT(*) FROM interactive_reviews r WHERE r.subject_id = s.id AND r.is_published = TRUE) AS review_count, \
            (SELECT COUNT(*) FROM quizzes z WHERE z.subject_id = s.id AND z.is_published = TRUE) AS quiz_count \
          FROM subjects s",
     )
@@ -117,7 +117,7 @@ async fn subjects_from_rows(state: &AppState, rows: Vec<SubjectRow>) -> AppResul
                 SubjectDto::from_row(
                     r,
                     category,
-                    s.is_some_and(|s| s.has_review > 0),
+                    s.map_or(0, |s| s.review_count),
                     s.map_or(0, |s| s.quiz_count),
                 ),
             ))

@@ -39,7 +39,7 @@ defineEmits<{ select: [subject: Subject] }>()
         variant="tonal"
         prepend-icon="mdi-book-open-variant"
       >
-        Interactive review
+        {{ subject.review_count }} interactive review{{ subject.review_count === 1 ? '' : 's' }}
       </v-chip>
     </span>
   </v-card>

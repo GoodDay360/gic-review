@@ -167,7 +167,7 @@ Response `200`: `{ "id", "email", "display_name", "role": "manager" | "admin", "
 
 ### #2 `GET /subjects` (no key)
 Optional query `?category={category_slug}` to get one category's subjects only. Response `200`: array of
-`{ "id", "category_id", "category_slug", "category_name", "slug", "name", "description", "color", "sort_order", "has_review", "quiz_count" }`,
+`{ "id", "category_id", "category_slug", "category_name", "slug", "name", "description", "color", "sort_order", "has_review", "review_count", "quiz_count" }`,
 ordered by category, then subject.
 
 ### #3 `GET /admin/quizzes?subject_id={n}`

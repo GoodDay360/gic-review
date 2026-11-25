@@ -181,7 +181,7 @@ or admin session only, **A-s** = admin session only, **any** = any session or AP
 |---|---|---|
 | `GET /health` | public | 503 when the DB is down |
 | `GET /categories`, `GET /categories/:slug` | public | categories with `subject_count`; one category with its `subjects` |
-| `GET /subjects[?category=slug]` | public | `category_id`, `category_slug`, `category_name`, `has_review`, `quiz_count` |
+| `GET /subjects[?category=slug]` | public | `category_id`, `category_slug`, `category_name`, `has_review`, `review_count`, `quiz_count` |
 | `GET /categories/:slug/subjects/:subject` | public | one subject (subject slugs are unique per category) |
 | `GET /categories/:slug/subjects/:subject/reviews` | public | published reviews with `url` (`?v=` cache-buster) |
 | `GET /categories/:slug/subjects/:subject/quizzes` | public | published, with `question_count`, `available_modes` |
